@@ -21,7 +21,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QPlainTextEdit, QWidget
 
 from hitofude.core.models import BlockInfo
-from hitofude.editor import painter_overlay
+from hitofude.editor import commands, painter_overlay
 from hitofude.editor.highlighter import MarkdownHighlighter
 from hitofude.editor.input_handler import EnterKind, enter_action, indent_action
 from hitofude.theme import LIGHT, ThemeColors
@@ -140,8 +140,143 @@ class MarkdownEditor(QPlainTextEdit):
             return
         if key == Qt.Key.Key_Backtab and self._handle_indent(forward=False):
             return
+        if self._handle_shortcut(event):
+            return
+        if plain and self._handle_auto_pair(event.text()):
+            return
 
         super().keyPressEvent(event)
+
+    # ----------------------------------------------------------- コマンド
+
+    def _handle_shortcut(self, event: QKeyEvent) -> bool:
+        """spec §5.4 のキーバインド。macOS では ControlModifier が Cmd。"""
+        modifiers = event.modifiers()
+        command = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+        shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+        alt = bool(modifiers & Qt.KeyboardModifier.AltModifier)
+        if not command:
+            return False
+
+        key = event.key()
+        if not shift and not alt:
+            match key:
+                case Qt.Key.Key_B:
+                    return self.toggle_strong()
+                case Qt.Key.Key_I:
+                    return self.toggle_emphasis()
+                case Qt.Key.Key_E:
+                    return self.toggle_code()
+                case Qt.Key.Key_K:
+                    return self.insert_link()
+                case Qt.Key.Key_Slash:
+                    self.toggle_source_mode()
+                    return True
+        if shift and not alt:
+            match key:
+                case Qt.Key.Key_X:
+                    return self.toggle_strike()
+                case Qt.Key.Key_H:
+                    return self.toggle_highlight()
+                case Qt.Key.Key_T:
+                    return self.toggle_checkbox()
+                case Qt.Key.Key_Up:
+                    return self.shift_heading(-1)
+                case Qt.Key.Key_Down:
+                    return self.shift_heading(1)
+        return False
+
+    def toggle_strong(self) -> bool:
+        return self._toggle_wrap("**")
+
+    def toggle_emphasis(self) -> bool:
+        return self._toggle_wrap("*")
+
+    def toggle_code(self) -> bool:
+        return self._toggle_wrap("`")
+
+    def toggle_strike(self) -> bool:
+        return self._toggle_wrap("~~")
+
+    def toggle_highlight(self) -> bool:
+        return self._toggle_wrap("::")
+
+    def _toggle_wrap(self, marker: str) -> bool:
+        cursor = self.textCursor()
+        replacement = commands.toggle_wrap(
+            self.toPlainText(), cursor.selectionStart(), cursor.selectionEnd(), marker
+        )
+        self._apply(replacement)
+        return True
+
+    def insert_link(self, url: str = "") -> bool:
+        """`Cmd+K`。選択文字を `[選択](url)` にする（spec §5.4）。"""
+        cursor = self.textCursor()
+        replacement = commands.insert_link(
+            self.toPlainText(), cursor.selectionStart(), cursor.selectionEnd(), url
+        )
+        self._apply(replacement)
+        return True
+
+    def shift_heading(self, delta: int) -> bool:
+        """見出しレベルの増減。`delta` が負だと `#` が減って見出しが大きくなる。"""
+        block = self.textCursor().block()
+        new_line = commands.shift_heading(block.text(), delta)
+        if new_line is None:
+            return False
+        self._replace_current_block(new_line)
+        return True
+
+    def toggle_checkbox(self) -> bool:
+        block = self.textCursor().block()
+        new_line = commands.toggle_checkbox(block.text(), self._current_info())
+        if new_line is None:
+            return False
+        self._replace_current_block(new_line)
+        return True
+
+    def _handle_auto_pair(self, character: str) -> bool:
+        """選択したまま囲み記号を押すと選択範囲を囲む（spec §5.5-4）。"""
+        cursor = self.textCursor()
+        if not cursor.hasSelection() or character not in commands.AUTO_PAIRS:
+            return False
+        closing = commands.AUTO_PAIRS[character]
+        selected = cursor.selectedText()
+        start = cursor.selectionStart()
+        cursor.insertText(f"{character}{selected}{closing}")
+        cursor.setPosition(start + len(character))
+        cursor.setPosition(start + len(character) + len(selected), QTextCursor.MoveMode.KeepAnchor)
+        self.setTextCursor(cursor)
+        return True
+
+    def insertFromMimeData(self, source) -> None:
+        """選択があってクリップボードが URL ならリンクにする（spec §5.5-5）。"""
+        cursor = self.textCursor()
+        text = source.text() if source.hasText() else ""
+        if cursor.hasSelection() and commands.is_url(text):
+            replacement = commands.insert_link(
+                self.toPlainText(), cursor.selectionStart(), cursor.selectionEnd(), text.strip()
+            )
+            self._apply(replacement)
+            return
+        super().insertFromMimeData(source)
+
+    def _apply(self, replacement: commands.Replacement) -> None:
+        cursor = self.textCursor()
+        cursor.beginEditBlock()
+        cursor.setPosition(replacement.start)
+        cursor.setPosition(replacement.end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.insertText(replacement.text)
+        cursor.endEditBlock()
+        cursor.setPosition(replacement.select_start)
+        cursor.setPosition(replacement.select_end, QTextCursor.MoveMode.KeepAnchor)
+        self.setTextCursor(cursor)
+
+    def _replace_current_block(self, text: str) -> None:
+        cursor = self.textCursor()
+        column = cursor.positionInBlock() + len(text) - len(cursor.block().text())
+        self._replace_block(cursor, text, column=max(0, column))
+        self.setTextCursor(cursor)
 
     def _current_info(self) -> BlockInfo | None:
         data = self.textCursor().block().userData()
