@@ -1,0 +1,853 @@
+[
+  {
+    "line": 0,
+    "text": "# 境界ケース",
+    "block": "HEADING",
+    "ranges": [
+      [
+        0,
+        2,
+        "hidden:0.5+bold"
+      ],
+      [
+        2,
+        5,
+        "size:27+bold"
+      ]
+    ]
+  },
+  {
+    "line": 1,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 2,
+    "text": "## 未閉じのマーカー",
+    "block": "HEADING",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5+bold"
+      ],
+      [
+        3,
+        8,
+        "size:22.5+bold"
+      ]
+    ]
+  },
+  {
+    "line": 3,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 4,
+    "text": "未閉じの **強調 はそのまま残る。",
+    "block": "PARAGRAPH",
+    "ranges": []
+  },
+  {
+    "line": 5,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 6,
+    "text": "未閉じの `コード も同じ。",
+    "block": "PARAGRAPH",
+    "ranges": []
+  },
+  {
+    "line": 7,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 8,
+    "text": "未閉じの [リンク](https://example.com は成立しない。",
+    "block": "PARAGRAPH",
+    "ranges": [
+      [
+        11,
+        19,
+        "underline+fg:#d2553c"
+      ]
+    ]
+  },
+  {
+    "line": 9,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 10,
+    "text": "閉じだけの 強調** も成立しない。",
+    "block": "PARAGRAPH",
+    "ranges": []
+  },
+  {
+    "line": 11,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 12,
+    "text": "## 入れ子",
+    "block": "HEADING",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5+bold"
+      ],
+      [
+        3,
+        3,
+        "size:22.5+bold"
+      ]
+    ]
+  },
+  {
+    "line": 13,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 14,
+    "text": "**強調の中に *斜体* がある**。",
+    "block": "PARAGRAPH",
+    "ranges": [
+      [
+        0,
+        2,
+        "hidden:0.5"
+      ],
+      [
+        2,
+        6,
+        "bold"
+      ],
+      [
+        8,
+        1,
+        "hidden:0.5+bold"
+      ],
+      [
+        9,
+        2,
+        "bold+italic"
+      ],
+      [
+        11,
+        1,
+        "hidden:0.5+bold"
+      ],
+      [
+        12,
+        4,
+        "bold"
+      ],
+      [
+        16,
+        2,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 15,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 16,
+    "text": "*斜体の中に **強調** がある*。",
+    "block": "PARAGRAPH",
+    "ranges": [
+      [
+        0,
+        1,
+        "hidden:0.5"
+      ],
+      [
+        1,
+        6,
+        "italic"
+      ],
+      [
+        7,
+        2,
+        "hidden:0.5+italic"
+      ],
+      [
+        9,
+        2,
+        "bold+italic"
+      ],
+      [
+        11,
+        2,
+        "hidden:0.5+italic"
+      ],
+      [
+        13,
+        4,
+        "italic"
+      ],
+      [
+        17,
+        1,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 17,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 18,
+    "text": "**強調の中に `コード` がある**。",
+    "block": "PARAGRAPH",
+    "ranges": [
+      [
+        0,
+        2,
+        "hidden:0.5"
+      ],
+      [
+        2,
+        6,
+        "bold"
+      ],
+      [
+        8,
+        1,
+        "hidden:0.5+bold"
+      ],
+      [
+        9,
+        3,
+        "bold+mono+bg:#f0f0f2+fg:#3a3a3c"
+      ],
+      [
+        12,
+        1,
+        "hidden:0.5+bold"
+      ],
+      [
+        13,
+        4,
+        "bold"
+      ],
+      [
+        17,
+        2,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 19,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 20,
+    "text": "## コードの中の記法",
+    "block": "HEADING",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5+bold"
+      ],
+      [
+        3,
+        8,
+        "size:22.5+bold"
+      ]
+    ]
+  },
+  {
+    "line": 21,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 22,
+    "text": "`**これは強調ではない**` と `#これはタグではない` と `[a](b)`。",
+    "block": "PARAGRAPH",
+    "ranges": [
+      [
+        0,
+        1,
+        "hidden:0.5"
+      ],
+      [
+        1,
+        13,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ],
+      [
+        14,
+        1,
+        "hidden:0.5"
+      ],
+      [
+        18,
+        1,
+        "hidden:0.5"
+      ],
+      [
+        19,
+        10,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ],
+      [
+        29,
+        1,
+        "hidden:0.5"
+      ],
+      [
+        33,
+        1,
+        "hidden:0.5"
+      ],
+      [
+        34,
+        6,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ],
+      [
+        40,
+        1,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 23,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 24,
+    "text": "```markdown",
+    "block": "CODE_FENCE_OPEN",
+    "ranges": [
+      [
+        0,
+        11,
+        "hidden:0.5+mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 25,
+    "text": "# これは見出しではない",
+    "block": "CODE_FENCE_BODY",
+    "ranges": [
+      [
+        0,
+        12,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 26,
+    "text": "- これはリストではない",
+    "block": "CODE_FENCE_BODY",
+    "ranges": [
+      [
+        0,
+        12,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 27,
+    "text": "**これは強調ではない**",
+    "block": "CODE_FENCE_BODY",
+    "ranges": [
+      [
+        0,
+        13,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 28,
+    "text": "#これはタグではない",
+    "block": "CODE_FENCE_BODY",
+    "ranges": [
+      [
+        0,
+        10,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 29,
+    "text": "```",
+    "block": "CODE_FENCE_CLOSE",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5+mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 30,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 31,
+    "text": "## 連続するフェンス",
+    "block": "HEADING",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5+bold"
+      ],
+      [
+        3,
+        8,
+        "size:22.5+bold"
+      ]
+    ]
+  },
+  {
+    "line": 32,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 33,
+    "text": "```",
+    "block": "CODE_FENCE_OPEN",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5+mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 34,
+    "text": "1 つ目のフェンス",
+    "block": "CODE_FENCE_BODY",
+    "ranges": [
+      [
+        0,
+        9,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 35,
+    "text": "```",
+    "block": "CODE_FENCE_CLOSE",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5+mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 36,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 37,
+    "text": "```js",
+    "block": "CODE_FENCE_OPEN",
+    "ranges": [
+      [
+        0,
+        5,
+        "hidden:0.5+mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 38,
+    "text": "2 つ目のフェンス",
+    "block": "CODE_FENCE_BODY",
+    "ranges": [
+      [
+        0,
+        9,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 39,
+    "text": "```",
+    "block": "CODE_FENCE_CLOSE",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5+mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 40,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 41,
+    "text": "~~~",
+    "block": "CODE_FENCE_OPEN",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5+mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 42,
+    "text": "チルダのフェンス",
+    "block": "CODE_FENCE_BODY",
+    "ranges": [
+      [
+        0,
+        8,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 43,
+    "text": "~~~",
+    "block": "CODE_FENCE_CLOSE",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5+mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 44,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 45,
+    "text": "## 閉じないフェンス",
+    "block": "HEADING",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5+bold"
+      ],
+      [
+        3,
+        8,
+        "size:22.5+bold"
+      ]
+    ]
+  },
+  {
+    "line": 46,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 47,
+    "text": "上の見出しの下でフェンスを開いたまま終わる場合、",
+    "block": "PARAGRAPH",
+    "ranges": []
+  },
+  {
+    "line": 48,
+    "text": "入力途中は常にこの状態になる。",
+    "block": "PARAGRAPH",
+    "ranges": []
+  },
+  {
+    "line": 49,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 50,
+    "text": "## 紛らわしい記号",
+    "block": "HEADING",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5+bold"
+      ],
+      [
+        3,
+        7,
+        "size:22.5+bold"
+      ]
+    ]
+  },
+  {
+    "line": 51,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 52,
+    "text": "3 * 4 * 5 は掛け算であって強調ではない。",
+    "block": "PARAGRAPH",
+    "ranges": []
+  },
+  {
+    "line": 53,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 54,
+    "text": "a_b_c は識別子。",
+    "block": "PARAGRAPH",
+    "ranges": []
+  },
+  {
+    "line": 55,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 56,
+    "text": "URL のアンカー https://example.com/#anchor はタグではない。",
+    "block": "PARAGRAPH",
+    "ranges": [
+      [
+        10,
+        27,
+        "underline+fg:#d2553c"
+      ]
+    ]
+  },
+  {
+    "line": 57,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 58,
+    "text": "`code`#tag は直前が非空白なのでタグにならない。",
+    "block": "PARAGRAPH",
+    "ranges": [
+      [
+        0,
+        1,
+        "hidden:0.5"
+      ],
+      [
+        1,
+        4,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ],
+      [
+        5,
+        1,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 59,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 60,
+    "text": "## 表の崩れ",
+    "block": "HEADING",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5+bold"
+      ],
+      [
+        3,
+        4,
+        "size:22.5+bold"
+      ]
+    ]
+  },
+  {
+    "line": 61,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 62,
+    "text": "| A | B |",
+    "block": "TABLE_ROW",
+    "ranges": [
+      [
+        0,
+        9,
+        "mono"
+      ]
+    ]
+  },
+  {
+    "line": 63,
+    "text": "|---|",
+    "block": "TABLE_DELIMITER",
+    "ranges": [
+      [
+        0,
+        5,
+        "mono"
+      ]
+    ]
+  },
+  {
+    "line": 64,
+    "text": "| 1 | 2 | 3 |",
+    "block": "TABLE_ROW",
+    "ranges": [
+      [
+        0,
+        13,
+        "mono"
+      ]
+    ]
+  },
+  {
+    "line": 65,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 66,
+    "text": "## 水平線と見出しの区別",
+    "block": "HEADING",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5+bold"
+      ],
+      [
+        3,
+        10,
+        "size:22.5+bold"
+      ]
+    ]
+  },
+  {
+    "line": 67,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 68,
+    "text": "---",
+    "block": "HORIZONTAL_RULE",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 69,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 70,
+    "text": "上は水平線。下は setext 見出し。",
+    "block": "PARAGRAPH",
+    "ranges": []
+  },
+  {
+    "line": 71,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 72,
+    "text": "見出しに見える行",
+    "block": "PARAGRAPH",
+    "ranges": []
+  },
+  {
+    "line": 73,
+    "text": "---",
+    "block": "HORIZONTAL_RULE",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 74,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  }
+]

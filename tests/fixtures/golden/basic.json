@@ -1,0 +1,652 @@
+[
+  {
+    "line": 0,
+    "text": "---",
+    "block": "FRONT_MATTER",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 1,
+    "text": "id: 01J9XQ2F8K7M3N5P",
+    "block": "FRONT_MATTER",
+    "ranges": [
+      [
+        0,
+        20,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 2,
+    "text": "created: 2026-08-07T09:12:00+09:00",
+    "block": "FRONT_MATTER",
+    "ranges": [
+      [
+        0,
+        34,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 3,
+    "text": "pinned: false",
+    "block": "FRONT_MATTER",
+    "ranges": [
+      [
+        0,
+        13,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 4,
+    "text": "---",
+    "block": "FRONT_MATTER",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 5,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 6,
+    "text": "# 見出し 1",
+    "block": "HEADING",
+    "ranges": [
+      [
+        0,
+        2,
+        "hidden:0.5+bold"
+      ],
+      [
+        2,
+        5,
+        "size:27+bold"
+      ]
+    ]
+  },
+  {
+    "line": 7,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 8,
+    "text": "## 見出し 2",
+    "block": "HEADING",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5+bold"
+      ],
+      [
+        3,
+        5,
+        "size:22.5+bold"
+      ]
+    ]
+  },
+  {
+    "line": 9,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 10,
+    "text": "### 見出し 3",
+    "block": "HEADING",
+    "ranges": [
+      [
+        0,
+        4,
+        "hidden:0.5+bold"
+      ],
+      [
+        4,
+        5,
+        "size:18.75+bold"
+      ]
+    ]
+  },
+  {
+    "line": 11,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 12,
+    "text": "#### 見出し 4",
+    "block": "HEADING",
+    "ranges": [
+      [
+        0,
+        5,
+        "hidden:0.5+bold"
+      ],
+      [
+        5,
+        5,
+        "size:16.5+bold"
+      ]
+    ]
+  },
+  {
+    "line": 13,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 14,
+    "text": "##### 見出し 5",
+    "block": "HEADING",
+    "ranges": [
+      [
+        0,
+        6,
+        "hidden:0.5+bold+fg:#8a8a8e"
+      ],
+      [
+        6,
+        5,
+        "size:15+bold+fg:#8a8a8e"
+      ]
+    ]
+  },
+  {
+    "line": 15,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 16,
+    "text": "###### 見出し 6",
+    "block": "HEADING",
+    "ranges": [
+      [
+        0,
+        7,
+        "hidden:0.5+bold+fg:#8a8a8e"
+      ],
+      [
+        7,
+        5,
+        "size:14.25+bold+fg:#8a8a8e"
+      ]
+    ]
+  },
+  {
+    "line": 17,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 18,
+    "text": "これは段落です。**強調**と*斜体*と***両方***と~~取り消し~~と::ハイライト::と`インラインコード`。",
+    "block": "PARAGRAPH",
+    "ranges": [
+      [
+        8,
+        2,
+        "hidden:0.5"
+      ],
+      [
+        10,
+        2,
+        "bold"
+      ],
+      [
+        12,
+        2,
+        "hidden:0.5"
+      ],
+      [
+        15,
+        1,
+        "hidden:0.5"
+      ],
+      [
+        16,
+        2,
+        "italic"
+      ],
+      [
+        18,
+        1,
+        "hidden:0.5"
+      ],
+      [
+        20,
+        3,
+        "hidden:0.5"
+      ],
+      [
+        23,
+        2,
+        "bold+italic"
+      ],
+      [
+        25,
+        3,
+        "hidden:0.5"
+      ],
+      [
+        29,
+        2,
+        "hidden:0.5"
+      ],
+      [
+        31,
+        4,
+        "strike"
+      ],
+      [
+        35,
+        2,
+        "hidden:0.5"
+      ],
+      [
+        38,
+        2,
+        "hidden:0.5"
+      ],
+      [
+        40,
+        5,
+        "bg:#fff3a0"
+      ],
+      [
+        45,
+        2,
+        "hidden:0.5"
+      ],
+      [
+        48,
+        1,
+        "hidden:0.5"
+      ],
+      [
+        49,
+        8,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ],
+      [
+        57,
+        1,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 19,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 20,
+    "text": "[リンク](https://example.com/docs) と <https://example.com/auto> と https://example.com/bare",
+    "block": "PARAGRAPH",
+    "ranges": [
+      [
+        0,
+        1,
+        "hidden:0.5"
+      ],
+      [
+        1,
+        3,
+        "underline+fg:#d2553c"
+      ],
+      [
+        4,
+        27,
+        "hidden:0.5"
+      ],
+      [
+        34,
+        1,
+        "hidden:0.5"
+      ],
+      [
+        35,
+        24,
+        "underline+fg:#d2553c"
+      ],
+      [
+        59,
+        1,
+        "hidden:0.5"
+      ],
+      [
+        63,
+        24,
+        "underline+fg:#d2553c"
+      ]
+    ]
+  },
+  {
+    "line": 21,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 22,
+    "text": "![画像](attachments/screenshot.png)",
+    "block": "PARAGRAPH",
+    "ranges": [
+      [
+        0,
+        2,
+        "hidden:0.5"
+      ],
+      [
+        2,
+        2,
+        "fg:#d2553c"
+      ],
+      [
+        4,
+        29,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 23,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 24,
+    "text": "- 箇条書き",
+    "block": "BULLET_LIST_ITEM",
+    "ranges": []
+  },
+  {
+    "line": 25,
+    "text": "- 2 つ目",
+    "block": "BULLET_LIST_ITEM",
+    "ranges": []
+  },
+  {
+    "line": 26,
+    "text": "    - 入れ子",
+    "block": "BULLET_LIST_ITEM",
+    "ranges": []
+  },
+  {
+    "line": 27,
+    "text": "        - さらに入れ子",
+    "block": "BULLET_LIST_ITEM",
+    "ranges": []
+  },
+  {
+    "line": 28,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 29,
+    "text": "1. 番号付き",
+    "block": "ORDERED_LIST_ITEM",
+    "ranges": []
+  },
+  {
+    "line": 30,
+    "text": "2. 2 つ目",
+    "block": "ORDERED_LIST_ITEM",
+    "ranges": []
+  },
+  {
+    "line": 31,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 32,
+    "text": "- [ ] 未完了のタスク",
+    "block": "TASK_LIST_ITEM",
+    "ranges": [
+      [
+        2,
+        3,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 33,
+    "text": "- [x] 完了したタスク",
+    "block": "TASK_LIST_ITEM",
+    "ranges": [
+      [
+        2,
+        3,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 34,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 35,
+    "text": "> 引用文",
+    "block": "BLOCKQUOTE",
+    "ranges": [
+      [
+        0,
+        2,
+        "hidden:0.5+fg:#6b6b70"
+      ],
+      [
+        2,
+        3,
+        "fg:#6b6b70"
+      ]
+    ]
+  },
+  {
+    "line": 36,
+    "text": "> > 入れ子の引用",
+    "block": "BLOCKQUOTE",
+    "ranges": [
+      [
+        0,
+        4,
+        "hidden:0.5+fg:#6b6b70"
+      ],
+      [
+        4,
+        6,
+        "fg:#6b6b70"
+      ]
+    ]
+  },
+  {
+    "line": 37,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 38,
+    "text": "```python",
+    "block": "CODE_FENCE_OPEN",
+    "ranges": [
+      [
+        0,
+        9,
+        "hidden:0.5+mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 39,
+    "text": "def hello() -> str:",
+    "block": "CODE_FENCE_BODY",
+    "ranges": [
+      [
+        0,
+        19,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 40,
+    "text": "    return \"world\"",
+    "block": "CODE_FENCE_BODY",
+    "ranges": [
+      [
+        0,
+        18,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 41,
+    "text": "```",
+    "block": "CODE_FENCE_CLOSE",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5+mono+bg:#f0f0f2+fg:#3a3a3c"
+      ]
+    ]
+  },
+  {
+    "line": 42,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 43,
+    "text": "| 見出し A | 見出し B |",
+    "block": "TABLE_ROW",
+    "ranges": [
+      [
+        0,
+        17,
+        "mono"
+      ]
+    ]
+  },
+  {
+    "line": 44,
+    "text": "|---|---|",
+    "block": "TABLE_DELIMITER",
+    "ranges": [
+      [
+        0,
+        9,
+        "mono"
+      ]
+    ]
+  },
+  {
+    "line": 45,
+    "text": "| 1 | 2 |",
+    "block": "TABLE_ROW",
+    "ranges": [
+      [
+        0,
+        9,
+        "mono"
+      ]
+    ]
+  },
+  {
+    "line": 46,
+    "text": "| 3 | 4 |",
+    "block": "TABLE_ROW",
+    "ranges": [
+      [
+        0,
+        9,
+        "mono"
+      ]
+    ]
+  },
+  {
+    "line": 47,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 48,
+    "text": "---",
+    "block": "HORIZONTAL_RULE",
+    "ranges": [
+      [
+        0,
+        3,
+        "hidden:0.5"
+      ]
+    ]
+  },
+  {
+    "line": 49,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  },
+  {
+    "line": 50,
+    "text": "#work/会議 #private",
+    "block": "PARAGRAPH",
+    "ranges": [
+      [
+        0,
+        8,
+        "bg:#ededf0+fg:#5a5a60"
+      ],
+      [
+        9,
+        8,
+        "bg:#ededf0+fg:#5a5a60"
+      ]
+    ]
+  },
+  {
+    "line": 51,
+    "text": "",
+    "block": "BLANK",
+    "ranges": []
+  }
+]

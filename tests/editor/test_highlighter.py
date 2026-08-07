@@ -70,12 +70,26 @@ class TestInlineFormats:
         assert char_format(document, 0, 2).fontStrikeOut() is True
 
     def test_インラインコードに背景がつく(self, document, highlighter) -> None:
+        from hitofude.theme import LIGHT
+
         set_text(document, "`code`")
-        assert char_format(document, 0, 1).background().color().alpha() > 0
+        # 未設定のブラシも「黒・不透明」を返すので、alpha ではなく実際の色で比べる
+        assert (
+            char_format(document, 0, 1).background().color().name() == LIGHT.code_background.lower()
+        )
 
     def test_ハイライトに背景がつく(self, document, highlighter) -> None:
+        from hitofude.theme import LIGHT
+
         set_text(document, "::目立つ::")
-        assert char_format(document, 0, 2).background().color().alpha() > 0
+        got = char_format(document, 0, 2).background().color().name()
+        assert got == LIGHT.highlight_background.lower()
+
+    def test_装飾のない文字には背景を付けない(self, document, highlighter) -> None:
+        from PySide6.QtCore import Qt
+
+        set_text(document, "ただの文章")
+        assert char_format(document, 0, 2).background().style() == Qt.BrushStyle.NoBrush
 
     def test_入れ子は外側の書式を保つ(self, document, highlighter) -> None:
         """`**bold *em* here**` の内側は太字かつ斜体。"""
