@@ -128,6 +128,13 @@ class TestClassifyQuote:
         assert block.level == 1
         assert block.quote_depth == 1
 
+    @pytest.mark.parametrize("text", ["> ", ">", "> > "])
+    def test_中身が空でも引用行として扱う(self, text: str) -> None:
+        """BLANK にすると Enter での引用解除（§5.5-6）が発火しない（回帰テスト）。"""
+        block, _ = classify_line(text, 0, BlockState())
+        assert block.type is BlockType.BLOCKQUOTE
+        assert block.quote_depth >= 1
+
     def test_引用が終わると状態が戻る(self) -> None:
         _, state = classify_line("通常の行", 1, BlockState(quote_depth=2))
         assert state.quote_depth == 0

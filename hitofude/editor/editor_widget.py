@@ -5,11 +5,25 @@
 コストを下げるため、他のモジュールから `QPlainTextEdit` を直接触らない。
 """
 
-from PySide6.QtGui import QColor, QFont, QPainter, QPaintEvent, QPalette, QResizeEvent, QTextBlock
+from PySide6.QtCore import Qt
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QInputMethodEvent,
+    QKeyEvent,
+    QPainter,
+    QPaintEvent,
+    QPalette,
+    QResizeEvent,
+    QTextBlock,
+    QTextCursor,
+)
 from PySide6.QtWidgets import QPlainTextEdit, QWidget
 
+from hitofude.core.models import BlockInfo
 from hitofude.editor import painter_overlay
 from hitofude.editor.highlighter import MarkdownHighlighter
+from hitofude.editor.input_handler import EnterKind, enter_action, indent_action
 from hitofude.theme import LIGHT, ThemeColors
 
 DEFAULT_FONT_FAMILY = "Hiragino Sans"
@@ -48,6 +62,8 @@ class MarkdownEditor(QPlainTextEdit):
         # rehighlightBlock() は selectionChanged を再発火させる。
         # ガードが無いと _sync_reveal が自分自身を呼び続けて再帰で落ちる。
         self._syncing = False
+        # IME のプリエディット中かどうか（R6）
+        self._composing = False
 
         self.cursorPositionChanged.connect(self._sync_reveal)
         self.selectionChanged.connect(self._sync_reveal)
@@ -88,6 +104,92 @@ class MarkdownEditor(QPlainTextEdit):
 
     def toggle_source_mode(self) -> None:
         self.set_source_mode(not self._highlighter.source_mode)
+
+    # --------------------------------------------------------------- 入力
+
+    def is_composing(self) -> bool:
+        """IME で変換中か（R6 / spec §5.5）。"""
+        return self._composing
+
+    def inputMethodEvent(self, event: QInputMethodEvent) -> None:
+        # プリエディット文字列の有無が変換中かどうかそのもの。
+        # `inputMethodQuery()` では確定前後を確実には区別できない。
+        self._composing = bool(event.preeditString())
+        super().inputMethodEvent(event)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """入力補助を差し込む（spec §5.5）。
+
+        **変換中は特殊処理をすべて無効化する（R6）。** 日本語変換の確定 Enter を
+        リスト継続と取り違えると、確定のたびに項目が増えて日本語入力が破綻する。
+        仕様書が「ここを怠ると壊滅的」と名指ししている箇所。
+        """
+        if self._composing:
+            super().keyPressEvent(event)
+            return
+
+        plain = event.modifiers() in (
+            Qt.KeyboardModifier.NoModifier,
+            Qt.KeyboardModifier.KeypadModifier,
+        )
+        key = event.key()
+
+        if plain and key in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and self._handle_return():
+            return
+        if plain and key == Qt.Key.Key_Tab and self._handle_indent(forward=True):
+            return
+        if key == Qt.Key.Key_Backtab and self._handle_indent(forward=False):
+            return
+
+        super().keyPressEvent(event)
+
+    def _current_info(self) -> BlockInfo | None:
+        data = self.textCursor().block().userData()
+        return data.info if data is not None else None
+
+    def _handle_return(self) -> bool:
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            return False  # 選択の置き換えという通常の挙動を邪魔しない
+
+        block = cursor.block()
+        action = enter_action(block.text(), cursor.positionInBlock(), self._current_info())
+
+        match action.kind:
+            case EnterKind.DEFAULT:
+                return False
+            case EnterKind.CONTINUE:
+                cursor.insertText("\n" + action.text)
+            case EnterKind.RESET:
+                self._replace_block(cursor, action.text, column=len(action.text))
+        self.setTextCursor(cursor)
+        return True
+
+    def _handle_indent(self, *, forward: bool) -> bool:
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            return False
+
+        block = cursor.block()
+        new_line = indent_action(block.text(), self._current_info(), forward=forward)
+        if new_line is None:
+            return False
+
+        # 同じ文字の上にキャレットを残す。行頭の空白が増減した分だけずらす
+        shift = len(new_line) - len(block.text())
+        column = max(0, cursor.positionInBlock() + shift)
+        self._replace_block(cursor, new_line, column=column)
+        self.setTextCursor(cursor)
+        return True
+
+    def _replace_block(self, cursor: QTextCursor, text: str, *, column: int) -> None:
+        """現在行の中身を差し替える。Undo は 1 手にまとめる。"""
+        cursor.beginEditBlock()
+        cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+        cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
+        cursor.insertText(text)
+        cursor.endEditBlock()
+        cursor.setPosition(cursor.block().position() + min(column, len(text)))
 
     # ------------------------------------------------------------- リビール
 

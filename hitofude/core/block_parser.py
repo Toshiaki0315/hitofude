@@ -89,8 +89,17 @@ def _apply_quote(block: BlockInfo, text: str, depth: int) -> BlockInfo:
     """
     prefix = _QUOTE_PREFIX_RE.match(text)
     marker_len = prefix.end() if prefix else block.marker_len
-    kind = BlockType.BLOCKQUOTE if block.type is BlockType.PARAGRAPH else block.type
+    kind = _quoted_type(block.type)
     return replace(block, type=kind, quote_depth=depth, marker_len=marker_len)
+
+
+def _quoted_type(kind: BlockType) -> BlockType:
+    """引用の中身の種別。
+
+    `> ` だけの行は中身が空でも**引用行**であって空行ではない。BLANK のままだと
+    Enter を押したときの引用解除（§5.5-6）が発火しない。
+    """
+    return BlockType.BLOCKQUOTE if kind in (BlockType.PARAGRAPH, BlockType.BLANK) else kind
 
 
 def _apply_tokens(
@@ -306,7 +315,7 @@ def _classify_body(text: str, line: int) -> tuple[BlockInfo, BlockState]:
     in_table = block.type in (BlockType.TABLE_DELIMITER, BlockType.TABLE_ROW)
 
     if quote_depth:
-        kind = BlockType.BLOCKQUOTE if block.type is BlockType.PARAGRAPH else block.type
+        kind = _quoted_type(block.type)
         marker_len = quote_len if kind is BlockType.BLOCKQUOTE else block.marker_len
         block = replace(block, type=kind, quote_depth=quote_depth, marker_len=marker_len)
 
