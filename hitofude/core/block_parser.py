@@ -14,7 +14,7 @@ from dataclasses import replace
 from markdown_it import MarkdownIt
 
 from hitofude.core import frontmatter
-from hitofude.core.models import BlockInfo, BlockType
+from hitofude.core.models import BlockInfo, BlockState, BlockType
 
 _MD = MarkdownIt("commonmark").enable(["table", "strikethrough"])
 
@@ -23,6 +23,19 @@ _HEADING_MARKER_RE = re.compile(r"^[ \t]*#{1,6}[ \t]*")
 _TASK_MARKER_RE = re.compile(r"^[ \t]*[-*+][ \t]+\[(?P<state>[ xX])\][ \t]+")
 _BULLET_MARKER_RE = re.compile(r"^[ \t]*[-*+][ \t]+")
 _ORDERED_MARKER_RE = re.compile(r"^[ \t]*\d{1,9}[.)][ \t]+")
+
+# --- 行単位分類（§6.3）で使う ---------------------------------------------
+# 見出しは `#` の後ろが空白か行末でなければならない（CommonMark）。
+# これを見ないと `####### x` が見出しレベル 6 になり、`#tag` も見出しになる。
+_HEADING_LINE_RE = re.compile(r"^[ \t]*(?P<hashes>#{1,6})(?:[ \t]+|$)")
+_FENCE_LINE_RE = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
+_FRONT_MATTER_DELIM_RE = re.compile(r"^---[ \t]*$")
+_RULE_LINE_RE = re.compile(r"^ {0,3}(?P<char>[-*_])(?:[ \t]*(?P=char)){2,}[ \t]*$")
+# 表の区切り行は `|` を必ず含み、`-` を必ず含み、それ以外は揃え指定と空白だけ。
+_TABLE_DELIM_LINE_RE = re.compile(r"^(?=[^\n]*\|)(?=[^\n]*-)[ \t|:\-]+$")
+
+# リストの入れ子はインデント 2 文字を 1 段と見なす（あくまで目安）。
+_INDENT_PER_LEVEL = 2
 
 
 def _normalize(text: str) -> str:
@@ -222,3 +235,137 @@ def _apply_fence(
         drafts[line] = BlockInfo(line=line, type=BlockType.CODE_FENCE_BODY)
     if closed:
         drafts[last] = BlockInfo(line=last, type=BlockType.CODE_FENCE_CLOSE)
+
+
+# --------------------------------------------------------------------------
+# 行単位分類（spec §6.3）
+#
+# `highlightBlock()` は 1 行しか見えず、前の行から引き継げるのは int 1 個だけ。
+# そのため文書全体を見る `parse()` とは別に、行 + 引き継ぎ状態だけで判定する
+# 経路が要る。両者は単純な文書では一致する（回帰テストで担保）。
+#
+# 行をまたぐ構造（リストの正確な入れ子、表のヘッダ行）はここでは確定できない。
+# デバウンスした `parse()` の結果で補正する前提（§6.6 / R9）。
+# --------------------------------------------------------------------------
+
+
+def classify_line(text: str, line: int, state: BlockState) -> tuple[BlockInfo, BlockState]:
+    """1 行を、前の行から引き継いだ状態とあわせて分類する。
+
+    戻り値は `(この行の BlockInfo, 次の行へ渡す状態)`。
+    """
+    if state.in_front_matter or (line == 0 and _FRONT_MATTER_DELIM_RE.match(text)):
+        return _classify_front_matter(text, line, state)
+
+    if state.in_code:
+        return _classify_inside_fence(text, line, state)
+
+    fence = _FENCE_LINE_RE.match(text)
+    if fence is not None:
+        info = fence.group("info").strip()
+        marker = fence.group("fence")
+        block = BlockInfo(
+            line=line,
+            type=BlockType.CODE_FENCE_OPEN,
+            lang=info.split()[0] if info else None,
+        )
+        return block, BlockState(
+            in_code=True, fence_char=marker[0], fence_len=len(marker), quote_depth=0
+        )
+
+    return _classify_body(text, line)
+
+
+def _classify_front_matter(text: str, line: int, state: BlockState) -> tuple[BlockInfo, BlockState]:
+    block = BlockInfo(line=line, type=BlockType.FRONT_MATTER)
+    if state.in_front_matter and _FRONT_MATTER_DELIM_RE.match(text):
+        return block, BlockState()  # 閉じ区切り
+    return block, BlockState(in_front_matter=True)
+
+
+def _classify_inside_fence(text: str, line: int, state: BlockState) -> tuple[BlockInfo, BlockState]:
+    fence = _FENCE_LINE_RE.match(text)
+    closes = (
+        fence is not None
+        and fence.group("fence")[0] == state.fence_char
+        and len(fence.group("fence")) >= state.fence_len
+        and not fence.group("info").strip()  # 閉じフェンスに情報文字列は付けられない
+    )
+    if closes:
+        return BlockInfo(line=line, type=BlockType.CODE_FENCE_CLOSE), BlockState()
+    return BlockInfo(line=line, type=BlockType.CODE_FENCE_BODY), state
+
+
+def _classify_body(text: str, line: int) -> tuple[BlockInfo, BlockState]:
+    quote = _QUOTE_PREFIX_RE.match(text)
+    quote_len = quote.end() if quote else 0
+    quote_depth = text.count(">", 0, quote_len) if quote else 0
+    body = text[quote_len:]
+
+    block = _classify_leaf(body, line, quote_len)
+    in_table = block.type in (BlockType.TABLE_DELIMITER, BlockType.TABLE_ROW)
+
+    if quote_depth:
+        kind = BlockType.BLOCKQUOTE if block.type is BlockType.PARAGRAPH else block.type
+        marker_len = quote_len if kind is BlockType.BLOCKQUOTE else block.marker_len
+        block = replace(block, type=kind, quote_depth=quote_depth, marker_len=marker_len)
+
+    return block, BlockState(quote_depth=quote_depth, in_table=in_table)
+
+
+def _classify_leaf(body: str, line: int, quote_len: int) -> BlockInfo:
+    if not body.strip():
+        return BlockInfo(line=line, type=BlockType.BLANK)
+
+    heading = _HEADING_LINE_RE.match(body)
+    if heading is not None:
+        return BlockInfo(
+            line=line,
+            type=BlockType.HEADING,
+            level=len(heading.group("hashes")),
+            marker_len=quote_len + heading.end(),
+        )
+
+    if _RULE_LINE_RE.match(body):
+        return BlockInfo(line=line, type=BlockType.HORIZONTAL_RULE)
+
+    if _TABLE_DELIM_LINE_RE.match(body):
+        return BlockInfo(line=line, type=BlockType.TABLE_DELIMITER)
+
+    task = _TASK_MARKER_RE.match(body)
+    if task is not None:
+        return BlockInfo(
+            line=line,
+            type=BlockType.TASK_LIST_ITEM,
+            level=_indent_level(body),
+            marker_len=quote_len + task.end(),
+            checked=task.group("state").lower() == "x",
+        )
+
+    for pattern, kind in (
+        (_BULLET_MARKER_RE, BlockType.BULLET_LIST_ITEM),
+        (_ORDERED_MARKER_RE, BlockType.ORDERED_LIST_ITEM),
+    ):
+        marker = pattern.match(body)
+        if marker is not None:
+            return BlockInfo(
+                line=line,
+                type=kind,
+                level=_indent_level(body),
+                marker_len=quote_len + marker.end(),
+            )
+
+    if "|" in body:
+        return BlockInfo(line=line, type=BlockType.TABLE_ROW)
+
+    return BlockInfo(line=line, type=BlockType.PARAGRAPH)
+
+
+def _indent_level(body: str) -> int:
+    """インデント幅から入れ子の深さを見積もる。
+
+    正確な深さは親のマーカー幅に依存するため、行単位では決まらない。
+    表示上のぶら下げインデントに使う目安で、確定値は `parse()` が出す。
+    """
+    indent = len(body) - len(body.lstrip(" \t"))
+    return indent // _INDENT_PER_LEVEL + 1
