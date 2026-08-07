@@ -114,6 +114,18 @@ class TestJoin:
     def test_メタデータが空なら本文だけを返す(self) -> None:
         assert join({}, "本文\n") == "本文\n"
 
+    def test_ISO8601の日時を文字列のまま往復する(self) -> None:
+        """PyYAML の既定は日時を datetime に変換してしまう（回帰テスト）。
+
+        変換されると書き戻しで書式が変わり、**保存のたびにファイルの diff が出る**。
+        §3.3 で `toMarkdown()` を却下した理由 4 と同じ事故なので、ここで塞ぐ。
+        """
+        text = "---\ncreated: 2026-08-07T09:12:00+09:00\n---\n本文\n"
+        fm = split(text)
+        assert fm.meta["created"] == "2026-08-07T09:12:00+09:00"
+        assert isinstance(fm.meta["created"], str)
+        assert join(fm.meta, fm.body) == text
+
     def test_日本語をエスケープしない(self) -> None:
         """`\\u30bf` のような表記でファイルに書かれるとユーザーが読めない。"""
         result = join({"title": "会議メモ"}, "本文\n")

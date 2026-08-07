@@ -53,20 +53,28 @@ def test_coreとstorageはPySide6に依存しない(package: str) -> None:
     )
 
 
+MARKDOWN_ROUNDTRIP_API = frozenset({"setMarkdown", "toMarkdown"})
+
+
 def test_編集モデルにsetMarkdownを使っていない() -> None:
     """CLAUDE.md R2 / spec §3.3: 往復変換でデータが壊れることを実機検証済み。
 
     HTML/PDF エクスポート（Phase 6）だけが例外なので、そこは明示的に除外する。
+
+    判定は AST の属性アクセスで行う。文字列一致にすると「なぜこの API を
+    使わないのか」を説明したコメント自体が違反として検出されてしまう。
     """
     export_allowed = {HITOFUDE / "core" / "exporter.py"}
     offenders: list[str] = []
     for path in HITOFUDE.rglob("*.py"):
         if path in export_allowed:
             continue
-        source = path.read_text(encoding="utf-8")
-        for name in ("setMarkdown", "toMarkdown"):
-            if name in source:
-                offenders.append(f"{path.relative_to(PROJECT_ROOT)}:{name}")
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        offenders.extend(
+            f"{path.relative_to(PROJECT_ROOT)}:{node.attr}"
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Attribute) and node.attr in MARKDOWN_ROUNDTRIP_API
+        )
     assert not offenders, (
         f"{offenders} が QTextDocument の Markdown 変換 API を使っている（CLAUDE.md R2）"
     )

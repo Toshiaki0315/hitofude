@@ -23,6 +23,33 @@ _FRONT_MATTER_RE = re.compile(
 
 _BOM = "﻿"
 
+_TIMESTAMP_TAG = "tag:yaml.org,2002:timestamp"
+
+
+def _without_timestamps(resolvers: dict[str, list[tuple[str, object]]]) -> dict:
+    return {
+        first: [(tag, regexp) for tag, regexp in entries if tag != _TIMESTAMP_TAG]
+        for first, entries in resolvers.items()
+    }
+
+
+class _Loader(yaml.SafeLoader):
+    """ISO 8601 の日時を `datetime` に変換しないローダ。
+
+    変換してしまうと `join()` で書き戻したときにタイムゾーン表記が
+    `+09:00` から `+09:00` 以外の形へ揺れ、**保存のたびにファイルの diff が出る**。
+    これは §3.3 で `toMarkdown()` を却下した理由 4 とまったく同じ事故なので、
+    front matter でも同様に避ける。`created` / `modified` は文字列のまま扱う。
+    """
+
+
+class _Dumper(yaml.SafeDumper):
+    """`_Loader` と対称。日時に見える文字列を引用符で囲まない。"""
+
+
+_Loader.yaml_implicit_resolvers = _without_timestamps(yaml.SafeLoader.yaml_implicit_resolvers)
+_Dumper.yaml_implicit_resolvers = _without_timestamps(yaml.SafeDumper.yaml_implicit_resolvers)
+
 
 @dataclass(frozen=True, slots=True)
 class FrontMatter:
@@ -74,7 +101,7 @@ def split(text: str) -> FrontMatter:
         return FrontMatter(meta={}, body=body, body_offset=body_offset, present=True)
 
     try:
-        loaded = yaml.safe_load(raw)
+        loaded = yaml.load(raw, Loader=_Loader)
     except yaml.YAMLError:
         return FrontMatter(meta={}, body=body, body_offset=body_offset, present=True, invalid=True)
 
@@ -93,8 +120,9 @@ def join(meta: Mapping[str, Any], body: str) -> str:
     if not meta:
         return body
 
-    dumped = yaml.safe_dump(
+    dumped = yaml.dump(
         dict(meta),
+        Dumper=_Dumper,
         allow_unicode=True,  # 日本語が タ になるとユーザーが読めない
         sort_keys=False,  # 書いた順を保つ。並べ替えると無意味な diff が出る
         default_flow_style=False,

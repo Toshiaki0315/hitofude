@@ -62,18 +62,20 @@
 
 | | タスク | テストの主眼（spec §9 Phase 1 より） |
 |---|---|---|
-| [ ] | 1-1 | `core/models.py`: `BlockType`, `SpanType`, `BlockInfo`, `InlineSpan`（§6.2） | dataclass の不変条件（`[start, end)` の半開区間） |
-| [ ] | 1-2 | `core/frontmatter.py`: `split(text) -> (dict, body, body_offset)` / `join()` | front matter 無し / 不正 YAML / `---` が本文中にある / CRLF |
-| [ ] | 1-3 | `core/tags.py`: `#tag` 抽出、階層分解、正規化 | `# 見出し` と `#タグ` の区別、`#親/子`、行中のタグ、`#` 直後が空白 |
-| [ ] | 1-4 | `core/inline_scanner.py` — インラインコード優先の骨格（§6.5 のマスク方式） | コード内の `**` が強調にならない |
-| [ ] | 1-5 | `inline_scanner`: リンク / 画像 / 自動リンク | `![alt](url)` と `[text](url)` の区別、URL 内の `*` |
-| [ ] | 1-6 | `inline_scanner`: 強調 `***`/`**`/`*`/`___`/`__`/`_` | **日本語で前後が空白でない `**強調**`（R4）**、`snake_case` が壊れない |
-| [ ] | 1-7 | `inline_scanner`: 取り消し線 `~~` / ハイライト `::` / タグ | 未閉じマーカー、連続マーカー |
-| [ ] | 1-8 | `inline_scanner`: 1 段ネスト（`**bold *em* here**`）(§6.5) | 2 段以上は拾わない仕様であることをテストで固定する |
-| [ ] | 1-9 | `core/block_parser.py`: markdown-it-py → `list[BlockInfo]`（行番号付き） | 見出し / リストの入れ子 / コードフェンス範囲 / 引用の深さ / 表の範囲 |
-| [ ] | 1-10 | `tests/fixtures/` 一式（`basic.md` / `japanese.md` / `edge_cases.md` / `large.md`）（§10） | 回帰テストの土台 |
+| [x] | 1-1 | `core/models.py`: `BlockType`, `SpanType`, `BlockInfo`, `InlineSpan`（§6.2） | dataclass の不変条件（`[start, end)` の半開区間） |
+| [x] | 1-2 | `core/frontmatter.py`: `split(text) -> (dict, body, body_offset)` / `join()` | front matter 無し / 不正 YAML / `---` が本文中にある / CRLF |
+| [x] | 1-3 | `core/tags.py`: `#tag` 抽出、階層分解、正規化 | `# 見出し` と `#タグ` の区別、`#親/子`、行中のタグ、`#` 直後が空白 |
+| [x] | 1-4 | `core/inline_scanner.py` — インラインコード優先の骨格（§6.5 のマスク方式） | コード内の `**` が強調にならない |
+| [x] | 1-5 | `inline_scanner`: リンク / 画像 / 自動リンク | `![alt](url)` と `[text](url)` の区別、URL 内の `*` |
+| [x] | 1-6 | `inline_scanner`: 強調 `***`/`**`/`*`/`___`/`__`/`_` | **日本語で前後が空白でない `**強調**`（R4）**、`snake_case` が壊れない |
+| [x] | 1-7 | `inline_scanner`: 取り消し線 `~~` / ハイライト `::` / タグ | 未閉じマーカー、連続マーカー |
+| [x] | 1-8 | `inline_scanner`: 入れ子の強調（`**bold *em* here**`）(§6.5) | マーカーのみをマスクする設計で入れ子が構造的に成立する。段数制限は設けない |
+| [x] | 1-9 | `core/block_parser.py`: markdown-it-py → `list[BlockInfo]`（行番号付き） | 見出し / リストの入れ子 / コードフェンス範囲 / 引用の深さ / 表の範囲 |
+| [x] | 1-10 | `tests/fixtures/` 一式（`basic.md` / `japanese.md` / `edge_cases.md` / `large.md`）（§10） | 回帰テストの土台 |
 
 **完了条件**: `make cov` で `hitofude/core/` が 90% 以上。`tests/test_architecture.py` が緑。
+
+**結果**: カバレッジ 98%（基準 90%）、テスト 244 件全て緑。ADR-0001 を 1 件追加。
 
 ---
 
@@ -181,8 +183,8 @@
 | フェーズ | 進捗 | 状態 |
 |---|---|---|
 | Phase 0 開発環境・足場 | 13/15 | 0-C（署名・公証）のみ Apple Developer アカウント待ち |
-| Phase 1 コア層 | 0/10 | **次はここ** |
-| Phase 2 エディタ装飾 | 0/12 | |
+| Phase 1 コア層 | 10/10 | 完了。core/ カバレッジ 98% |
+| Phase 2 エディタ装飾 | 0/12 | **次はここ**（山場） |
 | Phase 3 入力補助 | 0/6 | |
 | Phase 4 ファイル層 | 0/9 | |
 | Phase 5 アプリ UI | 0/8 | |
