@@ -94,20 +94,18 @@ make setup
 `QTextCursor` の位置とソース文字列のオフセットが常に 1:1 で一致する。
 位置マッピングテーブルを導入してはならない。
 
-### R5. `QTextBlockFormat` 適用時は Undo/modified 汚染を必ず防ぐ（§3.3, R3）
+### R5. `QTextBlockFormat` を使わない（ADR-0002）
 
-```python
-doc.blockSignals(True)
-was_modified = doc.isModified()
-doc.setUndoRedoEnabled(False)
-cursor.mergeBlockFormat(block_format)
-doc.setUndoRedoEnabled(True)
-doc.setModified(was_modified)
-doc.blockSignals(False)
-```
+ブロックの余白・インデント・行高を設定してはいけない。理由は 2 つとも実測済み。
 
-この処理を `highlightBlock()` の中で行わない（再入の危険）。
-`contentsChange` 経由でキューイングして実行する。
+1. `QPlainTextDocumentLayout` は**ブロック書式を完全に無視する**（効果がゼロ）
+2. 適用すると Undo スタックを 1 段消費する。仕様書 §3.3 が挙げていた
+   `setUndoRedoEnabled(False)` で挟む対処は、**Undo 履歴ごと消す**ので使えない
+
+ブロックレベルの見た目（引用の縦バー、コードブロック背景、水平線、
+チェックボックス）は `editor/painter_overlay.py` の `paintEvent` で描く。
+
+`Cmd+Z` が 1 回で直前の入力に戻ることは、Phase 2 の完了条件であり回帰テストがある。
 
 ### R6. IME ガード（§5.5, R2）
 

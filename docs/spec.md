@@ -174,6 +174,10 @@ Qt の `QTextCharFormat` には CSS の `display:none` に相当する機能が�
 
 ##### 検証: ブロックレベルの装飾（余白・インデント・行高）
 
+> **→ ADR-0002 で変更。** 以下の記述は実装前の検証時点のもの。実機で追試したところ
+> `QPlainTextDocumentLayout` はブロック書式を無視し、また下記の対処コードは
+> Undo 履歴を破壊することが分かった。v1 ではブロック書式を使わない。
+
 `highlightBlock()` は `QTextCharFormat` しか適用できず、**`QTextBlockFormat`（インデント、上下マージン、行高）は変更できない**。見出しの上下余白、リストのぶら下げインデント、引用の左マージンにはこれが必須。
 
 検証したところ、`QTextCursor.mergeBlockFormat()` でブロック書式は適用できるが、**副作用として `document.isModified()` が True になり、Undo スタックにも積まれる**ことを確認した。
@@ -480,9 +484,8 @@ QTextDocument.contentsChange(position, charsRemoved, charsAdded)
     │         ├─ 6. setCurrentBlockUserData(BlockData(info, spans))
     │         └─ 7. setCurrentBlockState(次ブロックへ引き継ぐ状態)
     │
-    ├──▶ [キュー] block_decorator に「このブロックの書式を更新せよ」を登録
-    │         → QTimer.singleShot(0, ...) で highlightBlock 完了後に実行
-    │         → QTextBlockFormat（余白/インデント/行高）を適用（§3.3 の副作用対策必須）
+    ├──▶ [廃止] block_decorator（ADR-0002 で削除）
+    │         ブロックレベルの見た目は painter_overlay の paintEvent が描く
     │
     ├──▶ [デバウンス 400ms] block_parser でダーティ範囲を再解析
     │         → リストの入れ子構造・表の範囲など、1 行では判断できない構造を確定
@@ -901,7 +904,7 @@ DMG 自体も署名 + 公証すること。
 - [ ] `editor/editor_widget.py`: `MarkdownEditor(QPlainTextEdit)`
   - [ ] `cursorPositionChanged` → 旧/新ブロックのみ `rehighlightBlock()`
   - [ ] `_reveal_position` をハイライタに渡す
-- [ ] `editor/block_decorator.py`: `QTextBlockFormat` 適用。**§3.3 の Undo/modified 汚染対策を必ず入れる**
+- [x] ~~`editor/block_decorator.py`~~ **ADR-0002 で削除**（ブロック書式は使わない）
 - [ ] `editor/painter_overlay.py`: `paintEvent` で引用の縦バー、コードブロック背景、水平線、チェックボックス
 - [ ] `theme.py`: ライト/ダーク
 - **完了条件**:

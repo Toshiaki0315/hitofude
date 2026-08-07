@@ -92,7 +92,7 @@
 | [ ] | 2-5 | `editor/editor_widget.py`: `MarkdownEditor(QPlainTextEdit)` の骨格 | §4.1 |
 | [ ] | 2-6 | リビール: `cursorPositionChanged` → 旧/新 2 ブロックのみ `rehighlightBlock()` | §6.4 / R7 |
 | [ ] | 2-7 | リビール条件表の実装（インライン / 見出し / 引用 / フェンス / 水平線 / 選択範囲 / ソースモード） | §6.4 |
-| [ ] | 2-8 | `editor/block_decorator.py`: `QTextBlockFormat` 適用 + **Undo/modified 汚染対策** | §3.3 / R5 |
+| ~~2-8~~ | — | ~~`editor/block_decorator.py`~~ **ADR-0002 で削除**。ブロック書式は効かず Undo を汚すため使わない | ADR-0002 |
 | [ ] | 2-9 | `editor/painter_overlay.py`: 引用の縦バー、コードブロック背景、水平線、チェックボックス | §5.2 |
 | [ ] | 2-10 | `theme.py` をライト/ダーク完全実装、システム追従 | §5.3 |
 | [ ] | 2-11 | ゴールデンテスト: サンプル `.md` → `(position, length, format名)` の JSON スナップショット | §10 |
@@ -184,7 +184,7 @@
 |---|---|---|
 | Phase 0 開発環境・足場 | 13/15 | 0-C（署名・公証）のみ Apple Developer アカウント待ち |
 | Phase 1 コア層 | 10/10 | 完了。core/ カバレッジ 98% |
-| Phase 2 エディタ装飾 | 0/12 | **次はここ**（山場） |
+| Phase 2 エディタ装飾 | 6/11 | 進行中（2-8 は ADR-0002 で削除） |
 | Phase 3 入力補助 | 0/6 | |
 | Phase 4 ファイル層 | 0/9 | |
 | Phase 5 アプリ UI | 0/8 | |
