@@ -1,0 +1,221 @@
+"""vault の走査と CRUD のテスト（タスク 4-1, 4-2 / spec §7.1, §7.6）。"""
+
+from pathlib import Path
+
+import pytest
+
+from hitofude.storage.vault import (
+    ATTACHMENTS_DIR,
+    MANAGED_DIR,
+    TRASH_DIR,
+    Vault,
+    sanitize_filename,
+)
+
+
+@pytest.fixture
+def vault(tmp_path: Path) -> Vault:
+    return Vault(tmp_path / "HitofudeNotes")
+
+
+class TestSanitize:
+    @pytest.mark.parametrize(
+        ("title", "expected"),
+        [
+            ("会議メモ", "会議メモ"),
+            ("2026/08/08 の記録", "2026-08-08 の記録"),  # `/` はパス区切り
+            ("メモ: 続き", "メモ- 続き"),  # `:` は macOS で使えない
+            ("  前後の空白  ", "前後の空白"),
+            ("複数   の   空白", "複数 の 空白"),
+            (".隠しファイル", "隠しファイル"),  # 先頭のドットは隠しファイルになる
+            ("", "無題"),
+            ("   ", "無題"),
+            ("...", "無題"),
+        ],
+    )
+    def test_ファイル名にできる形へ直す(self, title: str, expected: str) -> None:
+        assert sanitize_filename(title) == expected
+
+    def test_改行や制御文字を落とす(self) -> None:
+        assert sanitize_filename("一行目\n二行目\t続き") == "一行目 二行目 続き"
+
+    def test_長すぎる名前を切る(self) -> None:
+        """macOS のファイル名上限は 255 バイト。日本語は 1 文字 3 バイト。"""
+        name = sanitize_filename("あ" * 200)
+        assert len(name.encode("utf-8")) <= 200
+
+
+class TestLayout:
+    def test_必要なディレクトリを作る(self, vault) -> None:
+        vault.ensure_layout()
+        assert vault.root.is_dir()
+        assert (vault.root / ATTACHMENTS_DIR).is_dir()
+        assert (vault.root / TRASH_DIR).is_dir()
+        assert (vault.root / MANAGED_DIR).is_dir()
+
+    def test_二度呼んでも壊れない(self, vault) -> None:
+        vault.ensure_layout()
+        vault.ensure_layout()
+        assert vault.root.is_dir()
+
+
+class TestScan:
+    def test_マークダウンだけを拾う(self, vault) -> None:
+        vault.ensure_layout()
+        (vault.root / "メモ.md").write_text("a", encoding="utf-8")
+        (vault.root / "画像.png").write_bytes(b"x")
+        (vault.root / "readme.txt").write_text("b", encoding="utf-8")
+        assert [p.name for p in vault.scan()] == ["メモ.md"]
+
+    def test_管理領域とゴミ箱は除く(self, vault) -> None:
+        """spec §7.1: `.trash` と `.hitofude` はユーザーのノートではない。"""
+        vault.ensure_layout()
+        (vault.root / "メモ.md").write_text("a", encoding="utf-8")
+        (vault.root / TRASH_DIR / "捨てた.md").write_text("b", encoding="utf-8")
+        (vault.root / MANAGED_DIR / "内部.md").write_text("c", encoding="utf-8")
+        assert [p.name for p in vault.scan()] == ["メモ.md"]
+
+    def test_手で作ったサブフォルダは再帰的に読む(self, vault) -> None:
+        """spec §7.1: アプリからは作らせないが、あれば読む。"""
+        vault.ensure_layout()
+        nested = vault.root / "仕事" / "2026"
+        nested.mkdir(parents=True)
+        (nested / "資料.md").write_text("a", encoding="utf-8")
+        assert [p.name for p in vault.scan()] == ["資料.md"]
+
+    def test_空のvaultでも壊れない(self, vault) -> None:
+        vault.ensure_layout()
+        assert list(vault.scan()) == []
+
+    def test_存在しないvaultでも例外にしない(self, vault) -> None:
+        assert list(vault.scan()) == []
+
+
+class TestCreate:
+    def test_タイトルからファイルを作る(self, vault) -> None:
+        note = vault.create("会議メモ")
+        assert note.path == vault.root / "会議メモ.md"
+        assert note.path.is_file()
+
+    def test_front_matterにIDと日時が入る(self, vault) -> None:
+        """spec §7.2: `id` はファイル名変更に耐える永続 ID。"""
+        note = vault.create("会議メモ")
+        assert len(note.id) == 26
+        assert note.meta["created"]
+        assert note.meta["modified"]
+
+    def test_本文を渡せる(self, vault) -> None:
+        note = vault.create("会議メモ", "# 会議メモ\n\n本文\n")
+        assert "# 会議メモ" in note.text
+
+    def test_名前が衝突したら連番を付ける(self, vault) -> None:
+        """spec §7.1: 重複時は `-2`, `-3`。"""
+        first = vault.create("メモ")
+        second = vault.create("メモ")
+        third = vault.create("メモ")
+        assert first.path.name == "メモ.md"
+        assert second.path.name == "メモ-2.md"
+        assert third.path.name == "メモ-3.md"
+
+    def test_タイトルが空でも作れる(self, vault) -> None:
+        assert vault.create("").path.name == "無題.md"
+
+
+class TestWrite:
+    def test_保存すると読み直せる(self, vault) -> None:
+        note = vault.create("メモ")
+        vault.write(note.path, "書き換えた本文\n")
+        assert vault.read(note.path).text == "書き換えた本文\n"
+
+    def test_保存後にmtimeが更新される(self, vault) -> None:
+        note = vault.create("メモ")
+        vault.write(note.path, "新しい内容\n")
+        assert vault.read(note.path).mtime_ns >= note.mtime_ns
+
+    def test_一時ファイルを残さない(self, vault) -> None:
+        """spec §7.4: アトミック書き込みの痕跡が vault に残ってはいけない。"""
+        note = vault.create("メモ")
+        vault.write(note.path, "内容\n")
+        assert [p.name for p in vault.root.iterdir() if p.suffix == ".tmp"] == []
+
+
+class TestRename:
+    def test_タイトル変更でファイル名も変わる(self, vault) -> None:
+        note = vault.create("古い名前")
+        new_path = vault.rename(note.path, "新しい名前")
+        assert new_path.name == "新しい名前.md"
+        assert not note.path.exists()
+
+    def test_中身は保たれる(self, vault) -> None:
+        note = vault.create("古い名前", "本文はそのまま\n")
+        new_path = vault.rename(note.path, "新しい名前")
+        assert "本文はそのまま" in vault.read(new_path).text
+
+    def test_旧名はゴミ箱に残さない(self, vault) -> None:
+        """spec §7.1: リネームは削除ではない。"""
+        note = vault.create("古い名前")
+        vault.rename(note.path, "新しい名前")
+        assert list((vault.root / TRASH_DIR).iterdir()) == []
+
+    def test_同じ名前なら何もしない(self, vault) -> None:
+        note = vault.create("名前")
+        assert vault.rename(note.path, "名前") == note.path
+
+    def test_衝突したら連番を付ける(self, vault) -> None:
+        vault.create("既にある")
+        note = vault.create("これから")
+        assert vault.rename(note.path, "既にある").name == "既にある-2.md"
+
+
+class TestTrash:
+    def test_ゴミ箱へ移す(self, vault) -> None:
+        note = vault.create("消すメモ")
+        moved = vault.trash(note.path)
+        assert moved.parent == vault.root / TRASH_DIR
+        assert not note.path.exists()
+
+    def test_走査対象から外れる(self, vault) -> None:
+        note = vault.create("消すメモ")
+        vault.trash(note.path)
+        assert list(vault.scan()) == []
+
+    def test_同名が既にあればタイムスタンプを付ける(self, vault) -> None:
+        """spec §7.6: ファイル名衝突時はタイムスタンプを付与。"""
+        first = vault.create("メモ")
+        vault.trash(first.path)
+        second = vault.create("メモ")
+        moved = vault.trash(second.path)
+        assert moved.name != "メモ.md"
+        assert len(list((vault.root / TRASH_DIR).iterdir())) == 2
+
+    def test_復元できる(self, vault) -> None:
+        note = vault.create("消すメモ")
+        moved = vault.trash(note.path)
+        restored = vault.restore(moved)
+        assert restored.parent == vault.root
+        assert restored.is_file()
+
+
+class TestPurgeTrash:
+    def test_期限を過ぎたものを消す(self, vault) -> None:
+        """spec §7.6: 30 日以上経過したものを起動時に削除。"""
+        import os
+        import time
+
+        note = vault.create("古いメモ")
+        moved = vault.trash(note.path)
+        old = time.time() - 31 * 24 * 3600
+        os.utime(moved, (old, old))
+
+        removed = vault.purge_trash(days=30)
+        assert removed == [moved]
+        assert not moved.exists()
+
+    def test_期限内は残す(self, vault) -> None:
+        note = vault.create("最近のメモ")
+        moved = vault.trash(note.path)
+        assert vault.purge_trash(days=30) == []
+        assert moved.exists()
+
+    def test_ゴミ箱が無くても壊れない(self, vault) -> None:
+        assert vault.purge_trash(days=30) == []
