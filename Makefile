@@ -1,0 +1,37 @@
+.DEFAULT_GOAL := help
+.PHONY: help setup run test test-fast cov fmt lint check clean
+
+UV := uv
+
+help: ## このヘルプを表示
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
+
+setup: ## 仮想環境と依存をセットアップ
+	$(UV) sync --all-groups
+
+run: ## アプリを起動
+	$(UV) run python -m hitofude
+
+test: ## テスト全件
+	$(UV) run pytest
+
+test-fast: ## GUI/slow を除いた高速テスト
+	$(UV) run pytest -m "not gui and not slow"
+
+cov: ## カバレッジ計測（core は 90% 必須）
+	$(UV) run pytest --cov --cov-report=term-missing
+
+fmt: ## Lint 自動修正 + フォーマット
+	$(UV) run ruff check --fix .
+	$(UV) run ruff format .
+
+lint: ## Lint とフォーマットの検査のみ
+	$(UV) run ruff check .
+	$(UV) run ruff format --check .
+
+check: lint test ## コミット前の全チェック
+
+clean: ## キャッシュと成果物を削除
+	rm -rf .pytest_cache .ruff_cache .coverage htmlcov build dist
+	find . -type d -name __pycache__ -prune -exec rm -rf {} +

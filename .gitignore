@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# uv
+uv.lock.bak
+
+# macOS
+.DS_Store
+*.icloud
+
+# py2app
+*.dmg
+Hitofude.zip
+
+# アプリが生成するローカルデータ（vault は絶対にリポジトリへ入れない）
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.hitofude/
+
+# エディタ
+.idea/
+.vscode/
+*.swp
+
+# Claude Code のローカル設定（.claude/settings.json は共有する）
+.claude/settings.local.json
