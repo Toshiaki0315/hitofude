@@ -5,9 +5,10 @@
 コストを下げるため、他のモジュールから `QPlainTextEdit` を直接触らない。
 """
 
-from PySide6.QtGui import QColor, QFont, QPalette, QResizeEvent, QTextBlock
+from PySide6.QtGui import QColor, QFont, QPainter, QPaintEvent, QPalette, QResizeEvent, QTextBlock
 from PySide6.QtWidgets import QPlainTextEdit, QWidget
 
+from hitofude.editor import painter_overlay
 from hitofude.editor.highlighter import MarkdownHighlighter
 from hitofude.theme import LIGHT, ThemeColors
 
@@ -141,6 +142,25 @@ class MarkdownEditor(QPlainTextEdit):
         return blocks
 
     # ----------------------------------------------------------- レイアウト
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        """本文の下に背景要素を、上にチェックボックス記号を描く（§5.2, ADR-0002）。
+
+        ブロック書式が使えないため、引用の縦バーもコードの背景も水平線も
+        ここでしか描けない。順序が重要で、背景は `super()` の前、
+        本文に重ねる記号は後に描く。
+        """
+        decorations = painter_overlay.visible_decorations(self)
+
+        background = QPainter(self.viewport())
+        painter_overlay.paint(background, decorations, self._theme)
+        background.end()
+
+        super().paintEvent(event)
+
+        foreground = QPainter(self.viewport())
+        painter_overlay.paint_foreground(foreground, decorations, self._theme, self.font())
+        foreground.end()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
