@@ -42,6 +42,11 @@ make check
 - **バグを直すときは、先にそのバグを再現する回帰テストを書く**
 - GUI テストは `pytest-qt` の `qtbot` を使い、`@pytest.mark.gui` を付ける
 - `QT_QPA_PLATFORM=offscreen` はテスト側で自動設定される（`tests/conftest.py`）
+- **`qtbot.keyClicks()` に日本語を渡さない。** Qt の `qasciikey.cpp` が assert で
+  abort し、pytest ごと落ちる（エラーではなくプロセス強制終了なので原因が分かりにくい）。
+  日本語は `cursor.insertText()` で入れる。IME の確定もこの経路になる。
+  裏を返すと**打鍵レベルの日本語入力は自動テストで再現できない**ので、
+  IME 周りは手動チェックリストで担保する（§10）
 
 ---
 
