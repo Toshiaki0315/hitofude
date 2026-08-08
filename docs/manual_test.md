@@ -111,9 +111,9 @@ NG は直す前に回帰テストを書く（CLAUDE.md §1）。
 
 | | 確認すること | 期待 |
 |---|---|---|
-| [ ] | `make app` でビルド | `dist/Hitofude.app` ができる |
-| [ ] | ビルドしたアプリを起動 | 起動して編集・保存できる |
-| [ ] | `~/Documents` へのアクセス許可を求められる | 許可すると vault が作られる |
+| [x] | `make app` でビルド | `dist/Hitofude.app` ができる |
+| [x] | ビルドしたアプリを起動 | 起動して編集・保存できる |
+| [x] | `~/Documents` へのアクセス許可を求められる | 許可すると vault が作られる |
 | [ ] | 署名 → 公証 → DMG（Developer ID 取得後） | `spctl -a -vvv -t exec` が accepted |
 | [ ] | **クリーンな macOS** に DMG からインストール | Gatekeeper の警告なしに起動する |
 | [ ] | Intel Mac で起動（入手できれば） | 起動して編集できる |
