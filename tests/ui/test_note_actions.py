@@ -379,3 +379,101 @@ class TestAttachmentWiring:
         window.save_attachment(self.png(), ".png")
         window.refresh()
         assert all("attachments" not in t for t in titles(window) if t)
+
+
+class TestRename:
+    """タイトルの付け替え（タスク A-3 / ADR-0005）。
+
+    ファイル名ではなく**本文の見出し**を書き換える。タイトルは本文から
+    導かれるので、ファイル名だけ変えても一覧の表示が変わらず、
+    真実が 2 つになる。ファイル名は保存時に見出しへ追従する。
+    """
+
+    def test_一覧の表示が変わる(self, window) -> None:
+        path = make_note(window, "元の題")
+        window.rename_note(path, "新しい題")
+        window.set_filter(ALL)
+        assert "新しい題" in titles(window)
+        assert "元の題" not in titles(window)
+
+    def test_本文の見出しが書き換わる(self, window) -> None:
+        path = make_note(window, "元の題")
+        window.rename_note(path, "新しい題")
+        text = window.current_note.path.read_text(encoding="utf-8") if window.current_note else ""
+        target = text or (window.vault.root / "新しい題.md").read_text(encoding="utf-8")
+        assert "# 新しい題" in target
+
+    def test_ファイル名も追従する(self, window) -> None:
+        path = make_note(window, "元の題")
+        renamed = window.rename_note(path, "新しい題")
+        assert renamed.name == "新しい題.md"
+        assert not path.exists()
+
+    def test_本文は失われない(self, window) -> None:
+        path = make_note(window, "元の題", "大事な本文\n")
+        renamed = window.rename_note(path, "新しい題")
+        assert "大事な本文" in renamed.read_text(encoding="utf-8")
+
+    def test_開いているノートでも変えられる(self, window) -> None:
+        path = make_note(window, "元の題")
+        window.open_note(path)
+        window.rename_note(path, "新しい題")
+        assert window.current_note.title == "新しい題"
+        assert "# 新しい題" in window.editor.toPlainText()
+
+    def test_開いているノートならUndoで戻せる(self, window) -> None:
+        """本文の編集なので、打ち間違えたら戻せるべき。"""
+        path = make_note(window, "元の題")
+        window.open_note(path)
+        window.rename_note(path, "新しい題")
+        window.editor.undo()
+        assert "# 元の題" in window.editor.toPlainText()
+
+    def test_見出しの無いノートには足す(self, window) -> None:
+        path = window.vault.create("素のノート", "ただの段落です。\n")
+        window.vault_index.upsert_note(path, window.vault.root)
+        window.refresh()
+        renamed = window.rename_note(path.path, "付けた題")
+        text = renamed.read_text(encoding="utf-8")
+        assert "# 付けた題" in text
+        assert "ただの段落です。" in text
+
+    def test_空の題は無視する(self, window) -> None:
+        path = make_note(window, "元の題")
+        assert window.rename_note(path, "   ") == path
+        assert path.is_file()
+
+    def test_使えない文字が入っていても壊れない(self, window) -> None:
+        path = make_note(window, "元の題")
+        renamed = window.rename_note(path, "a/b:c")
+        assert renamed.is_file()
+        assert "/" not in renamed.stem
+
+    def test_見出しには打った通り入る(self, window) -> None:
+        """ファイル名では使えない文字も、本文には書ける。"""
+        path = make_note(window, "元の題")
+        renamed = window.rename_note(path, "a/b:c")
+        assert "# a/b:c" in renamed.read_text(encoding="utf-8")
+
+    def test_front_matterが残る(self, window) -> None:
+        path = make_note(window, "元の題")
+        renamed = window.rename_note(path, "新しい題")
+        assert renamed.read_text(encoding="utf-8").startswith("---\n")
+
+    def test_右クリックに出る(self, window) -> None:
+        path = make_note(window, "ノート")
+        menu = window.context_menu_for(path.relative_to(window.vault.root))
+        try:
+            assert "名前を変更…" in [a.text() for a in menu.actions() if a.text()]
+        finally:
+            menu.deleteLater()
+
+    def test_ゴミ箱では出さない(self, window) -> None:
+        path = make_note(window, "ノート")
+        trashed = window.vault.trash(path)
+        window.set_filter(TRASH)
+        labels = [
+            a.text()
+            for a in window.context_menu_for(trashed.relative_to(window.vault.root)).actions()
+        ]
+        assert "名前を変更…" not in labels

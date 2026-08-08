@@ -88,6 +88,51 @@ def title_of(text: str, fallback: str) -> str:
     return first_line or fallback
 
 
+def with_title(text: str, title: str) -> str:
+    """タイトルを付け替えた本文を返す（タスク A-3 / ADR-0005）。
+
+    タイトルは本文から導かれる（`title_of`）ので、**本文を書き換える**のが
+    唯一の付け替え方。ファイル名だけ変えても一覧の表示は変わらない。
+    ここは `title_of` の探し方をそのまま裏返している。
+
+    - 見出しがあれば、その**行の文字だけ**を差し替える（深さは保つ）
+    - 見出しが無ければ本文の先頭に `# タイトル` を足す。段落を書き換えると
+      文章が消えるが、上に足すだけなら何も失わない
+    """
+    cleaned = " ".join(title.split())  # 見出しは 1 行。改行を持ち込ませない
+    if not cleaned:
+        return text
+
+    parsed = frontmatter.split(text)
+    lines = parsed.body.split("\n")
+    state = BlockState()
+    heading: int | None = None
+
+    for number, line in enumerate(lines):
+        info, state = classify_line(line, number, state)
+        if info.type in _SKIP_FOR_TITLE:
+            continue
+        if info.type is BlockType.HEADING and line[info.marker_len :].strip():
+            heading = number
+            break
+
+    if heading is None:
+        body = f"# {cleaned}\n" + ("\n" + parsed.body if parsed.body.strip() else "")
+    else:
+        marker = lines[heading][: _heading_marker(lines[heading])]
+        lines[heading] = f"{marker}{cleaned}"
+        body = "\n".join(lines)
+
+    return frontmatter.join(parsed.meta, body) if parsed.present else body
+
+
+def _heading_marker(line: str) -> int:
+    """`### ` の長さ。見出しの深さを保ったまま文字だけ差し替えるのに使う。"""
+    hashes = len(line) - len(line.lstrip("#"))
+    rest = line[hashes:]
+    return hashes + (len(rest) - len(rest.lstrip(" ")))
+
+
 def preview_of(text: str, limit: int = PREVIEW_LENGTH) -> str:
     """ノート一覧に出す本文の冒頭（spec §7.3）。
 

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from hitofude.core.document import Note, new_id, preview_of, title_of
+from hitofude.core.document import Note, new_id, preview_of, title_of, with_title
 
 
 class TestTitle:
@@ -117,3 +117,84 @@ class TestNewId:
         first = new_id()
         time.sleep(0.005)
         assert first < new_id()
+
+
+class TestWithTitle:
+    """タイトルを付け替える（タスク A-3）。
+
+    タイトルは本文から導かれる（`title_of`）ので、**本文を書き換える**のが
+    唯一の付け替え方。ファイル名だけ変えても一覧の表示は変わらない。
+    `title_of` の探し方をそのまま裏返した実装になる。
+    """
+
+    def test_H1を書き換える(self) -> None:
+        assert with_title("# 元の題\n\n本文\n", "新しい題") == "# 新しい題\n\n本文\n"
+
+    def test_書き換えた結果がタイトルになる(self) -> None:
+        got = with_title("# 元の題\n\n本文\n", "新しい題")
+        assert title_of(got, "fallback") == "新しい題"
+
+    def test_本文は変わらない(self) -> None:
+        got = with_title("# 元の題\n\n**強調** と `コード`\n", "新しい題")
+        assert "**強調** と `コード`" in got
+
+    def test_後ろにあるH1でも書き換える(self) -> None:
+        """`title_of` は文書のどこにある H1 でも拾う。裏返しも同じ。"""
+        got = with_title("前置き\n\n# 元の題\n\n本文\n", "新しい題")
+        assert title_of(got, "fallback") == "新しい題"
+        assert got.startswith("前置き")
+
+    def test_H2しか無ければH2を書き換える(self) -> None:
+        """見出しの深さは保つ。文書の構造を勝手に変えない。"""
+        got = with_title("## 元の題\n\n本文\n", "新しい題")
+        assert got == "## 新しい題\n\n本文\n"
+
+    def test_見出しが無ければH1を足す(self) -> None:
+        """段落を書き換えると文章が消える。上に足すだけなら何も失わない。"""
+        got = with_title("ただの段落です。\n", "新しい題")
+        assert got == "# 新しい題\n\nただの段落です。\n"
+        assert "ただの段落です。" in got
+
+    def test_箇条書きだけのノートにも足せる(self) -> None:
+        got = with_title("- りんご\n- みかん\n", "買い物")
+        assert title_of(got, "fallback") == "買い物"
+        assert "- りんご" in got
+
+    def test_空のノートにも付けられる(self) -> None:
+        assert title_of(with_title("", "新しい題"), "fallback") == "新しい題"
+
+    def test_front_matterを保つ(self) -> None:
+        source = "---\nid: ABC123\n---\n# 元の題\n\n本文\n"
+        got = with_title(source, "新しい題")
+        assert got.startswith("---\nid: ABC123\n---\n")
+        assert title_of(got, "fallback") == "新しい題"
+
+    def test_front_matterが無ければ足さない(self) -> None:
+        assert not with_title("# 元の題\n", "新しい題").startswith("---")
+
+    def test_コードブロックの中の見出しは書き換えない(self) -> None:
+        source = "```\n# コードの中\n```\n\n# 元の題\n"
+        got = with_title(source, "新しい題")
+        assert "# コードの中" in got
+        assert title_of(got, "fallback") == "新しい題"
+
+    def test_空の題は何もしない(self) -> None:
+        source = "# 元の題\n\n本文\n"
+        assert with_title(source, "   ") == source
+
+    def test_同じ題なら変わらない(self) -> None:
+        source = "# 元の題\n\n本文\n"
+        assert with_title(source, "元の題") == source
+
+    def test_記号を含む題も入る(self) -> None:
+        got = with_title("# 元の題\n", "a/b: c *d*")
+        assert title_of(got, "fallback") == "a/b: c *d*"
+
+    def test_改行は入れさせない(self) -> None:
+        """1 行の見出しなので、改行が入ると別の行になってしまう。"""
+        got = with_title("# 元の題\n", "上\n下")
+        assert got.count("\n") == 1
+
+    def test_2回かけても同じ(self) -> None:
+        once = with_title("ただの段落です。\n", "題")
+        assert with_title(once, "題") == once

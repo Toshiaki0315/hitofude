@@ -23,10 +23,12 @@ from PySide6.QtGui import (
     QKeySequence,
     QPainter,
     QPaintEvent,
+    QTextCursor,
 )
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
+    QInputDialog,
     QLabel,
     QMainWindow,
     QMenu,
@@ -40,7 +42,7 @@ from hitofude import APP_NAME, __version__
 from hitofude.app import ThemeWatcher
 from hitofude.config import DEFAULT_SPLITTER_SIZES, Config
 from hitofude.core import frontmatter
-from hitofude.core.document import Note
+from hitofude.core.document import Note, with_title
 from hitofude.core.stats import count as count_text
 from hitofude.editor import exporter
 from hitofude.editor.editor_widget import MarkdownEditor
@@ -618,6 +620,7 @@ class MainWindow(QMainWindow):
 
         label = "ピン留めを外す" if self._is_pinned(path) else "ピン留め"
         menu.addAction(label).triggered.connect(lambda: self.toggle_pin(path))
+        menu.addAction("名前を変更…").triggered.connect(lambda: self.prompt_rename(path))
         menu.addSeparator()
         trash = menu.addAction("ゴミ箱へ移動")
         trash.triggered.connect(lambda: self.trash_note(path))
@@ -673,6 +676,62 @@ class MainWindow(QMainWindow):
 
     def toggle_pin_current(self) -> bool:
         return False if self._note is None else self.toggle_pin(self._note.path)
+
+    def prompt_rename(self, path: Path) -> Path | None:
+        try:
+            current = self._vault.read(path).title
+        except OSError:
+            return None
+        title, accepted = QInputDialog.getText(self, "名前を変更", "新しい名前", text=current)
+        return self.rename_note(path, title) if accepted else None
+
+    def rename_note(self, path: Path, title: str) -> Path:
+        """タイトルを付け替える（ADR-0005）。
+
+        **本文の見出しを書き換える。** タイトルは本文から導かれるので、
+        ファイル名だけ変えても一覧の表示は変わらず、真実が 2 つになる。
+        ファイル名は保存時に見出しへ追従する（`_rename_if_title_changed`）。
+
+        開いているノートはエディタ経由で書き換える。本文の編集なので、
+        打ち間違えたら `Cmd+Z` で戻せるべき。
+        """
+        if not title.strip():
+            return path
+        if self._note is not None and self._note.path == path:
+            return self._rename_open_note(title)
+        return self._rename_stored_note(path, title)
+
+    def _rename_open_note(self, title: str) -> Path:
+        renamed = with_title(self._editor.toPlainText(), title)
+        if renamed != self._editor.toPlainText():
+            cursor = self._editor.textCursor()
+            cursor.beginEditBlock()
+            try:
+                cursor.select(QTextCursor.SelectionType.Document)
+                cursor.insertText(renamed)
+            finally:
+                cursor.endEditBlock()
+            self._debouncer.touch()
+        self.flush()
+        return self._note.path if self._note is not None else Path()
+
+    def _rename_stored_note(self, path: Path, title: str) -> Path:
+        try:
+            renamed = with_title(path.read_text(encoding="utf-8"), title)
+        except OSError:
+            return path
+
+        self._watcher.suppress(path)
+        self._vault.write(path, renamed)
+
+        target = self._vault.rename(path, title)
+        if target != path:
+            self._watcher.suppress(target)
+            self._db.remove_path(self._vault.root, path)
+        self._db.upsert_note(self._vault.read(target), self._vault.root)
+        self.refresh()
+        logger.info("名前を変えた: %s → %s", path.name, target.name)
+        return target
 
     def trash_note(self, path: Path) -> bool:
         """ゴミ箱へ移す。移せたら True。
