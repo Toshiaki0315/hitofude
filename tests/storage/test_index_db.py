@@ -324,3 +324,38 @@ class TestIdChange:
         db.upsert_note(Note.read(note.path), vault.root)
         assert len(db.search("新しい本文")) == 1
         assert db.search("古い本文") == []
+
+
+class TestSearchAcrossMarkers:
+    """装飾をまたぐ検索（回帰テスト）。
+
+    ソースをそのまま索引すると `**予算**について` で 1 つの文字列になり、
+    `予算について` で引けない。書いた人にとって装飾は文章の一部ではない。
+    """
+
+    def test_強調をまたいで引ける(self, db, vault) -> None:
+        add(vault, db, "会議メモ", "来期の**予算**について話した")
+        assert len(db.search("予算について")) == 1
+
+    def test_リンクの本文で引ける(self, db, vault) -> None:
+        """角括弧が外れるので、リンクの表示文そのままで引ける。"""
+        add(vault, db, "技術メモ", "[Qt のドキュメント](https://doc.qt.io/) を読む")
+        assert len(db.search("Qt のドキュメント")) == 1
+
+    def test_URLでも引ける(self, db, vault) -> None:
+        add(vault, db, "技術メモ", "[Qt](https://doc.qt.io/) を読む")
+        assert len(db.search("doc.qt.io")) == 1
+
+    def test_見出しマーカーをまたいで引ける(self, db, vault) -> None:
+        add(vault, db, "メモ", "## 来期の計画\n\n本文")
+        assert len(db.search("来期の計画")) == 1
+
+    def test_コードの記号は残す(self, db, vault) -> None:
+        """コードは記号ごと検索できたほうがよい。"""
+        add(vault, db, "技術メモ", "```python\nx = a ** b\n```")
+        assert len(db.search("a ** b")) == 1
+
+    def test_ソース側は変わらない(self, db, vault) -> None:
+        """R1: 索引用の写しを作るだけで、保存内容には触れない。"""
+        note = add(vault, db, "会議メモ", "来期の**予算**について")
+        assert "**予算**" in note.path.read_text(encoding="utf-8")

@@ -14,6 +14,7 @@ from typing import Any
 
 from hitofude.core import frontmatter, tags
 from hitofude.core.block_parser import classify_line
+from hitofude.core.inline_scanner import scan
 from hitofude.core.models import BlockState, BlockType
 
 PREVIEW_LENGTH = 200
@@ -22,6 +23,10 @@ PREVIEW_LENGTH = 200
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 _ULID_TIME_CHARS = 10
 _ULID_RANDOM_CHARS = 16
+
+_CODE_TYPES = frozenset(
+    {BlockType.CODE_FENCE_OPEN, BlockType.CODE_FENCE_BODY, BlockType.CODE_FENCE_CLOSE}
+)
 
 # タイトルにしない行。中身が本文の要約になっていない
 _SKIP_FOR_TITLE = frozenset(
@@ -172,3 +177,33 @@ class Note:
 
     def relative_to(self, root: Path) -> str:
         return os.fspath(self.path.relative_to(root))
+
+
+def searchable_text(text: str) -> str:
+    """検索インデックスに入れる、マーカーを外した本文（spec §7.3）。
+
+    ソースをそのまま索引すると `**予算**について` が 1 つの文字列として
+    入り、`予算について` で引けなくなる。書いた人にとって装飾は文章の
+    一部ではないので、索引側では取り除く。
+
+    ソース文字列そのものは一切変えない（R1）。ここで作るのは索引用の
+    写しであって、保存内容ではない。
+    """
+    state = BlockState()
+    lines: list[str] = []
+
+    for number, line in enumerate(frontmatter.split(text).body.split("\n")):
+        info, state = classify_line(line, number, state)
+        if info.type in _CODE_TYPES:
+            # コードは記号ごと検索できたほうがよい
+            lines.append(line)
+            continue
+
+        body = line[info.marker_len :]
+        drop = bytearray(len(body))
+        for span in scan(body):
+            drop[span.open_start : span.open_end] = b"\x01" * span.open_len
+            drop[span.close_start : span.close_end] = b"\x01" * span.close_len
+        lines.append("".join(char for index, char in enumerate(body) if not drop[index]))
+
+    return "\n".join(lines)

@@ -168,10 +168,10 @@
 
 | | タスク | 参照 |
 |---|---|---|
-| [ ] | 5-1 | `ui/main_window.py`: 3 ペイン `QSplitter`、幅の永続化、メニューバー | §5.1 |
-| [ ] | 5-2 | `config.py`: `QSettings` ラッパと既定値 | §4 |
-| [ ] | 5-3 | `ui/note_list.py`: `QAbstractListModel` + `QStyledItemDelegate` | §5.1 / §6.6 |
-| [ ] | 5-4 | `ui/sidebar.py`: タグツリー、すべて / お気に入り / ゴミ箱 | §5.1 |
+| [x] | 5-1 | `ui/main_window.py`: 3 ペイン `QSplitter`、幅の永続化、メニューバー | §5.1 |
+| [x] | 5-2 | `config.py`: `QSettings` ラッパと既定値 | §4 |
+| [x] | 5-3 | `ui/note_list.py`: `QAbstractListModel` + `QStyledItemDelegate` | §5.1 / §6.6 |
+| [x] | 5-4 | `ui/sidebar.py`: タグツリー、すべて / お気に入り / ゴミ箱 | §5.1 |
 | [ ] | 5-5 | `ui/quick_open.py`: `Cmd+O` ファジー検索パレット | §5.4 |
 | [ ] | 5-6 | 全文検索 `Cmd+Shift+F`（スニペット + ハイライト） | §5.4 |
 | [ ] | 5-7 | `ui/preferences.py`: フォント / テーマ / vault / ゴミ箱保持日数 | §5.4 |
@@ -207,5 +207,5 @@
 | Phase 2 エディタ装飾 | 11/11 | 完了（2-8 は ADR-0002 で削除） |
 | Phase 3 入力補助 | 6/6 | 完了 |
 | Phase 4 ファイル層 | 9/9 | 完了。UI への配線は Phase 5 |
-| Phase 5 アプリ UI | 0/8 | **次はここ** |
+| Phase 5 アプリ UI | 4/8 | 5-5〜5-8 が残り |
 | Phase 6 仕上げ・配布 | 0/8 | |

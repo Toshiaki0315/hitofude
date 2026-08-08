@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from hitofude.core import tags as tag_utils
-from hitofude.core.document import Note
+from hitofude.core.document import Note, searchable_text
 
 # trigram は 3 文字単位で索引するため、2 文字以下のクエリは構造上ヒットしない
 MIN_TRIGRAM_QUERY = 3
@@ -165,7 +165,8 @@ class IndexDb:
         self._connection.execute("DELETE FROM notes_fts WHERE note_id = ?", (note_id,))
         self._connection.execute(
             "INSERT INTO notes_fts (title, body, note_id) VALUES (?, ?, ?)",
-            (note.title, note.text, note_id),
+            # 索引にはマーカーを外した写しを入れる。ソースは変えない（R1）
+            (note.title, searchable_text(note.text), note_id),
         )
         self._connection.commit()
         return note_id

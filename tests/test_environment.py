@@ -43,3 +43,28 @@ def test_hitofudeパッケージがimportできる() -> None:
     import hitofude
 
     assert hitofude.__version__
+
+
+class TestIsolation:
+    """テストが実ユーザーの環境を触らないことの検査（回帰テスト）。
+
+    `MainWindow` は設定が無いと `~/Documents/HitofudeNotes` に vault を作る。
+    ここが壊れると、テストを走らせるたびにユーザーの Documents が汚れる。
+    """
+
+    def test_ホームが隔離されている(self, sandbox_home) -> None:
+        from pathlib import Path
+
+        assert Path.home() == sandbox_home
+        assert "hitofude-test-home-" in str(Path.home())
+
+    def test_QSettingsの保存先も隔離されている(self, qapp, sandbox_home) -> None:
+        from PySide6.QtCore import QSettings
+
+        settings = QSettings(QSettings.Scope.UserScope, "テスト組織", "テストアプリ")
+        assert str(sandbox_home) in settings.fileName()
+
+    def test_設定なしのvaultが擬似ホームを指す(self, qapp, sandbox_home) -> None:
+        from hitofude.config import Config
+
+        assert Config().vault_path.is_relative_to(sandbox_home)

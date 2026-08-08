@@ -1,12 +1,16 @@
-"""メインウィンドウにエディタが載っていることのテスト（spec §5.1）。
+"""メインウィンドウでエディタが使えることのテスト（spec §5.1）。
 
-Phase 2 でエディタを作ったが、ウィンドウに繋いでいなかったため
-`make run` しても何も打てなかった。その回帰テスト。
-3 ペイン構成（サイドバー / ノートリスト / エディタ）はタスク 5-1 で入れる。
+Phase 2 でエディタを作ったがウィンドウに繋いでいなかったため
+`make run` しても何も打てなかった、という事象の回帰テスト。
+3 ペイン構成そのものは `test_main_window_flow.py` が見る。
 """
 
-import pytest
+from pathlib import Path
 
+import pytest
+from PySide6.QtCore import QSettings
+
+from hitofude.config import Config
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.ui.main_window import MainWindow
 
@@ -14,19 +18,24 @@ pytestmark = pytest.mark.gui
 
 
 @pytest.fixture
-def window(qtbot) -> MainWindow:
-    widget = MainWindow()
+def window(qtbot, tmp_path: Path) -> MainWindow:
+    settings = QSettings(str(tmp_path / "test.ini"), QSettings.Format.IniFormat)
+    config = Config(settings)
+    config.vault_path = tmp_path / "HitofudeNotes"
+
+    widget = MainWindow(config)
     qtbot.addWidget(widget)
     widget.show()
-    return widget
+    yield widget
+    widget.close()
 
 
 class TestEditorIsReachable:
-    def test_中央ウィジェットがエディタ(self, window) -> None:
-        assert isinstance(window.centralWidget(), MarkdownEditor)
+    def test_エディタが3ペインに入っている(self, window) -> None:
+        assert window.centralWidget().indexOf(window.editor) >= 0
 
     def test_editorプロパティで取れる(self, window) -> None:
-        assert window.editor is window.centralWidget()
+        assert isinstance(window.editor, MarkdownEditor)
 
     def test_文字を打ち込める(self, window, qtbot) -> None:
         """`make run` で入力できなかった事象そのものを検査する。"""
@@ -66,3 +75,10 @@ class TestTheme:
         window.theme_watcher.set_mode(ThemeMode.DARK)
         window.theme_watcher.set_mode(ThemeMode.LIGHT)
         assert window.editor.palette().base().color().name() == LIGHT.background.lower()
+
+    def test_ノートリストにも伝わる(self, window) -> None:
+        from hitofude.theme import DARK, ThemeMode
+
+        window.theme_watcher.set_mode(ThemeMode.DARK)
+        window.note_list.viewport().update()  # 例外が出ないこと
+        assert window.theme_watcher.colors is DARK
