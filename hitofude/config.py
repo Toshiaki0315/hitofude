@@ -37,6 +37,14 @@ _SPLITTER = "layout/splitter"
 _SIDEBAR = "layout/sidebar_visible"
 _NOTE_LIST = "layout/note_list_visible"
 _GEOMETRY = "layout/geometry"
+_LAST_NOTE = "session/last_note"
+
+
+def _inside_vault(path: Path) -> Path | None:
+    """vault の中を指す相対パスならそれを返す。外を指すなら None。"""
+    if path.is_absolute() or ".." in path.parts:
+        return None
+    return path
 
 
 class Config:
@@ -157,6 +165,27 @@ class Config:
     @window_geometry.setter
     def window_geometry(self, value: QByteArray | bytes) -> None:
         self.settings.setValue(_GEOMETRY, QByteArray(bytes(value)))
+
+    @property
+    def last_note(self) -> Path | None:
+        """最後に開いていたノート。vault からの**相対パス**。
+
+        絶対パスで覚えると、保管フォルダを移したときに前の場所を指したままに
+        なる。vault の外を指す値は捨てる（設定ファイルは手で編集できるので、
+        `../` を書かれても vault の外は開かない）。
+        """
+        stored = self.settings.value(_LAST_NOTE)
+        if not isinstance(stored, str) or not stored:
+            return None
+        return _inside_vault(Path(stored))
+
+    @last_note.setter
+    def last_note(self, value: Path | None) -> None:
+        relative = _inside_vault(Path(value)) if value is not None else None
+        if relative is None:
+            self.settings.remove(_LAST_NOTE)
+        else:
+            self.settings.setValue(_LAST_NOTE, str(relative))
 
     def sync(self) -> None:
         """ディスクへ書き出す。終了時に呼ぶ。"""

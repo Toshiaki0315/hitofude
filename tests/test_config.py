@@ -119,3 +119,44 @@ class TestLayout:
         assert config.window_geometry is None
         config.window_geometry = b"\x01\x02\x03"
         assert bytes(config.window_geometry) == b"\x01\x02\x03"
+
+
+class TestLastNote:
+    """最後に開いていたノート（起動時に開き直すため）。
+
+    **vault からの相対パスで持つ。** 絶対パスで覚えると、保管フォルダを
+    移したときに前の場所を指したままになる。
+    """
+
+    def test_既定はNone(self, config: Config) -> None:
+        assert config.last_note is None
+
+    def test_覚えられる(self, config: Config) -> None:
+        config.last_note = Path("会議メモ.md")
+        assert config.last_note == Path("会議メモ.md")
+
+    def test_サブフォルダも扱える(self, config: Config) -> None:
+        config.last_note = Path("2026/08/日報.md")
+        assert config.last_note == Path("2026/08/日報.md")
+
+    def test_日本語のファイル名でも壊れない(self, config: Config) -> None:
+        config.last_note = Path("打ち合わせ 議事録.md")
+        assert config.last_note == Path("打ち合わせ 議事録.md")
+
+    def test_忘れさせられる(self, config: Config) -> None:
+        config.last_note = Path("会議メモ.md")
+        config.last_note = None
+        assert config.last_note is None
+
+    def test_空文字はNoneとして扱う(self, config: Config) -> None:
+        config.settings.setValue("session/last_note", "")
+        assert config.last_note is None
+
+    def test_絶対パスは受け付けない(self, config: Config) -> None:
+        """vault の外を指す値を持ち込ませない。"""
+        config.last_note = Path("/etc/passwd")
+        assert config.last_note is None
+
+    def test_親をたどるパスも受け付けない(self, config: Config) -> None:
+        config.last_note = Path("../../他人のノート.md")
+        assert config.last_note is None

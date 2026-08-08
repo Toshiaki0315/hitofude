@@ -202,6 +202,7 @@ class MainWindow(QMainWindow):
 
         self._seed_manual()
         self.refresh()  # 前回の索引で先に描く。走査を待たずに操作できる
+        self._reopen_last_note()
         self.start_index_sync()
         self.offer_recovery()
 
@@ -408,6 +409,41 @@ class MainWindow(QMainWindow):
         self._db.upsert_note(note, self._vault.root)
         self.open_note(note.path)
         logger.info("使い方ノートを置いた: %s", note.path.name)
+
+    def _reopen_last_note(self) -> None:
+        """前回開いていたノートを開き直す（タスク A-1）。
+
+        **開けなくても静かに諦める。** 消えていることも、保管フォルダを
+        変えたこともある。起動が止まる理由にはならない。
+        """
+        if self._note is not None:
+            return  # 使い方ノートを置いた直後など、既に開いている
+
+        relative = self._config.last_note
+        if relative is None:
+            return
+
+        path = self._vault.root / relative
+        if not path.is_file():
+            self._config.last_note = None
+            return
+
+        self.open_note(path)
+        self._note_list.select_path(relative)
+
+    def _remember_note(self, path: Path | None) -> None:
+        """開いているノートを覚える。
+
+        終了時ではなく**開いた時点で書く**。終了時だけだと強制終了で忘れる。
+        """
+        if path is None:
+            self._config.last_note = None
+            return
+        try:
+            self._config.last_note = path.relative_to(self._vault.root)
+        except ValueError:
+            # vault の外のファイル。覚えても次に開けない
+            self._config.last_note = None
 
     # ------------------------------------------------------------ リカバリ
 
@@ -710,6 +746,7 @@ class MainWindow(QMainWindow):
         self._update_title()
         self._stats_timer.stop()
         self._update_stats()
+        self._remember_note(note.path)
 
     def new_note(self) -> None:
         self.flush()
@@ -732,6 +769,7 @@ class MainWindow(QMainWindow):
         self._db.remove_path(self._vault.root, path)
         self._note = None
         self._editor.clear()
+        self._remember_note(None)
         self.refresh()
         self._update_title()
         self._update_stats()
@@ -849,6 +887,7 @@ class MainWindow(QMainWindow):
         self._db.upsert_note(self._note, self._vault.root)
         self.refresh()
         self._update_title()
+        self._remember_note(self._note.path)
 
     def _rename_if_title_changed(self, previous: Note, current: Note) -> Note:
         """タイトルが変わったらファイル名も合わせる（spec §7.1）。

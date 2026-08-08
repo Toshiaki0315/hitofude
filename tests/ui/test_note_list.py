@@ -68,7 +68,10 @@ class TestNoteListModel:
         assert model.data(index, Qt.ItemDataRole.DisplayRole) == "会議メモ"
 
     def test_プレビューと日付を返す(self, model) -> None:
-        model.set_rows([row("会議メモ", modified="2026-08-08T14:05:00+09:00")])
+        # **日付を直書きしない。** `format_date` は「今日なら時刻」を返すので、
+        # 固定日を書くと日付が変わった翌日に落ちる（実際に落ちた）
+        today = datetime.now().replace(hour=14, minute=5)
+        model.set_rows([row("会議メモ", modified=today.isoformat())])
         index = model.index(0)
         assert "プレビュー" in model.data(index, NoteRole.PREVIEW)
         assert model.data(index, NoteRole.DATE) == "14:05"
