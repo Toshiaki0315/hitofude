@@ -183,3 +183,51 @@ class TestSourceIntegrity:
         assert editor.toPlainText() != TABLE
         editor.undo()
         assert editor.toPlainText() == TABLE
+
+
+class TestGridBounds:
+    """罫線が表の幅に収まること（回帰テスト）。
+
+    ブロックの矩形は**表示領域の全幅**なので、そのまま使うと横線が画面の
+    端まで伸びる。実際そうなっていた。
+    """
+
+    def _rules(self, editor):
+        return [d for d in visible_decorations(editor) if d.kind is DecorationKind.TABLE_RULE]
+
+    def test_横線が表の幅に収まる(self, editor) -> None:
+        editor.setPlainText("| aaa | bbb |\n|---|---|\n| ddd | eee |\n\n本文\n")
+        move_to(editor, 4)
+
+        rules = self._rules(editor)
+        horizontal = [d for d in rules if d.rect.width() > d.rect.height()]
+        assert horizontal
+        widest = max(d.rect.width() for d in horizontal)
+        assert widest < editor.viewport().width() * 0.5, f"横線が長すぎる: {widest}"
+
+    def test_ヘッダ背景も表の幅に収まる(self, editor) -> None:
+        editor.setPlainText("| aaa | bbb |\n|---|---|\n| ddd | eee |\n\n本文\n")
+        move_to(editor, 4)
+
+        header = [d for d in visible_decorations(editor) if d.kind is DecorationKind.TABLE_HEADER]
+        assert header
+        assert header[0].rect.width() < editor.viewport().width() * 0.5
+
+    def test_横線の右端が右の縦線と一致する(self, editor) -> None:
+        editor.setPlainText("| aaa | bbb |\n|---|---|\n| ddd | eee |\n\n本文\n")
+        move_to(editor, 4)
+
+        rules = self._rules(editor)
+        vertical = [d for d in rules if d.rect.width() <= d.rect.height()]
+        horizontal = [d for d in rules if d.rect.width() > d.rect.height()]
+        rightmost = max(d.rect.left() for d in vertical)
+        assert horizontal[0].rect.right() == pytest.approx(rightmost + 1, abs=1.5)
+
+    def test_1列の表も描ける(self, editor) -> None:
+        """閉じの `|` が無くても整形が補うので、1 列でも表として成立する。"""
+        editor.setPlainText("| aaa\n|---\n| ddd\n\n本文\n")
+        move_to(editor, 4)
+
+        assert editor.toPlainText().startswith("| aaa |")
+        vertical = [d for d in self._rules(editor) if d.rect.width() <= d.rect.height()]
+        assert len(vertical) == 2  # 左端と右端

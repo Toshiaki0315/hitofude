@@ -126,10 +126,16 @@ def table_decorations(editor, entries) -> list[Decoration]:
         if caret in numbers:
             continue
 
+        columns = _pipe_positions(run[0][0], run[0][2])
+        if len(columns) < 2:
+            continue  # 縦線が引けない＝表として描けない
+
         top = run[0][2].top()
         bottom = run[-1][2].bottom()
-        left = run[0][2].left()
-        right = run[0][2].right()
+        # **ブロックの矩形は表示領域の全幅**なので、そのまま使うと罫線が
+        # 画面の端まで伸びる。表の実際の幅（左端と右端の縦線）に収める
+        left = columns[0]
+        right = columns[-1] + RULE_HEIGHT
 
         delimiter = next(
             (i for i, (_b, info, _r) in enumerate(run) if info.type is BlockType.TABLE_DELIMITER),
@@ -139,7 +145,7 @@ def table_decorations(editor, entries) -> list[Decoration]:
             header = QRectF(left, top, right - left, run[delimiter][2].top() - top)
             result.append(Decoration(DecorationKind.TABLE_HEADER, header))
 
-        for x in _pipe_positions(run[0][0], run[0][2]):
+        for x in columns:
             result.append(
                 Decoration(DecorationKind.TABLE_RULE, QRectF(x, top, RULE_HEIGHT, bottom - top))
             )
