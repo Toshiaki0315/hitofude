@@ -343,3 +343,44 @@ class TestAttachments:
 
     def test_中身が空でも落ちない(self, vault: Vault) -> None:
         assert vault.add_attachment(b"", ".png").is_file()
+
+
+class TestSymlinkedNotes:
+    """保管フォルダの外へ出るシンボリックリンクは辿らない。
+
+    辿ると外のノートが索引に入り、編集やゴミ箱移動の対象になる。
+    ゴミ箱移動はボリュームをまたぐこともあり、vault が自己完結しなくなる。
+    """
+
+    def test_外へ出るリンクは拾わない(self, vault: Vault, tmp_path: Path) -> None:
+        vault.ensure_layout()
+        outside = tmp_path / "外部"
+        outside.mkdir()
+        (outside / "他人のメモ.md").write_text("# 他人のメモ\n", encoding="utf-8")
+        (vault.root / "抜け道").symlink_to(outside)
+
+        assert [p.name for p in vault.scan()] == []
+
+    def test_中のノートは今まで通り拾う(self, vault: Vault) -> None:
+        vault.create("ふつうのノート", "# ふつうのノート\n")
+        (vault.root / "下位").mkdir()
+        (vault.root / "下位" / "深いノート.md").write_text("# 深いノート\n", encoding="utf-8")
+
+        assert len(list(vault.scan())) == 2
+
+    def test_中を指すリンクは辿る(self, vault: Vault) -> None:
+        """vault の中で完結しているなら、自己完結は崩れない。"""
+        vault.ensure_layout()
+        (vault.root / "本体").mkdir()
+        (vault.root / "本体" / "メモ.md").write_text("# メモ\n", encoding="utf-8")
+        (vault.root / "別名").symlink_to(vault.root / "本体")
+
+        assert len(list(vault.scan())) == 2
+
+    def test_外のファイルを指すリンクも拾わない(self, vault: Vault, tmp_path: Path) -> None:
+        vault.ensure_layout()
+        outside = tmp_path / "外.md"
+        outside.write_text("# 外\n", encoding="utf-8")
+        (vault.root / "リンク.md").symlink_to(outside)
+
+        assert [p.name for p in vault.scan()] == []

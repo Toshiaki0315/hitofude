@@ -132,12 +132,28 @@ class Vault:
 
     def _walk(self, directory: Path) -> Iterator[Path]:
         for entry in sorted(directory.iterdir()):
+            # **保管フォルダの外へ出るリンクは辿らない。** 辿ると外のノートが
+            # 索引に入り、編集やゴミ箱移動の対象になる。ゴミ箱移動はボリュームを
+            # またぐこともあり、vault が自己完結しなくなる
+            if entry.is_symlink() and not self._inside(entry):
+                continue
             if entry.is_dir():
                 if entry.name in _SKIP_DIRS or entry.name.startswith("."):
                     continue
                 yield from self._walk(entry)
             elif entry.suffix.lower() in MARKDOWN_SUFFIXES:
                 yield entry
+
+    def _inside(self, entry: Path) -> bool:
+        """リンクを辿った先が保管フォルダの中に留まるか。
+
+        `resolve()` はリンクを辿るので、外へ出るものはここで落ちる。
+        判定の規則は `core/paths.py` と同じ（外を指す参照は扱わない）。
+        """
+        try:
+            return entry.resolve().is_relative_to(self.root.resolve())
+        except OSError:
+            return False
 
     # ----------------------------------------------------------------- 読み書き
 

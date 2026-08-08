@@ -160,3 +160,13 @@ class TestLastNote:
     def test_親をたどるパスも受け付けない(self, config: Config) -> None:
         config.last_note = Path("../../他人のノート.md")
         assert config.last_note is None
+
+    def test_シンボリックリンクで外へ出る値は受け付けない(self, config: Config, tmp_path) -> None:
+        """設定ファイルは手で編集できる。判定は `core/paths.py` に統一した。"""
+        config.vault_path.mkdir(parents=True, exist_ok=True)
+        outside = tmp_path / "外部"
+        outside.mkdir(exist_ok=True)
+        (config.vault_path / "抜け道").symlink_to(outside)
+
+        config.settings.setValue("session/last_note", "抜け道/秘密.md")
+        assert config.last_note is None

@@ -12,6 +12,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QSettings
 
+from hitofude.core.paths import relative_inside
 from hitofude.theme import ThemeMode
 
 DEFAULT_VAULT_NAME = "HitofudeNotes"
@@ -38,13 +39,6 @@ _SIDEBAR = "layout/sidebar_visible"
 _NOTE_LIST = "layout/note_list_visible"
 _GEOMETRY = "layout/geometry"
 _LAST_NOTE = "session/last_note"
-
-
-def _inside_vault(path: Path) -> Path | None:
-    """vault の中を指す相対パスならそれを返す。外を指すなら None。"""
-    if path.is_absolute() or ".." in path.parts:
-        return None
-    return path
 
 
 class Config:
@@ -177,11 +171,11 @@ class Config:
         stored = self.settings.value(_LAST_NOTE)
         if not isinstance(stored, str) or not stored:
             return None
-        return _inside_vault(Path(stored))
+        return relative_inside(self.vault_path, stored)
 
     @last_note.setter
     def last_note(self, value: Path | None) -> None:
-        relative = _inside_vault(Path(value)) if value is not None else None
+        relative = relative_inside(self.vault_path, value) if value is not None else None
         if relative is None:
             self.settings.remove(_LAST_NOTE)
         else:

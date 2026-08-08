@@ -14,13 +14,13 @@ import logging
 import mimetypes
 import re
 from pathlib import Path
-from urllib.parse import unquote
 
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QPageSize, QTextDocument
 from PySide6.QtPrintSupport import QPrinter
 
 from hitofude.core import frontmatter
+from hitofude.core.paths import resolve_reference
 from hitofude.theme import LIGHT, ThemeColors
 
 PDF_MARGIN_MM = 18.0
@@ -47,27 +47,6 @@ def _fill_empty_alt(body: str) -> str:
     return _EMPTY_ALT_RE.sub("![ ](", body)
 
 
-def _resolve(base_path: Path | None, source: str) -> Path | None:
-    """本文の画像パスを実ファイルへ解決する。**vault の外は返さない。**
-
-    本文は手で編集できるので、`../` を書けば任意のファイルを指せる。
-    書き出しに埋め込むということは外へ持ち出すことなので、
-    保管フォルダの外は読みに行かない。
-    """
-    if base_path is None or source.startswith(("http:", "https:", "data:")):
-        return None
-
-    candidate = Path(unquote(source.removeprefix("file://")))
-    if candidate.is_absolute():
-        return None
-
-    base = base_path.resolve()
-    resolved = (base / candidate).resolve()
-    if not resolved.is_relative_to(base) or not resolved.is_file():
-        return None
-    return resolved
-
-
 def _as_data_uri(path: Path) -> str | None:
     """画像を `data:` URI にする。読めなければ None。"""
     kind = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
@@ -87,7 +66,7 @@ def _embed_images(html: str, base_path: Path | None) -> str:
     """
 
     def swap(match: re.Match[str]) -> str:
-        resolved = _resolve(base_path, match.group(2))
+        resolved = resolve_reference(base_path, match.group(2))
         if resolved is None:
             return match.group(0)
         uri = _as_data_uri(resolved)

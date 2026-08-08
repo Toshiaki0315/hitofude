@@ -10,10 +10,11 @@
 
 from collections import OrderedDict
 from pathlib import Path
-from urllib.parse import unquote
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
+
+from hitofude.core.paths import resolve_reference
 
 # 画面内に同時に見える枚数はせいぜい数枚。行き過ぎない範囲で余裕を持たせる
 MAX_ENTRIES = 32
@@ -40,22 +41,8 @@ class ImageCache:
         self._entries.clear()
 
     def resolve(self, url: str) -> Path | None:
-        """本文のパスを実ファイルへ解決する。**外は返さない。**
-
-        `http(s)` は取りに行かない。描画のたびに通信するわけにいかない。
-        """
-        if self._base is None or url.startswith(("http:", "https:", "data:")):
-            return None
-
-        candidate = Path(unquote(url))
-        if candidate.is_absolute():
-            return None
-
-        base = self._base.resolve()
-        resolved = (base / candidate).resolve()
-        if not resolved.is_relative_to(base) or not resolved.is_file():
-            return None
-        return resolved
+        """本文のパスを実ファイルへ解決する。判定は `core/paths.py` に寄せた。"""
+        return resolve_reference(self._base, url)
 
     def pixmap(self, url: str, max_width: int) -> QPixmap | None:
         """表示用に縮小した画像。読めなければ None。"""

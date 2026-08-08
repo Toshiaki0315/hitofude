@@ -225,3 +225,52 @@ class TestImages:
     def test_base_pathを渡さなくても書ける(self, qapp, tmp_path: Path) -> None:
         """既存の呼び出しを壊さない。"""
         assert write_html(tmp_path / "out.html", "# 見出し\n").is_file()
+
+
+class TestImageSafety:
+    """本文は手で編集できる。保管フォルダの外を書き出しに埋め込ませない。
+
+    `image_cache` 側には同じ守りの試験があるのに、書き出し側だけ
+    抜けていた（監査で判明）。守りが片側だけ検証されている状態を残さない。
+    """
+
+    def test_絶対パスは埋め込まない(self, qapp, tmp_path: Path) -> None:
+        secret = tmp_path.parent / "秘密.png"
+        secret.write_bytes(b"\x89PNG himitsu")
+        written = write_html(
+            tmp_path / "out.html", f"![]({secret})\n", base_path=tmp_path
+        ).read_text(encoding="utf-8")
+        assert "base64" not in written
+
+    def test_file_スキームの絶対パスも埋め込まない(self, qapp, tmp_path: Path) -> None:
+        secret = tmp_path.parent / "秘密2.png"
+        secret.write_bytes(b"\x89PNG himitsu")
+        written = write_html(
+            tmp_path / "out.html", f"![](file://{secret})\n", base_path=tmp_path
+        ).read_text(encoding="utf-8")
+        assert "base64" not in written
+
+    def test_httpは取りに行かない(self, qapp, tmp_path: Path) -> None:
+        """書き出しのたびに通信しない。"""
+        written = write_html(
+            tmp_path / "out.html", "![](https://example.com/a.png)\n", base_path=tmp_path
+        ).read_text(encoding="utf-8")
+        assert "base64" not in written
+
+    def test_読めない画像でも書き出せる(self, qapp, tmp_path: Path, monkeypatch) -> None:
+        """権限が無いなどで読めなくても、書き出しごと失敗させない。"""
+        target = tmp_path / "attachments"
+        target.mkdir()
+        (target / "a.png").write_bytes(b"\x89PNG")
+
+        def deny(self, *args, **kwargs):
+            raise OSError("読めない")
+
+        monkeypatch.setattr(Path, "read_bytes", deny)
+        assert write_html(
+            tmp_path / "out.html", "![](attachments/a.png)\n", base_path=tmp_path
+        ).is_file()
+
+    def test_起点が無ければ埋め込まない(self, qapp, tmp_path: Path) -> None:
+        written = write_html(tmp_path / "out.html", "![](a.png)\n").read_text(encoding="utf-8")
+        assert "base64" not in written
