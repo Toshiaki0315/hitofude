@@ -250,6 +250,7 @@ class MainWindow(QMainWindow):
         self._theme_watcher.changed.connect(self._on_theme_changed)
 
         self._editor.set_attachment_handler(self.save_attachment)
+        self._editor.set_image_base(self._vault.root)
         self._editor.set_mono_family(self._config.mono_family)
         self._apply_list_font()
         self._editor.setFocus()
@@ -1096,6 +1097,7 @@ class MainWindow(QMainWindow):
         self._editor.set_font_family(self._config.font_family)
         self._editor.set_base_point_size(self._config.font_point_size)
         self._editor.set_attachment_handler(self.save_attachment)
+        self._editor.set_image_base(self._vault.root)
         self._editor.set_mono_family(self._config.mono_family)
         self._apply_list_font()
         self._theme_watcher.set_mode(self._config.theme_mode)

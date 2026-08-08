@@ -6,7 +6,7 @@
 
 import pytest
 
-from hitofude.core.inline_scanner import scan
+from hitofude.core.inline_scanner import image_only_line, scan
 from hitofude.core.models import InlineSpan, SpanType
 
 
@@ -246,3 +246,44 @@ class TestEdgeCases:
             for inner in spans[i + 1 :]:
                 crossing = outer.start < inner.start < outer.end < inner.end
                 assert not crossing, f"{outer} と {inner} が交差している"
+
+
+class TestImageOnlyLine:
+    """行まるごとが画像 1 つのときだけ、本文中に絵として描く（タスク A-2 後半）。
+
+    段落の途中にある画像は対象にしない。行の途中に高さを作るのは別の
+    難しさで、実用上ほぼ「1 行 1 画像」のため。
+    """
+
+    def test_画像だけの行はURLを返す(self) -> None:
+        assert image_only_line("![](attachments/写真.png)") == "attachments/写真.png"
+
+    def test_代替テキストがあってもよい(self) -> None:
+        assert image_only_line("![図](a.png)") == "a.png"
+
+    def test_前後の空白は無視する(self) -> None:
+        assert image_only_line("  ![](a.png)  ") == "a.png"
+
+    def test_文の途中の画像は対象にしない(self) -> None:
+        assert image_only_line("これは ![](a.png) です") is None
+
+    def test_2枚並んでいたら対象にしない(self) -> None:
+        assert image_only_line("![](a.png)![](b.png)") is None
+
+    def test_ただのリンクは対象にしない(self) -> None:
+        assert image_only_line("[文字](a.png)") is None
+
+    def test_空行はNone(self) -> None:
+        assert image_only_line("") is None
+
+    def test_URLが空ならNone(self) -> None:
+        """描くものが無い。"""
+        assert image_only_line("![]()") is None
+
+    def test_箇条書きの中は対象にしない(self) -> None:
+        """行頭マーカーは意味を持つ（§6.4）。潰すと箇条書きが消える。"""
+        assert image_only_line("- ![](a.png)") is None
+
+    def test_絶対URLも返す(self) -> None:
+        """描けるかは呼び出し側が決める。ここは形だけ見る。"""
+        assert image_only_line("![](https://example.com/a.png)") == "https://example.com/a.png"

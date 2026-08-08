@@ -26,6 +26,8 @@ from hitofude.core.tags import TAG_RE, normalize
 
 _CODE_RE = re.compile(r"(?P<ticks>`+)(?P<body>.+?)(?P=ticks)")
 _IMAGE_RE = re.compile(r"!\[(?P<text>[^\[\]]*)\]\((?P<url>[^()\s]*)\)")
+# 行まるごとが画像 1 つのときだけ、本文中に絵として描く（タスク A-2）
+_IMAGE_LINE_RE = re.compile(r"\A\s*!\[[^\[\]]*\]\((?P<url>[^()\s]+)\)\s*\Z")
 _LINK_RE = re.compile(r"(?<!!)\[(?P<text>[^\[\]]*)\]\((?P<url>[^()\s]*)\)")
 _AUTOLINK_RE = re.compile(r"<(?P<url>[A-Za-z][A-Za-z0-9+.\-]*:[^<>\s]+|[^@<>\s]+@[^@<>\s]+)>")
 _BARE_URL_RE = re.compile(r"(?<![\w/])(?P<url>https?://[^\s<>()\[\]\"'、。]+)")
@@ -270,3 +272,14 @@ def scan(text: str) -> list[InlineSpan]:
 
     spans.sort(key=lambda span: (span.start, -span.end))
     return spans
+
+
+def image_only_line(text: str) -> str | None:
+    """行まるごとが画像 1 つならその URL を返す。違えば None。
+
+    段落の途中にある画像は対象にしない。行の途中に高さを作るのは別の
+    難しさで、実用上ほぼ「1 行 1 画像」のため。行頭マーカー（`- ` など）が
+    付いている行も外す。記号自体が意味を持つので潰せない（§6.4）。
+    """
+    match = _IMAGE_LINE_RE.match(text)
+    return match.group("url") if match else None

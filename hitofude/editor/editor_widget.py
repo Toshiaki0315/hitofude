@@ -30,6 +30,7 @@ from hitofude.core.document import plain_text
 from hitofude.core.models import BlockInfo
 from hitofude.editor import commands, painter_overlay, table
 from hitofude.editor.highlighter import MarkdownHighlighter
+from hitofude.editor.image_cache import ImageCache
 from hitofude.editor.input_handler import EnterKind, enter_action, indent_action
 from hitofude.theme import LIGHT, ThemeColors
 
@@ -86,9 +87,11 @@ class MarkdownEditor(QPlainTextEdit):
         self.setFrameShape(QPlainTextEdit.Shape.NoFrame)
         self.setTabChangesFocus(False)
 
+        self._images = ImageCache()
         self._highlighter = MarkdownHighlighter(
             self.document(), theme, base_point_size=base_point_size
         )
+        self._highlighter.set_image_source(self._images, self.image_width())
 
         # リビールで掛け直す「旧ブロック」を覚えておく（R7）
         self._last_block = 0
@@ -494,6 +497,27 @@ class MarkdownEditor(QPlainTextEdit):
         cursor.setPosition(start + len(character) + len(selected), QTextCursor.MoveMode.KeepAnchor)
         self.setTextCursor(cursor)
         return True
+
+    # ------------------------------------------------------------------ 画像
+
+    @property
+    def image_cache(self) -> ImageCache:
+        return self._images
+
+    def image_width(self) -> int:
+        """本文中に描く画像の最大幅。本文の折り返し幅に合わせる。"""
+        return self.MAX_CONTENT_WIDTH - int(self.document().documentMargin()) * 2
+
+    def set_image_base(self, base_path) -> None:
+        """画像を探す起点（保管フォルダ）。変えると抱えていた絵を捨てる。"""
+        self._images.set_base_path(base_path)
+        self._highlighter.set_image_source(self._images, self.image_width())
+        self._highlighter.rehighlight()
+
+    def refresh_images(self) -> None:
+        """外で画像が差し替わったときに読み直す。"""
+        self._images.clear()
+        self._highlighter.rehighlight()
 
     # ------------------------------------------------------------------ 添付
 

@@ -19,6 +19,7 @@ from enum import Enum, auto
 from PySide6.QtCore import QRectF
 from PySide6.QtGui import QColor, QFont, QPainter, QTextBlock
 
+from hitofude.core.inline_scanner import image_only_line
 from hitofude.core.models import BlockType
 from hitofude.theme import ThemeColors
 
@@ -53,6 +54,7 @@ class DecorationKind(Enum):
     QUOTE_BAR = auto()
     RULE = auto()
     CHECKBOX = auto()
+    IMAGE = auto()
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +62,8 @@ class Decoration:
     kind: DecorationKind
     rect: QRectF
     text: str = ""
+    pixmap: object = None
+    """`IMAGE` のときだけ入る。読み込みと縮小は `editor/image_cache.py`。"""
 
 
 def focus_dim_rects(editor) -> list[Decoration]:
@@ -105,10 +109,36 @@ def visible_decorations(editor) -> list[Decoration]:
         if data is not None:
             entries.append((block, data.info, QRectF(geometry)))
             decorations.extend(_for_block(editor, block, data.info, geometry))
+        image = _image_for(editor, block, geometry)
+        if image is not None:
+            decorations.append(image)
         block = block.next()
 
     decorations.extend(table_decorations(editor, entries))
     return decorations
+
+
+def _image_for(editor, block, geometry) -> Decoration | None:
+    """画像行に絵を置く。高さはハイライタが既に確保している。
+
+    絵は本文の左端から描く。中央寄せにすると、文章の左端が揃わなくなる。
+    """
+    cache = getattr(editor, "image_cache", None)
+    if cache is None:
+        return None
+
+    url = image_only_line(block.text())
+    if url is None:
+        return None
+
+    pixmap = cache.pixmap(url, editor.image_width())
+    if pixmap is None:
+        return None
+
+    left = editor.contentOffset().x() + editor.document().documentMargin()
+    top = geometry.top() + (geometry.height() - pixmap.height()) / 2
+    rect = QRectF(left, top, pixmap.width(), pixmap.height())
+    return Decoration(kind=DecorationKind.IMAGE, rect=rect, pixmap=pixmap)
 
 
 def table_decorations(editor, entries) -> list[Decoration]:
@@ -278,7 +308,11 @@ def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) 
 def paint_foreground(
     painter: QPainter, decorations: list[Decoration], theme: ThemeColors, font: QFont
 ) -> None:
-    """本文の上に重ねる要素（チェックボックス記号）を描く。"""
+    """本文の上に重ねる要素（チェックボックス記号・画像）を描く。"""
+    for decoration in decorations:
+        if decoration.kind is DecorationKind.IMAGE and decoration.pixmap is not None:
+            painter.drawPixmap(decoration.rect.topLeft(), decoration.pixmap)
+
     dim = QColor(theme.background)
     dim.setAlpha(FOCUS_DIM_ALPHA)
     for decoration in decorations:

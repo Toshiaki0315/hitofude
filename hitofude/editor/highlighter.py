@@ -18,17 +18,57 @@ from PySide6.QtGui import (
     QSyntaxHighlighter,
     QTextBlockUserData,
     QTextCharFormat,
+    QTextCursor,
     QTextDocument,
 )
+from PySide6.QtWidgets import QPlainTextDocumentLayout
 
 from hitofude.core.block_parser import classify_line
-from hitofude.core.inline_scanner import scan
+from hitofude.core.inline_scanner import image_only_line, scan
 from hitofude.core.models import BlockInfo, BlockState, BlockType, InlineSpan, SpanType
 from hitofude.theme import LIGHT, ThemeColors
 
 # 0.5pt にすると 1 文字あたり残る幅は約 0.5px（spec §3.3 の実測）。
 # 0 は Qt が「未指定」と解釈するため使えない。
 HIDDEN_POINT_SIZE = 0.5
+
+# 画像行の余白（絵の上下）。詰まりすぎると本文と見分けが付かない
+IMAGE_PADDING = 8.0
+# 行高の比を測るときの基準サイズ。小さすぎると丸め誤差が効く
+_PROBE_POINT_SIZE = 100.0
+_HEIGHT_RATIOS: dict[tuple[str, float], float] = {}
+
+
+def line_height_ratio(font: QFont) -> float:
+    """そのフォントで「1pt あたり何 px の行になるか」。
+
+    **`QFontMetrics` では予測できない。** 実測では Hiragino Sans が 1.500、
+    Menlo が 1.005、Helvetica が 1.000 と、フォントごとに違う。Qt の組版が
+    使う値と `QFontMetricsF.height()` が一致しないため、実際に 1 行組んで測る。
+
+    フォントごとに 1 回だけ測って覚える。
+    """
+    key = (font.family(), font.pointSizeF())
+    found = _HEIGHT_RATIOS.get(key)
+    if found is not None:
+        return found
+
+    document = QTextDocument()
+    document.setDocumentLayout(QPlainTextDocumentLayout(document))
+    document.setDefaultFont(font)
+    document.setPlainText("X")
+
+    cursor = QTextCursor(document)
+    cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
+    probe = QTextCharFormat()
+    probe.setFontPointSize(_PROBE_POINT_SIZE)
+    cursor.setCharFormat(probe)
+
+    height = document.documentLayout().blockBoundingRect(document.firstBlock()).height()
+    ratio = height / _PROBE_POINT_SIZE if height > 0 else 1.0
+    _HEIGHT_RATIOS[key] = ratio
+    return ratio
+
 
 DEFAULT_MONO_FAMILY = "Menlo"
 
@@ -120,6 +160,8 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._base_point_size = base_point_size
         self._mono_family = mono_family
         self._reveal_position: int | None = None
+        self._image_cache = None
+        self._image_width = 0
         self._selection: tuple[int, int] | None = None
         self._source_mode = False
         self._build_formats()
@@ -143,6 +185,14 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._base_point_size = size
         self._build_formats()
         self.rehighlight()
+
+    def set_image_source(self, cache, width: int) -> None:
+        """画像行の高さを決めるための出どころ（タスク A-2）。
+
+        繋がっていなければ画像行はふつうの文字として描く。
+        """
+        self._image_cache = cache
+        self._image_width = width
 
     def set_reveal(self, position: int | None, selection: tuple[int, int] | None = None) -> None:
         """キャレット位置と選択範囲を伝える。
@@ -174,6 +224,18 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
         # 区切り行より前にある表の行がヘッダ。区切り行が in_table を立てるので、
         # 引き継いだ状態が False なら「まだ区切り行に達していない」= ヘッダ
+        image = None if in_code else self._image_state(text)
+        if image is True:
+            # 絵として描くので記号は見せない。**カーソルが入っても高さを変えない**
+            # （行高が動くと下の全部が飛ぶ。§2 の「行の高さが変わらない」約束）
+            self.setCurrentBlockUserData(BlockData(info, spans))
+            self.setCurrentBlockState(next_state.encode())
+            return
+        if image is False:
+            # 読めない画像。潰すと**空行にしか見えない**ので記号ごと見せる。
+            # 壊れていることが分かるほうが直せる
+            reveal = _Reveal(everything=True, caret_column=None)
+
         is_header = info.type is BlockType.TABLE_ROW and not state.in_table
         self._apply_block_format(text, info, header=is_header)
         if not in_code:
@@ -182,6 +244,42 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
         self.setCurrentBlockUserData(BlockData(info, spans))
         self.setCurrentBlockState(next_state.encode())
+
+    def _image_state(self, text: str) -> bool | None:
+        """画像行の扱いを決める。
+
+        - `True` … 絵として描くので高さを確保した
+        - `False` … 画像行だが読めない（記号ごと見せる）
+        - `None` … 画像行ではない
+
+        **R5 に触れない。** `QTextBlockFormat` は使わず、R4 と同じ
+        「文字の大きさ」というレバーだけで高さを作る。記号は 0.5pt に潰し、
+        **1 文字だけ**大きくする。行全体を大きくすると横に伸びて折り返し、
+        高さが跳ねる（実測: 240pt で 788px）。
+        """
+        url = image_only_line(text) if text else None
+        if url is None:
+            return None
+        if self._source_mode or self._image_cache is None or self._image_width <= 0:
+            return None
+
+        size = self._image_cache.size(url, self._image_width)
+        if size is None:
+            return False
+
+        hidden = QTextCharFormat()
+        hidden.setFontPointSize(HIDDEN_POINT_SIZE)
+        self.setFormat(0, len(text), hidden)
+
+        tall = QTextCharFormat()
+        tall.setFontPointSize(self._point_size_for(size[1] + IMAGE_PADDING * 2))
+        self.setFormat(0, 1, tall)
+        return True
+
+    def _point_size_for(self, height: float) -> float:
+        """その高さの行になる文字サイズ。"""
+        ratio = line_height_ratio(self.document().defaultFont())
+        return max(1.0, height / ratio)
 
     def _reveal_for(self, block_start: int, block_length: int) -> _Reveal:
         if self._source_mode:
