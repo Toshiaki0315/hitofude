@@ -17,6 +17,7 @@ import time
 import unicodedata
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from enum import Enum, auto
 from pathlib import Path
 
 from hitofude.core import frontmatter
@@ -186,3 +187,78 @@ class Vault:
                 entry.unlink()
                 removed.append(entry)
         return removed
+
+
+# --------------------------------------------------------------------------
+# 競合検知（spec §7.5）
+#
+# 読み込んだ時点の mtime とダイジェストを持っておき、保存の直前に再検査する。
+# TOCTOU を完全には防げないが、外部エディタとの併用という現実的な用途には
+# 十分（§7.5）。
+# --------------------------------------------------------------------------
+
+
+class ConflictAction(Enum):
+    WRITE = auto()
+    """そのまま保存してよい。"""
+
+    RELOAD = auto()
+    """外部の変更を黙って取り込む（こちらは未編集）。"""
+
+    ASK = auto()
+    """双方が変更している。ユーザーに選ばせる。"""
+
+    RECREATE = auto()
+    """外部で削除された。作り直すか尋ねる。"""
+
+
+def decide(
+    *,
+    exists: bool,
+    disk_mtime_ns: int,
+    disk_digest: str,
+    loaded_mtime_ns: int,
+    loaded_digest: str,
+    dirty: bool,
+) -> ConflictAction:
+    """保存直前にどうするかを決める（spec §7.5 の表）。純関数。"""
+    if not exists:
+        return ConflictAction.RECREATE
+    if disk_mtime_ns == loaded_mtime_ns:
+        return ConflictAction.WRITE
+    if disk_digest == loaded_digest:
+        # mtime だけ動いて中身が同じ。touch や同内容の保存。知らせる意味がない
+        return ConflictAction.WRITE
+    return ConflictAction.ASK if dirty else ConflictAction.RELOAD
+
+
+def check_conflict(note: Note, *, dirty: bool) -> ConflictAction:
+    """ディスクの現状を読んで `decide()` にかける。"""
+    try:
+        stat = note.path.stat()
+    except OSError:
+        return ConflictAction.RECREATE
+
+    if stat.st_mtime_ns == note.mtime_ns:
+        # 中身を読まずに済む一番多い経路
+        return ConflictAction.WRITE
+
+    current = Note.read(note.path)
+    return decide(
+        exists=True,
+        disk_mtime_ns=current.mtime_ns,
+        disk_digest=current.digest,
+        loaded_mtime_ns=note.mtime_ns,
+        loaded_digest=note.digest,
+        dirty=dirty,
+    )
+
+
+def keep_both_path(path: Path, date: str | None = None) -> Path:
+    """「両方残す」ときの保存先（spec §7.5）。
+
+    `会議メモ.md` → `会議メモ (競合 2026-08-08).md`。
+    元のファイル名を保つので、あとで見たときにどれと競合したのか分かる。
+    """
+    stamp = date or datetime.now().date().isoformat()
+    return unique_path(path.parent, f"{path.stem} (競合 {stamp})", path.suffix)

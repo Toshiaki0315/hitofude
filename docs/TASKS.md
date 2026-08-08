@@ -136,21 +136,31 @@
 
 | | タスク | 参照 |
 |---|---|---|
-| [ ] | 4-1 | `storage/vault.py`: 走査、CRUD、ファイル名 sanitize、重複時 `-2` | §7.1 |
-| [ ] | 4-2 | `storage/vault.py`: `.trash` への移動、30 日経過での自動削除 | §7.6 |
-| [ ] | 4-3 | `storage/autosave.py`: `save_atomic()`（tmp + fsync + `os.replace`） | §7.4 |
-| [ ] | 4-4 | `storage/autosave.py`: デバウンス（800ms）と即時フラッシュ契機 | §7.4 |
-| [ ] | 4-5 | `storage/index_db.py`: スキーマ作成、`upsert_note()`、起動時の差分同期 | §7.3 |
-| [ ] | 4-6 | `storage/index_db.py`: `search()`（trigram + 2 文字以下は LIKE フォールバック） | §7.3 / R5 |
-| [ ] | 4-7 | `storage/index_db.py`: `tag_tree()`（階層タグの集計） | §7.3 |
-| [ ] | 4-8 | `storage/watcher.py`: watchdog → Qt シグナル、自己書き込みの抑制リスト | §7.5 |
-| [ ] | 4-9 | 競合検知（`mtime_ns` + blake2b）と競合ダイアログ | §7.5 |
+| [x] | 4-1 | `storage/vault.py`: 走査、CRUD、ファイル名 sanitize、重複時 `-2` | §7.1 |
+| [x] | 4-2 | `storage/vault.py`: `.trash` への移動、30 日経過での自動削除 | §7.6 |
+| [x] | 4-3 | `storage/autosave.py`: `save_atomic()`（tmp + fsync + `os.replace`） | §7.4 |
+| [x] | 4-4 | `storage/autosave.py`: デバウンス（800ms）と即時フラッシュ契機 | §7.4 |
+| [x] | 4-5 | `storage/index_db.py`: スキーマ作成、`upsert_note()`、起動時の差分同期 | §7.3 |
+| [x] | 4-6 | `storage/index_db.py`: `search()`（trigram + 2 文字以下は LIKE フォールバック） | §7.3 / R5 |
+| [x] | 4-7 | `storage/index_db.py`: `tag_tree()`（階層タグの集計） | §7.3 |
+| [x] | 4-8 | `storage/watcher.py`: watchdog → Qt シグナル、自己書き込みの抑制リスト | §7.5 |
+| [x] | 4-9 | 競合検知（`mtime_ns` + blake2b）と競合ダイアログ | §7.5 |
 
 **完了条件**
-- [ ] vault 指定 → 既存 `.md` が一覧に出る
-- [ ] 編集 → 800ms 後にファイルが更新される
-- [ ] 外部エディタでの書き換えがアプリに反映される
-- [ ] `.hitofude/index.sqlite` を消して再起動 → 完全に復元される（R9）
+- [x] vault 指定 → 既存 `.md` が一覧に出る（`IndexDb.sync()`）
+- [~] 編集 → 800ms 後にファイルが更新される（`Debouncer` は完成。UI への配線は Phase 5）
+- [x] 外部エディタでの書き換えがアプリに反映される（`VaultWatcher`）
+- [x] `.hitofude/index.sqlite` を消して再起動 → 完全に復元される（R9、`rebuild()`）
+
+**実測（5,000 ノートの vault、Apple Silicon）**
+
+| 操作 | 中央値 | 最大 | 基準 |
+|---|---|---|---|
+| 全文検索 6 文字（trigram） | 5.2ms | 5.9ms | < 200ms |
+| 全文検索 2 文字（LIKE） | 1.1ms | 1.3ms | < 200ms |
+| タグ絞り込み | 23.4ms | 32.2ms | < 200ms |
+| 初回の索引構築 | 5,188ms | — | 別スレッド前提（§6.6） |
+| 差分同期（変更なし） | 211ms | — | — |
 
 ---
 
@@ -196,6 +206,6 @@
 | Phase 1 コア層 | 10/10 | 完了。core/ カバレッジ 98% |
 | Phase 2 エディタ装飾 | 11/11 | 完了（2-8 は ADR-0002 で削除） |
 | Phase 3 入力補助 | 6/6 | 完了 |
-| Phase 4 ファイル層 | 0/9 | **次はここ** |
-| Phase 5 アプリ UI | 0/8 | |
+| Phase 4 ファイル層 | 9/9 | 完了。UI への配線は Phase 5 |
+| Phase 5 アプリ UI | 0/8 | **次はここ** |
 | Phase 6 仕上げ・配布 | 0/8 | |
