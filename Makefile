@@ -35,3 +35,18 @@ check: lint test ## コミット前の全チェック
 clean: ## キャッシュと成果物を削除
 	rm -rf .pytest_cache .ruff_cache .coverage htmlcov build dist
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
+
+# py2app は zlib が共有モジュールの Python を要求する（uv 同梱の CPython は
+# 静的リンクで zlib.__file__ を持たず、ビルド途中で落ちる）。
+# 開発用の venv はそのままに、ビルドだけ別インタプリタで走らせる。
+BUILD_PYTHON ?= /opt/homebrew/bin/python3.13
+
+app: ## macOS アプリ（dist/Hitofude.app）をビルド
+	rm -rf build dist
+	$(UV) run python scripts/make_icon.py
+	$(UV) run --python $(BUILD_PYTHON) --with py2app --with setuptools python setup.py py2app
+	$(UV) run python scripts/prune_bundle.py dist/Hitofude.app
+	@echo "できました: dist/Hitofude.app（署名はアドホック。配布には Developer ID が要る）"
+
+icon: ## アプリアイコンを再生成
+	$(UV) run python scripts/make_icon.py

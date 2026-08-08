@@ -37,7 +37,12 @@ _CODE_TYPES = frozenset(
 )
 
 
+# spec §5.4 のフォーカスモード。現在段落以外をこの不透明度で覆う
+FOCUS_DIM_ALPHA = 150
+
+
 class DecorationKind(Enum):
+    FOCUS_DIM = auto()
     CODE_BACKGROUND = auto()
     CODE_ACCENT = auto()
     QUOTE_BAR = auto()
@@ -50,6 +55,29 @@ class Decoration:
     kind: DecorationKind
     rect: QRectF
     text: str = ""
+
+
+def focus_dim_rects(editor) -> list[Decoration]:
+    """フォーカスモードで覆う矩形（spec §5.4）。
+
+    キャレットのあるブロック以外を減光する。ハイライタ側でやると
+    カーソル移動のたびに広範囲を掛け直すことになり R7 に反するので、
+    **描画だけで表現する**。
+    """
+    current = editor.textCursor().blockNumber()
+    rects: list[Decoration] = []
+    block = editor.firstVisibleBlock()
+    offset = editor.contentOffset()
+    height = editor.viewport().height()
+
+    while block.isValid():
+        geometry = editor.blockBoundingGeometry(block).translated(offset)
+        if geometry.top() > height:
+            break
+        if block.blockNumber() != current:
+            rects.append(Decoration(DecorationKind.FOCUS_DIM, QRectF(geometry)))
+        block = block.next()
+    return rects
 
 
 def visible_decorations(editor) -> list[Decoration]:
@@ -152,6 +180,8 @@ def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) 
                 painter.fillRect(decoration.rect, QColor(theme.rule))
             case DecorationKind.CHECKBOX:
                 pass  # 文字なので前景で描く
+            case DecorationKind.FOCUS_DIM:
+                pass  # 本文の上に重ねるので前景で描く
     painter.restore()
 
 
@@ -159,6 +189,12 @@ def paint_foreground(
     painter: QPainter, decorations: list[Decoration], theme: ThemeColors, font: QFont
 ) -> None:
     """本文の上に重ねる要素（チェックボックス記号）を描く。"""
+    dim = QColor(theme.background)
+    dim.setAlpha(FOCUS_DIM_ALPHA)
+    for decoration in decorations:
+        if decoration.kind is DecorationKind.FOCUS_DIM:
+            painter.fillRect(decoration.rect, dim)
+
     boxes = [d for d in decorations if d.kind is DecorationKind.CHECKBOX]
     if not boxes:
         return

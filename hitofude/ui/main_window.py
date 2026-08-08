@@ -14,12 +14,19 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
-from PySide6.QtWidgets import QMainWindow, QMessageBox, QSplitter, QWidget
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QMainWindow,
+    QMessageBox,
+    QSplitter,
+    QWidget,
+)
 
-from hitofude import APP_NAME
+from hitofude import APP_NAME, __version__
 from hitofude.app import ThemeWatcher
 from hitofude.config import Config
 from hitofude.core.document import Note
+from hitofude.editor import exporter
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.storage.autosave import Debouncer
 from hitofude.storage.index_db import IndexDb, NoteRow
@@ -115,6 +122,9 @@ class MainWindow(QMainWindow):
         self._add_action(file_menu, "保存", QKeySequence.StandardKey.Save, self.flush)
         file_menu.addSeparator()
         self._add_action(file_menu, "ゴミ箱へ移動", "Ctrl+Backspace", self.trash_current)
+        file_menu.addSeparator()
+        self._add_action(file_menu, "HTML で書き出す…", "Ctrl+Shift+E", self.export_html)
+        self._add_action(file_menu, "PDF で書き出す…", "Ctrl+P", self.export_pdf)
 
         self._add_action(
             file_menu, "環境設定…", QKeySequence.StandardKey.Preferences, self.open_preferences
@@ -129,6 +139,15 @@ class MainWindow(QMainWindow):
         self._add_action(view_menu, "ノートリスト", "Ctrl+2", self.toggle_note_list)
         view_menu.addSeparator()
         self._add_action(view_menu, "ソースモード", "Ctrl+/", self._editor.toggle_source_mode)
+        self._add_action(
+            view_menu, "フォーカスモード", "Ctrl+Shift+D", self._editor.toggle_focus_mode
+        )
+        self._add_action(
+            view_menu, "タイプライタモード", "Ctrl+Shift+Y", self._editor.toggle_typewriter_mode
+        )
+
+        help_menu = self.menuBar().addMenu("ヘルプ")
+        self._add_action(help_menu, f"{APP_NAME} について", "", self.show_about)
 
     def _add_action(self, menu, label: str, shortcut, slot) -> QAction:
         action = QAction(label, self)
@@ -435,6 +454,51 @@ class MainWindow(QMainWindow):
     def _on_palette_chosen(self, relative: Path) -> None:
         self.open_note(self._vault.root / relative)
         self._note_list.select_path(relative)
+
+    # ------------------------------------------------------------ エクスポート
+
+    def export_html(self) -> Path | None:
+        """spec §9 Phase 6。R2 の例外はエクスポート層に閉じている。"""
+        return self._export("HTML で書き出す", "HTML (*.html)", ".html", exporter.write_html)
+
+    def export_pdf(self) -> Path | None:
+        return self._export("PDF で書き出す", "PDF (*.pdf)", ".pdf", exporter.write_pdf)
+
+    def _export(self, caption: str, filter_: str, suffix: str, writer) -> Path | None:
+        if self._note is None:
+            return None
+        self.flush()
+        suggested = str(Path.home() / f"{self._note.title}{suffix}")
+        chosen, _ = QFileDialog.getSaveFileName(self, caption, suggested, filter_)
+        if not chosen:
+            return None
+        return self._write_export(Path(chosen), writer)
+
+    def _write_export(self, target: Path, writer) -> Path:
+        """ダイアログを介さず呼べるようにしてある（テスト用）。"""
+        text = self._editor.toPlainText()
+        if writer is exporter.write_html:
+            return writer(
+                target,
+                text,
+                title=self._note.title if self._note else "",
+                theme=self._theme_watcher.colors,
+            )
+        return writer(
+            target,
+            text,
+            theme=self._theme_watcher.colors,
+            base_point_size=self._config.font_point_size,
+        )
+
+    def show_about(self) -> None:
+        QMessageBox.about(
+            self,
+            f"{APP_NAME} について",
+            f"<b>{APP_NAME}</b> {__version__}<br><br>"
+            "ライブプレビュー型 Markdown エディタ<br>"
+            "ノートは素の <code>.md</code> として保存されます。",
+        )
 
     def open_preferences(self) -> None:
         """`Cmd+,`（spec §5.4）。"""

@@ -20,6 +20,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QPlainTextEdit, QWidget
 
+from hitofude.core.document import plain_text
 from hitofude.core.models import BlockInfo
 from hitofude.editor import commands, painter_overlay
 from hitofude.editor.highlighter import MarkdownHighlighter
@@ -64,6 +65,8 @@ class MarkdownEditor(QPlainTextEdit):
         self._syncing = False
         # IME のプリエディット中かどうか（R6）
         self._composing = False
+        self._focus_mode = False
+        self._typewriter_mode = False
 
         self.cursorPositionChanged.connect(self._sync_reveal)
         self.selectionChanged.connect(self._sync_reveal)
@@ -104,6 +107,60 @@ class MarkdownEditor(QPlainTextEdit):
 
     def toggle_source_mode(self) -> None:
         self.set_source_mode(not self._highlighter.source_mode)
+
+    # --------------------------------------------------- 執筆用のモード（§5.4）
+
+    def set_focus_mode(self, enabled: bool) -> None:
+        """`Cmd+Shift+D`。現在段落以外を減光する。"""
+        self._focus_mode = enabled
+        self.viewport().update()
+
+    def toggle_focus_mode(self) -> None:
+        self.set_focus_mode(not self._focus_mode)
+
+    @property
+    def focus_mode(self) -> bool:
+        return self._focus_mode
+
+    def set_typewriter_mode(self, enabled: bool) -> None:
+        """`Cmd+Shift+Y`。キャレット行を画面中央に保つ。"""
+        self._typewriter_mode = enabled
+        if enabled:
+            self._center_caret()
+
+    def toggle_typewriter_mode(self) -> None:
+        self.set_typewriter_mode(not self._typewriter_mode)
+
+    @property
+    def typewriter_mode(self) -> bool:
+        return self._typewriter_mode
+
+    def _center_caret(self) -> None:
+        """キャレット行が画面中央に来るようスクロールする。"""
+        cursor_rect = self.cursorRect()
+        middle = self.viewport().height() // 2
+        delta = cursor_rect.center().y() - middle
+        if delta == 0:
+            return
+        bar = self.verticalScrollBar()
+        line_height = max(1, cursor_rect.height())
+        bar.setValue(bar.value() + round(delta / line_height))
+
+    def plain_text_selection(self) -> str:
+        """`Cmd+Shift+C`。マーカーを除いた文字列を返す（spec §5.4）。
+
+        選択が無ければ本文全体。ソースは変えない（R1）。
+        """
+        cursor = self.textCursor()
+        source = cursor.selection().toPlainText() if cursor.hasSelection() else self.toPlainText()
+        # QTextCursor は改行を U+2029 で返す
+        return plain_text(source.replace("\u2029", "\n"))
+
+    def copy_as_plain_text(self) -> bool:
+        from PySide6.QtWidgets import QApplication
+
+        QApplication.clipboard().setText(self.plain_text_selection())
+        return True
 
     def set_font_family(self, family: str) -> None:
         font = self.font()
@@ -191,6 +248,14 @@ class MarkdownEditor(QPlainTextEdit):
                     return self.toggle_highlight()
                 case Qt.Key.Key_T:
                     return self.toggle_checkbox()
+                case Qt.Key.Key_C:
+                    return self.copy_as_plain_text()
+                case Qt.Key.Key_D:
+                    self.toggle_focus_mode()
+                    return True
+                case Qt.Key.Key_Y:
+                    self.toggle_typewriter_mode()
+                    return True
                 case Qt.Key.Key_Up:
                     return self.shift_heading(-1)
                 case Qt.Key.Key_Down:
@@ -363,6 +428,11 @@ class MarkdownEditor(QPlainTextEdit):
         finally:
             self._syncing = False
 
+        if self._typewriter_mode:
+            self._center_caret()
+        if self._focus_mode:
+            self.viewport().update()
+
     def _affected_blocks(
         self, current_block: int, selection: tuple[int, int] | None
     ) -> list[QTextBlock]:
@@ -399,6 +469,8 @@ class MarkdownEditor(QPlainTextEdit):
         本文に重ねる記号は後に描く。
         """
         decorations = painter_overlay.visible_decorations(self)
+        if self._focus_mode:
+            decorations = decorations + painter_overlay.focus_dim_rects(self)
 
         background = QPainter(self.viewport())
         painter_overlay.paint(background, decorations, self._theme)

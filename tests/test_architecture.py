@@ -64,7 +64,8 @@ def test_編集モデルにsetMarkdownを使っていない() -> None:
     判定は AST の属性アクセスで行う。文字列一致にすると「なぜこの API を
     使わないのか」を説明したコメント自体が違反として検出されてしまう。
     """
-    export_allowed = {HITOFUDE / "core" / "exporter.py"}
+    # R2 の唯一の例外。エクスポートは一方通行なので往復変換の事故が起きない
+    export_allowed = {HITOFUDE / "editor" / "exporter.py"}
     offenders: list[str] = []
     for path in HITOFUDE.rglob("*.py"):
         if path in export_allowed:

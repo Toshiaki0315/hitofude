@@ -26,6 +26,7 @@ uv.lock.bak
 # py2app
 *.dmg
 Hitofude.zip
+resources/*.iconset/
 
 # アプリが生成するローカルデータ（vault は絶対にリポジトリへ入れない）
 *.sqlite

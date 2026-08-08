@@ -179,15 +179,14 @@ class Note:
         return os.fspath(self.path.relative_to(root))
 
 
-def searchable_text(text: str) -> str:
-    """検索インデックスに入れる、マーカーを外した本文（spec §7.3）。
+def plain_text(text: str) -> str:
+    """マーカーを外した本文。
 
-    ソースをそのまま索引すると `**予算**について` が 1 つの文字列として
-    入り、`予算について` で引けなくなる。書いた人にとって装飾は文章の
-    一部ではないので、索引側では取り除く。
+    索引（§7.3）と `Cmd+Shift+C` のプレーンテキストコピー（§5.4）で共有する。
+    どちらも「装飾は文章の一部ではない」という同じ判断に立つ。
 
-    ソース文字列そのものは一切変えない（R1）。ここで作るのは索引用の
-    写しであって、保存内容ではない。
+    **ソース文字列そのものは一切変えない（R1）。** ここで作るのは写しであって、
+    保存内容ではない。
     """
     state = BlockState()
     lines: list[str] = []
@@ -207,3 +206,12 @@ def searchable_text(text: str) -> str:
         lines.append("".join(char for index, char in enumerate(body) if not drop[index]))
 
     return "\n".join(lines)
+
+
+def searchable_text(text: str) -> str:
+    """検索インデックスに入れる本文（spec §7.3）。
+
+    ソースをそのまま索引すると `**予算**について` が 1 つの文字列として入り、
+    `予算について` で引けなくなる。
+    """
+    return plain_text(text)
