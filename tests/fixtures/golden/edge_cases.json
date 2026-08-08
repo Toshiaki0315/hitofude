@@ -738,8 +738,28 @@
     "ranges": [
       [
         0,
-        9,
-        "mono"
+        1,
+        "hidden:0.5+bold+mono"
+      ],
+      [
+        1,
+        3,
+        "bold+mono"
+      ],
+      [
+        4,
+        1,
+        "hidden:0.5+bold+mono"
+      ],
+      [
+        5,
+        3,
+        "bold+mono"
+      ],
+      [
+        8,
+        1,
+        "hidden:0.5+bold+mono"
       ]
     ]
   },
@@ -751,7 +771,7 @@
       [
         0,
         5,
-        "mono"
+        "hidden:0.5+mono"
       ]
     ]
   },
@@ -762,8 +782,38 @@
     "ranges": [
       [
         0,
-        13,
+        1,
+        "hidden:0.5+mono"
+      ],
+      [
+        1,
+        3,
         "mono"
+      ],
+      [
+        4,
+        1,
+        "hidden:0.5+mono"
+      ],
+      [
+        5,
+        3,
+        "mono"
+      ],
+      [
+        8,
+        1,
+        "hidden:0.5+mono"
+      ],
+      [
+        9,
+        3,
+        "mono"
+      ],
+      [
+        12,
+        1,
+        "hidden:0.5+mono"
       ]
     ]
   },

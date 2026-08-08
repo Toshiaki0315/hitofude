@@ -64,6 +64,8 @@ _FULLY_HIDDEN_TYPES = frozenset(
         BlockType.CODE_FENCE_CLOSE,
         BlockType.HORIZONTAL_RULE,
         BlockType.FRONT_MATTER,
+        # 区切り行（`|---|---|`）は罫線として描くので文字は見せない
+        BlockType.TABLE_DELIMITER,
     }
 )
 
@@ -170,7 +172,10 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         spans = [] if in_code else scan(text)
         reveal = self._reveal_for(block.position(), block.length())
 
-        self._apply_block_format(text, info)
+        # 区切り行より前にある表の行がヘッダ。区切り行が in_table を立てるので、
+        # 引き継いだ状態が False なら「まだ区切り行に達していない」= ヘッダ
+        is_header = info.type is BlockType.TABLE_ROW and not state.in_table
+        self._apply_block_format(text, info, header=is_header)
         if not in_code:
             self._apply_spans(text, spans, reveal)
         self._hide_block_markers(text, info, reveal)
@@ -197,7 +202,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
     # ----------------------------------------------------------- 書式の適用
 
-    def _apply_block_format(self, text: str, info: BlockInfo) -> None:
+    def _apply_block_format(self, text: str, info: BlockInfo, *, header: bool = False) -> None:
         if not text:
             return
         match info.type:
@@ -208,7 +213,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             case BlockType.BLOCKQUOTE:
                 self.setFormat(0, len(text), self._quote)
             case _ if info.type in _MONO_TYPES:
-                self.setFormat(0, len(text), self._mono)
+                self.setFormat(0, len(text), self._table_header if header else self._mono)
             case _:
                 pass
 
@@ -233,6 +238,12 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             self._hide(0, len(text))
         elif info.type in _HIDDEN_MARKER_TYPES:
             self._hide(0, info.marker_len)
+        elif info.type is BlockType.TABLE_ROW:
+            # `|` は罫線として描く（§5.2 の描画フック）。文字は残すので
+            # キャレット位置とソースのオフセットは 1:1 のまま（R4）
+            for index, character in enumerate(text):
+                if character == "|":
+                    self._hide(index, 1)
         elif info.type is BlockType.TASK_LIST_ITEM:
             # `- ` は残し `[ ]` だけ潰す。記号は paintEvent が ☐ で描く（§6.4）
             bracket = text.find("[", 0, info.marker_len)
@@ -286,6 +297,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
         self._mono = QTextCharFormat()
         self._mono.setFontFamilies(TABLE_FAMILIES)
+
+        self._table_header = QTextCharFormat(self._mono)
+        self._table_header.setFontWeight(QFont.Weight.Bold)
 
         strong = QTextCharFormat()
         strong.setFontWeight(QFont.Weight.Bold)

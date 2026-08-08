@@ -67,6 +67,8 @@ class MarkdownEditor(QPlainTextEdit):
         self._composing = False
         self._focus_mode = False
         self._typewriter_mode = False
+        # 整形が走っている最中に自分自身を呼ばないためのガード
+        self._formatting = False
 
         self.cursorPositionChanged.connect(self._sync_reveal)
         self.selectionChanged.connect(self._sync_reveal)
@@ -181,29 +183,62 @@ class MarkdownEditor(QPlainTextEdit):
         found = table.find_table(lines, self._table_anchor_line(cursor))
         if found is None:
             return False
+        return self._apply_table_format(lines, found)
 
+    def _autoformat_left_table(self, old_line: int, new_line: int) -> None:
+        """表の行から離れたら縦線を揃える（§1.2）。
+
+        打っている最中は動かさない。整形はキャレットを動かすので、
+        入力のたびに走らせると書けたものではなくなる。
+        """
+        if old_line == new_line or self._composing or self._formatting:
+            return
+
+        lines = self.toPlainText().split("\n")
+        found = table.find_table(lines, old_line)
+        if found is None or found[0] <= new_line < found[1]:
+            return  # 表の中を移動しただけ
+
+        self._formatting = True
+        try:
+            self._apply_table_format(lines, found)
+        finally:
+            self._formatting = False
+
+    def _apply_table_format(self, lines: list[str], found: tuple[int, int]) -> bool:
+        """表の範囲を整形する。キャレットは今いる場所に残す。"""
         start, end = found
         formatted = table.format_table(lines[start:end])
         if formatted is None or formatted == lines[start:end]:
             return False
 
-        column = cursor.positionInBlock()
-        document = self.document()
-        block_start = document.findBlockByNumber(start)
-        block_end = document.findBlockByNumber(end - 1)
+        cursor = self.textCursor()
+        keep_line, keep_column = cursor.blockNumber(), cursor.positionInBlock()
 
-        edit = QTextCursor(block_start)
+        document = self.document()
+        first = document.findBlockByNumber(start)
+        last = document.findBlockByNumber(end - 1)
+
+        edit = QTextCursor(first)
         edit.beginEditBlock()
-        edit.setPosition(block_start.position())
-        edit.setPosition(
-            block_end.position() + block_end.length() - 1, QTextCursor.MoveMode.KeepAnchor
-        )
+        edit.setPosition(first.position())
+        edit.setPosition(last.position() + last.length() - 1, QTextCursor.MoveMode.KeepAnchor)
         edit.insertText("\n".join(formatted))
         edit.endEditBlock()
 
-        moved = document.findBlockByNumber(cursor.blockNumber())
-        edit.setPosition(moved.position() + min(column, max(0, moved.length() - 1)))
-        self.setTextCursor(edit)
+        # 行数は変わらないので、行番号と桁で戻せる
+        block = document.findBlockByNumber(keep_line)
+        if block.isValid():
+            edit.setPosition(block.position() + min(keep_column, max(0, block.length() - 1)))
+            self.setTextCursor(edit)
+
+        # 整形中はキャレットが表の中を通るため、その時点のリビール状態で
+        # ハイライトされた行が残る。R7 により以後は掛け直されないので、
+        # ここで表の範囲だけ明示的に掛け直す
+        for number in range(start, end):
+            target = document.findBlockByNumber(number)
+            if target.isValid():
+                self._highlighter.rehighlightBlock(target)
         return True
 
     def _table_anchor_line(self, cursor: QTextCursor) -> int:
@@ -472,6 +507,7 @@ class MarkdownEditor(QPlainTextEdit):
         """
         if self._syncing:
             return
+        previous_block = self._last_block
         self._syncing = True
         try:
             cursor = self.textCursor()
@@ -487,6 +523,8 @@ class MarkdownEditor(QPlainTextEdit):
             self._last_selection = selection
         finally:
             self._syncing = False
+
+        self._autoformat_left_table(previous_block, self.textCursor().blockNumber())
 
         if self._typewriter_mode:
             self._center_caret()

@@ -46,6 +46,8 @@ FOCUS_DIM_ALPHA = 150
 class DecorationKind(Enum):
     FOCUS_DIM = auto()
     TABLE_BACKGROUND = auto()
+    TABLE_HEADER = auto()
+    TABLE_RULE = auto()
     CODE_BACKGROUND = auto()
     CODE_ACCENT = auto()
     QUOTE_BAR = auto()
@@ -94,16 +96,89 @@ def visible_decorations(editor) -> list[Decoration]:
     offset = editor.contentOffset()
     viewport_height = editor.viewport().height()
 
+    entries: list[tuple[QTextBlock, object, QRectF]] = []
     while block.isValid():
         geometry = editor.blockBoundingGeometry(block).translated(offset)
         if geometry.top() > viewport_height:
             break
         data = block.userData()
         if data is not None:
+            entries.append((block, data.info, QRectF(geometry)))
             decorations.extend(_for_block(editor, block, data.info, geometry))
         block = block.next()
 
+    decorations.extend(table_decorations(editor, entries))
     return decorations
+
+
+def table_decorations(editor, entries) -> list[Decoration]:
+    """表の罫線とヘッダ背景（spec §5.2 の描画フック）。
+
+    **キャレットが表の中にある間は線を引かない。** 編集中はソースがまだ
+    揃っておらず、揃った前提で引いた線が本文とずれるため。行を離れると
+    自動整形が走り、そこで線が現れる（マーカーのリビールと同じ考え方）。
+    """
+    caret = editor.textCursor().blockNumber()
+    result: list[Decoration] = []
+
+    for run in _table_runs(entries):
+        numbers = [block.blockNumber() for block, _info, _rect in run]
+        if caret in numbers:
+            continue
+
+        top = run[0][2].top()
+        bottom = run[-1][2].bottom()
+        left = run[0][2].left()
+        right = run[0][2].right()
+
+        delimiter = next(
+            (i for i, (_b, info, _r) in enumerate(run) if info.type is BlockType.TABLE_DELIMITER),
+            None,
+        )
+        if delimiter is not None:
+            header = QRectF(left, top, right - left, run[delimiter][2].top() - top)
+            result.append(Decoration(DecorationKind.TABLE_HEADER, header))
+
+        for x in _pipe_positions(run[0][0], run[0][2]):
+            result.append(
+                Decoration(DecorationKind.TABLE_RULE, QRectF(x, top, RULE_HEIGHT, bottom - top))
+            )
+
+        for _block, _info, rect in run:
+            result.append(
+                Decoration(
+                    DecorationKind.TABLE_RULE, QRectF(left, rect.top(), right - left, RULE_HEIGHT)
+                )
+            )
+        result.append(
+            Decoration(DecorationKind.TABLE_RULE, QRectF(left, bottom, right - left, RULE_HEIGHT))
+        )
+
+    return result
+
+
+def _table_runs(entries) -> list[list]:
+    """連続する表の行をまとめる。"""
+    runs: list[list] = []
+    current: list = []
+    for entry in entries:
+        if entry[1].type in _TABLE_TYPES:
+            current.append(entry)
+        elif current:
+            runs.append(current)
+            current = []
+    if current:
+        runs.append(current)
+    return [run for run in runs if len(run) >= 2]
+
+
+def _pipe_positions(block: QTextBlock, geometry: QRectF) -> list[float]:
+    """行の中の `|` の x 座標。縦線を引く位置になる。"""
+    return [
+        geometry.left() + _column_x(block, index)
+        for index, character in enumerate(block.text())
+        if character == "|"
+    ]
 
 
 def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decoration]:
@@ -117,10 +192,6 @@ def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decora
                 QRectF(geometry.left(), geometry.top(), CODE_ACCENT_WIDTH, geometry.height()),
             )
         )
-
-    if info.type in _TABLE_TYPES:
-        # 等幅で揃えた縦線を「表」として読ませるための下地（§1.2）
-        result.append(Decoration(DecorationKind.TABLE_BACKGROUND, QRectF(geometry)))
 
     for depth in range(info.quote_depth):
         left = geometry.left() + LEFT_INSET + depth * QUOTE_BAR_STEP
@@ -179,6 +250,10 @@ def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) 
         match decoration.kind:
             case DecorationKind.CODE_BACKGROUND:
                 painter.fillRect(decoration.rect, QColor(theme.code_background))
+            case DecorationKind.TABLE_HEADER:
+                painter.fillRect(decoration.rect, QColor(theme.code_background))
+            case DecorationKind.TABLE_RULE:
+                painter.fillRect(decoration.rect, QColor(theme.rule))
             case DecorationKind.TABLE_BACKGROUND:
                 painter.fillRect(decoration.rect, QColor(theme.code_background))
             case DecorationKind.CODE_ACCENT:
