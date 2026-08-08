@@ -22,7 +22,7 @@ from PySide6.QtWidgets import QPlainTextEdit, QWidget
 
 from hitofude.core.document import plain_text
 from hitofude.core.models import BlockInfo
-from hitofude.editor import commands, painter_overlay
+from hitofude.editor import commands, painter_overlay, table
 from hitofude.editor.highlighter import MarkdownHighlighter
 from hitofude.editor.input_handler import EnterKind, enter_action, indent_action
 from hitofude.theme import LIGHT, ThemeColors
@@ -166,6 +166,45 @@ class MarkdownEditor(QPlainTextEdit):
         font = self.font()
         font.setFamily(family)
         self.setFont(font)
+
+    def set_mono_family(self, family: str) -> None:
+        self._highlighter.set_mono_family(family)
+
+    def format_table(self) -> bool:
+        """キャレットのある表の縦線を揃える（spec §1.2）。
+
+        WYSIWYG な表エディタは作らない代わりに、ソースを整えて等幅で見せる。
+        日本語は全角 2 桁で数えるので、文字数ではなく表示幅で揃う。
+        """
+        cursor = self.textCursor()
+        lines = self.toPlainText().split("\n")
+        found = table.find_table(lines, cursor.blockNumber())
+        if found is None:
+            return False
+
+        start, end = found
+        formatted = table.format_table(lines[start:end])
+        if formatted is None or formatted == lines[start:end]:
+            return False
+
+        column = cursor.positionInBlock()
+        document = self.document()
+        block_start = document.findBlockByNumber(start)
+        block_end = document.findBlockByNumber(end - 1)
+
+        edit = QTextCursor(block_start)
+        edit.beginEditBlock()
+        edit.setPosition(block_start.position())
+        edit.setPosition(
+            block_end.position() + block_end.length() - 1, QTextCursor.MoveMode.KeepAnchor
+        )
+        edit.insertText("\n".join(formatted))
+        edit.endEditBlock()
+
+        moved = document.findBlockByNumber(cursor.blockNumber())
+        edit.setPosition(moved.position() + min(column, max(0, moved.length() - 1)))
+        self.setTextCursor(edit)
+        return True
 
     def set_base_point_size(self, size: float) -> None:
         font = self.font()

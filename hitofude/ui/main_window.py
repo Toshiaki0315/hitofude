@@ -15,12 +15,20 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QColor,
+    QKeySequence,
+    QPainter,
+    QPaintEvent,
+)
 from PySide6.QtWidgets import (
     QFileDialog,
     QMainWindow,
     QMessageBox,
     QSplitter,
+    QSplitterHandle,
     QWidget,
 )
 
@@ -50,6 +58,36 @@ from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
 from hitofude.ui.sidebar import ALL, Filter, FilterKind, Sidebar
 
 logger = logging.getLogger(__name__)
+
+
+class _Divider(QSplitterHandle):
+    """ペインの境界に引く 1px の線。"""
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(self.splitter().rule_color))
+
+
+class PaneSplitter(QSplitter):
+    """区切り線を自前で描く QSplitter。
+
+    **スタイルシートを使わない。** `setStyleSheet()` は子ウィジェットにも
+    波及し、`QPalette` より優先されるため、エディタのテーマ切替が効かなく
+    なる（実際に踏んだ）。線 1 本のために表示系全体の仕組みを壊せない。
+    """
+
+    def __init__(self, rule_color: str, parent: QWidget | None = None) -> None:
+        super().__init__(Qt.Orientation.Horizontal, parent)
+        self.rule_color = rule_color
+        self.setHandleWidth(SPLITTER_HANDLE_WIDTH)
+
+    def createHandle(self) -> QSplitterHandle:
+        return _Divider(self.orientation(), self)
+
+    def set_rule_color(self, color: str) -> None:
+        self.rule_color = color
+        for index in range(1, self.count()):
+            self.handle(index).update()
 
 
 class _SyncReporter(QObject):
@@ -90,6 +128,8 @@ class _IndexSyncTask(QRunnable):
 DEFAULT_SIZE = (1100, 720)
 MINIMUM_SIZE = (720, 480)
 SAVE_TICK_MS = 200
+# ペインの区切り線。細くしないと掴む場所ではなく境界として読まれない
+SPLITTER_HANDLE_WIDTH = 1
 STASH_INTERVAL_SECONDS = 2.0
 NEW_NOTE_TITLE = "無題"
 
@@ -154,12 +194,13 @@ class MainWindow(QMainWindow):
             base_point_size=self._config.font_point_size,
         )
 
-        self._splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._splitter = PaneSplitter(theme.rule)
         self._splitter.addWidget(self._sidebar)
         self._splitter.addWidget(self._note_list)
         self._splitter.addWidget(self._editor)
         self._splitter.setStretchFactor(2, 1)
         self._splitter.setChildrenCollapsible(False)
+
         self.setCentralWidget(self._splitter)
 
         self._sidebar.filter_changed.connect(self._on_filter_changed)
@@ -167,7 +208,16 @@ class MainWindow(QMainWindow):
         self._editor.textChanged.connect(self._on_text_changed)
         self._theme_watcher.changed.connect(self._on_theme_changed)
 
+        self._editor.set_mono_family(self._config.mono_family)
+        self._apply_list_font()
         self._editor.setFocus()
+
+    def _apply_list_font(self) -> None:
+        """一覧の文字も本文フォントに合わせる。"""
+        font = self._note_list.font()
+        font.setFamily(self._config.font_family)
+        self._note_list.setFont(font)
+        self._note_list.viewport().update()
 
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("ファイル")
@@ -663,6 +713,8 @@ class MainWindow(QMainWindow):
         """設定を今の画面へ反映する。保管フォルダだけは再起動が要る。"""
         self._editor.set_font_family(self._config.font_family)
         self._editor.set_base_point_size(self._config.font_point_size)
+        self._editor.set_mono_family(self._config.mono_family)
+        self._apply_list_font()
         self._theme_watcher.set_mode(self._config.theme_mode)
         self._vault.purge_trash(self._config.trash_days)
 
@@ -674,9 +726,14 @@ class MainWindow(QMainWindow):
     def toggle_note_list(self) -> None:
         self._note_list.setVisible(not self._note_list.isVisible())
 
+    def _apply_splitter_style(self, theme: ThemeColors) -> None:
+        """ペインの境界に 1px の線を引く。"""
+        self._splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {theme.rule}; }}")
+
     def _on_theme_changed(self, colors: ThemeColors) -> None:
         self._editor.set_theme(colors)
         self._note_list.set_theme(colors)
+        self._splitter.set_rule_color(colors.rule)
 
     # ------------------------------------------------------------------ 終了
 

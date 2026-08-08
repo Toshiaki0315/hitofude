@@ -282,7 +282,7 @@ def classify_line(text: str, line: int, state: BlockState) -> tuple[BlockInfo, B
             in_code=True, fence_char=marker[0], fence_len=len(marker), quote_depth=0
         )
 
-    return _classify_body(text, line)
+    return _classify_body(text, line, state_in_table=state.in_table)
 
 
 def _classify_front_matter(text: str, line: int, state: BlockState) -> tuple[BlockInfo, BlockState]:
@@ -305,13 +305,15 @@ def _classify_inside_fence(text: str, line: int, state: BlockState) -> tuple[Blo
     return BlockInfo(line=line, type=BlockType.CODE_FENCE_BODY), state
 
 
-def _classify_body(text: str, line: int) -> tuple[BlockInfo, BlockState]:
+def _classify_body(
+    text: str, line: int, *, state_in_table: bool = False
+) -> tuple[BlockInfo, BlockState]:
     quote = _QUOTE_PREFIX_RE.match(text)
     quote_len = quote.end() if quote else 0
     quote_depth = text.count(">", 0, quote_len) if quote else 0
     body = text[quote_len:]
 
-    block = _classify_leaf(body, line, quote_len)
+    block = _classify_leaf(body, line, quote_len, in_table=state_in_table)
     in_table = block.type in (BlockType.TABLE_DELIMITER, BlockType.TABLE_ROW)
 
     if quote_depth:
@@ -322,7 +324,7 @@ def _classify_body(text: str, line: int) -> tuple[BlockInfo, BlockState]:
     return block, BlockState(quote_depth=quote_depth, in_table=in_table)
 
 
-def _classify_leaf(body: str, line: int, quote_len: int) -> BlockInfo:
+def _classify_leaf(body: str, line: int, quote_len: int, *, in_table: bool = False) -> BlockInfo:
     if not body.strip():
         return BlockInfo(line=line, type=BlockType.BLANK)
 
@@ -364,7 +366,9 @@ def _classify_leaf(body: str, line: int, quote_len: int) -> BlockInfo:
                 marker_len=quote_len + marker.end(),
             )
 
-    if "|" in body:
+    # `|` を含むだけでは表にしない。`価格は 100 | 税込` のような普通の文が
+    # 等幅フォントになってしまう。行頭が `|` か、区切り行の後ろにいることを要求する
+    if body.lstrip().startswith("|") or (in_table and "|" in body):
         return BlockInfo(line=line, type=BlockType.TABLE_ROW)
 
     return BlockInfo(line=line, type=BlockType.PARAGRAPH)

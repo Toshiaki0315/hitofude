@@ -36,6 +36,8 @@ _CODE_TYPES = frozenset(
     {BlockType.CODE_FENCE_OPEN, BlockType.CODE_FENCE_BODY, BlockType.CODE_FENCE_CLOSE}
 )
 
+_TABLE_TYPES = frozenset({BlockType.TABLE_ROW, BlockType.TABLE_DELIMITER})
+
 
 # spec §5.4 のフォーカスモード。現在段落以外をこの不透明度で覆う
 FOCUS_DIM_ALPHA = 150
@@ -43,6 +45,7 @@ FOCUS_DIM_ALPHA = 150
 
 class DecorationKind(Enum):
     FOCUS_DIM = auto()
+    TABLE_BACKGROUND = auto()
     CODE_BACKGROUND = auto()
     CODE_ACCENT = auto()
     QUOTE_BAR = auto()
@@ -115,6 +118,10 @@ def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decora
             )
         )
 
+    if info.type in _TABLE_TYPES:
+        # 等幅で揃えた縦線を「表」として読ませるための下地（§1.2）
+        result.append(Decoration(DecorationKind.TABLE_BACKGROUND, QRectF(geometry)))
+
     for depth in range(info.quote_depth):
         left = geometry.left() + LEFT_INSET + depth * QUOTE_BAR_STEP
         result.append(
@@ -171,6 +178,8 @@ def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) 
     for decoration in decorations:
         match decoration.kind:
             case DecorationKind.CODE_BACKGROUND:
+                painter.fillRect(decoration.rect, QColor(theme.code_background))
+            case DecorationKind.TABLE_BACKGROUND:
                 painter.fillRect(decoration.rect, QColor(theme.code_background))
             case DecorationKind.CODE_ACCENT:
                 painter.fillRect(decoration.rect, QColor(theme.accent))

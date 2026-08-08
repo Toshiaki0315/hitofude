@@ -112,6 +112,14 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._build_formats()
         self.rehighlight()  # テーマ変更は全体再ハイライトが許される数少ない場面（R7）
 
+    def set_mono_family(self, family: str) -> None:
+        """コード・表に使う等幅フォント（spec §5.2）。"""
+        if family == self._mono_family:
+            return
+        self._mono_family = family
+        self._build_formats()
+        self.rehighlight()
+
     def set_base_point_size(self, size: float) -> None:
         self._base_point_size = size
         self._build_formats()
