@@ -7,13 +7,11 @@
 
 import logging
 from collections.abc import Callable
-from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import (
     QColor,
     QFont,
-    QImage,
     QInputMethodEvent,
     QKeyEvent,
     QPainter,
@@ -28,7 +26,7 @@ from PySide6.QtWidgets import QPlainTextEdit, QTextEdit, QWidget
 from hitofude.core import frontmatter, search
 from hitofude.core.document import plain_text
 from hitofude.core.models import BlockInfo
-from hitofude.editor import commands, painter_overlay, table
+from hitofude.editor import attachments, commands, painter_overlay, table
 from hitofude.editor.highlighter import MarkdownHighlighter
 from hitofude.editor.image_cache import ImageCache
 from hitofude.editor.input_handler import EnterKind, enter_action, indent_action
@@ -45,10 +43,6 @@ _EDITING_KEYS = frozenset(
         Qt.Key.Key_Backtab,
     }
 )
-
-# 落とされたファイルを画像として扱う拡張子。ここに無いものは素通しする
-IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".heic"})
-CLIPBOARD_IMAGE_SUFFIX = ".png"
 
 DEFAULT_FONT_FAMILY = "Hiragino Sans"
 DEFAULT_POINT_SIZE = 15.0
@@ -536,72 +530,16 @@ class MarkdownEditor(QPlainTextEdit):
         return super().canInsertFromMimeData(source)
 
     def _looks_like_attachment(self, source) -> bool:
-        """添付として扱うつもりの貼り付け元か。**読めるかどうかは見ない。**
+        return self._attachment_handler is not None and attachments.looks_like_attachment(source)
 
-        読めなかったときに素通しすると、`file:///...png` という文字列が
-        本文へ落ちる。扱うつもりだったなら、失敗しても何も入れない。
-        """
-        if self._attachment_handler is None:
-            return False
-        if source.hasImage():
-            return True
-        return any(
-            url.isLocalFile() and Path(url.toLocalFile()).suffix.lower() in IMAGE_SUFFIXES
-            for url in (source.urls() if source.hasUrls() else [])
-        )
-
-    def _attachments_in(self, source) -> list[tuple[bytes, str]]:
-        """貼り付け元から取り出せる添付。無ければ空。"""
-        if self._attachment_handler is None:
-            return []
-
-        if source.hasImage():
-            data = self._encode_image(source.imageData())
-            return [(data, CLIPBOARD_IMAGE_SUFFIX)] if data else []
-
-        found: list[tuple[bytes, str]] = []
-        for url in source.urls() if source.hasUrls() else []:
-            if not url.isLocalFile():
-                continue
-            path = Path(url.toLocalFile())
-            if path.suffix.lower() not in IMAGE_SUFFIXES:
-                continue
-            try:
-                found.append((path.read_bytes(), path.suffix))
-            except OSError:
-                logger.warning("落とされたファイルを読めなかった: %s", path)
-        return found
-
-    @staticmethod
-    def _encode_image(image) -> bytes:
-        """クリップボードの画像を PNG にする。
-
-        元の形式が分からないので、**可逆な形式に決め打つ**。
-        """
-        from PySide6.QtCore import QBuffer, QByteArray
-
-        picture = image if isinstance(image, QImage) else QImage(image)
-        if picture.isNull():
-            return b""
-
-        # **`QBuffer(QByteArray())` と書かない。** 一時オブジェクトが即座に
-        # 回収され、解放済みの領域を指したまま書き込んで SIGSEGV になる。
-        # 受け皿を変数で保持してから渡す
-        storage = QByteArray()
-        buffer = QBuffer(storage)
-        buffer.open(QBuffer.OpenModeFlag.WriteOnly)
-        picture.save(buffer, "PNG")
-        buffer.close()
-        return bytes(storage)
-
-    def _insert_attachments(self, attachments: list[tuple[bytes, str]]) -> bool:
+    def _insert_attachments(self, found: list[tuple[bytes, str]]) -> bool:
         """保存して Markdown を挿す。1 回の Undo で戻せるようまとめる。"""
         handler = self._attachment_handler
         if handler is None:
             return False
 
         links = []
-        for data, suffix in attachments:
+        for data, suffix in found:
             link = handler(data, suffix)
             if link:
                 links.append(link)
@@ -621,7 +559,7 @@ class MarkdownEditor(QPlainTextEdit):
         self._guard_front_matter()
 
         if self._looks_like_attachment(source):
-            self._insert_attachments(self._attachments_in(source))
+            self._insert_attachments(attachments.extract(source))
             return
 
         cursor = self.textCursor()

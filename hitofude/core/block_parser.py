@@ -9,7 +9,7 @@
 """
 
 import re
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 
 from markdown_it import MarkdownIt
 
@@ -102,27 +102,29 @@ def _quoted_type(kind: BlockType) -> BlockType:
     return BlockType.BLOCKQUOTE if kind in (BlockType.PARAGRAPH, BlockType.BLANK) else kind
 
 
-def _apply_tokens(
-    lines: list[str],
-    offset: int,
-    drafts: list[BlockInfo | None],
-    quote_depths: list[int],
-) -> None:
-    """トークンを走査し、優先度の低い順に書き込む（後の代入が勝つ）。
+@dataclass(slots=True)
+class _Collected:
+    """トークン走査で拾った、行と種別の対応。
 
-    リスト項目の行は `paragraph_open` の範囲にも含まれるため、
-    段落を先に、リストを後に適用する必要がある。
+    走査と書き込みを分けるのは**書き込む順序に意味がある**ため。
+    リスト項目の行は `paragraph_open` の範囲にも含まれるので、段落を先に、
+    リストを後に書く必要がある（後の代入が勝つ）。走査しながら書くと
+    この順序を保てない。
     """
-    tokens = _MD.parse("\n".join(lines[offset:]))
 
-    paragraphs: list[tuple[int, int]] = []
-    tables: list[tuple[int, int]] = []
-    delimiters: list[int] = []
-    items: list[tuple[int, int, bool]] = []
-    headings: list[tuple[int, int]] = []
-    rules: list[int] = []
-    fences: list[tuple[int, int, str, str]] = []
+    indented_code: list[tuple[int, int]] = field(default_factory=list)
+    paragraphs: list[tuple[int, int]] = field(default_factory=list)
+    tables: list[tuple[int, int]] = field(default_factory=list)
+    delimiters: list[int] = field(default_factory=list)
+    items: list[tuple[int, int, bool]] = field(default_factory=list)
+    headings: list[tuple[int, int]] = field(default_factory=list)
+    rules: list[int] = field(default_factory=list)
+    fences: list[tuple[int, int, str, str]] = field(default_factory=list)
 
+
+def _collect(tokens, offset: int, quote_depths: list[int]) -> _Collected:
+    """トークンを種別ごとに仕分ける。引用の深さだけはここで確定する。"""
+    found = _Collected()
     quote_depth = 0
     list_depth = 0
     ordered = False
@@ -142,39 +144,47 @@ def _apply_tokens(
             case "bullet_list_close" | "ordered_list_close":
                 list_depth -= 1
             case "list_item_open":
-                items.append((span[0], list_depth, ordered))
+                found.items.append((span[0], list_depth, ordered))
             case "paragraph_open":
-                paragraphs.append(span)
+                found.paragraphs.append(span)
             case "heading_open":
-                headings.append((span[0], int(token.tag[1:])))
+                found.headings.append((span[0], int(token.tag[1:])))
             case "hr":
-                rules.append(span[0])
+                found.rules.append(span[0])
             case "table_open":
-                tables.append(span)
+                found.tables.append(span)
             case "thead_open":
                 # 区切り行 `|---|` はトークンにならない。ヘッダの直後にある。
-                delimiters.append(span[1])
+                found.delimiters.append(span[1])
             case "fence":
-                fences.append((span[0], span[1], token.info.strip(), token.markup))
+                found.fences.append((span[0], span[1], token.info.strip(), token.markup))
             case "code_block":
                 # 4 スペースのインデントコード。フェンスは無いが中身はコード。
-                for line in range(*span):
-                    drafts[line] = BlockInfo(line=line, type=BlockType.CODE_FENCE_BODY)
+                found.indented_code.append(span)
 
-    for start, end in paragraphs:
+    return found
+
+
+def _write(found: _Collected, lines: list[str], drafts: list[BlockInfo | None]) -> None:
+    """拾ったものを**優先度の低い順に**書き込む。後の代入が勝つ。"""
+    for start, end in found.indented_code:
+        for line in range(start, end):
+            drafts[line] = BlockInfo(line=line, type=BlockType.CODE_FENCE_BODY)
+
+    for start, end in found.paragraphs:
         for line in range(start, end):
             drafts[line] = BlockInfo(line=line, type=BlockType.PARAGRAPH)
 
-    for start, end in tables:
+    for start, end in found.tables:
         for line in range(start, end):
             drafts[line] = BlockInfo(line=line, type=BlockType.TABLE_ROW)
-    for line in delimiters:
+    for line in found.delimiters:
         drafts[line] = BlockInfo(line=line, type=BlockType.TABLE_DELIMITER)
 
-    for line, level, is_ordered in items:
+    for line, level, is_ordered in found.items:
         drafts[line] = _list_block(line, lines[line], level, is_ordered=is_ordered)
 
-    for line, level in headings:
+    for line, level in found.headings:
         marker = _HEADING_MARKER_RE.match(_strip_quote(lines[line]))
         drafts[line] = BlockInfo(
             line=line,
@@ -183,11 +193,22 @@ def _apply_tokens(
             marker_len=marker.end() if marker else 0,
         )
 
-    for line in rules:
+    for line in found.rules:
         drafts[line] = BlockInfo(line=line, type=BlockType.HORIZONTAL_RULE)
 
-    for start, end, info, markup in fences:
+    for start, end, info, markup in found.fences:
         _apply_fence(lines, drafts, start, end, info, markup)
+
+
+def _apply_tokens(
+    lines: list[str],
+    offset: int,
+    drafts: list[BlockInfo | None],
+    quote_depths: list[int],
+) -> None:
+    """markdown-it の結果を行ごとの種別へ落とす（§3.4, R8）。"""
+    tokens = _MD.parse("\n".join(lines[offset:]))
+    _write(_collect(tokens, offset, quote_depths), lines, drafts)
 
 
 def _strip_quote(text: str) -> str:
