@@ -35,6 +35,9 @@ make check
 
 `make help` で全コマンドを表示。
 
+依存を足すときは `uv add`（開発用は `uv add --dev`）を使う。
+**`pip install` は使わない** — `uv.lock` が更新されず、他の環境で結果が変わる。
+
 - 開発の作業規約: [CLAUDE.md](CLAUDE.md)
 - 仕様書（設計判断の根拠）: [docs/spec.md](docs/spec.md)
 - 実装タスクと進捗: [docs/TASKS.md](docs/TASKS.md)

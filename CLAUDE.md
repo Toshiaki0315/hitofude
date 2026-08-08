@@ -72,6 +72,27 @@ make setup
 
 素の `python` / `pip` は使わない。**必ず `uv run` 経由**で実行する。
 
+### 依存を足すときは `uv add`
+
+```bash
+uv add <pkg>          # アプリが動くのに要るもの
+uv add --dev <pkg>    # テスト・lint など開発時だけ要るもの
+```
+
+**`pip install` を使わない。** 理由は再現性で、`uv add` は `uv.lock` を
+一緒に更新するが `pip install` は更新しない。ロックと実際に入っているものが
+ずれると、CI や別のマシンで「手元では動くのに」が起きる。
+
+`uv` が作る venv には既定で `pip` が入っていないので、`pip install` は
+たいてい失敗する。**通ってしまったときのほうが危ない**（venv の外や別の
+Python に入り、ロックとの差が黙って残る）。
+
+環境がロック通りかは次で確かめられる。`Would make no changes` なら綺麗。
+
+```bash
+uv sync --dry-run
+```
+
 ---
 
 ## 3. アーキテクチャの不可侵ルール
