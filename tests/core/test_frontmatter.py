@@ -6,7 +6,7 @@ front matter は**任意**。無くても壊れずに開けることが最優先
 
 import pytest
 
-from hitofude.core.frontmatter import FrontMatter, join, split
+from hitofude.core.frontmatter import FrontMatter, body_offset, join, split
 
 BASIC = """---
 id: 01J9XQ2F8K7M3N5P
@@ -162,3 +162,45 @@ class TestFrontMatter:
         fm = FrontMatter(meta={}, body="x", body_offset=0)
         assert fm.present is False
         assert fm.invalid is False
+
+
+class TestBodyOffset:
+    """本文の開始位置だけを引く（打鍵のたびに呼ぶので YAML は読まない）。"""
+
+    def test_front_matterの後ろを指す(self) -> None:
+        text = "---\nid: ABC\n---\n本文\n"
+        assert body_offset(text) == text.index("本文")
+
+    def test_無ければ0(self) -> None:
+        assert body_offset("ただの本文\n") == 0
+
+    def test_閉じていなければ0(self) -> None:
+        """水平線で始まる本文を front matter と誤認しない。"""
+        assert body_offset("---\nid: ABC\n本文\n") == 0
+
+    def test_空でも落ちない(self) -> None:
+        assert body_offset("") == 0
+
+    def test_YAMLが壊れていても位置は返す(self) -> None:
+        """G3: メタデータが読めないことと、本文の位置は別の話。"""
+        text = "---\n: : 壊れた\n---\n本文\n"
+        assert body_offset(text) == text.index("本文")
+
+    def test_splitと同じ値になる(self) -> None:
+        text = "---\nid: ABC\ncreated: 2026-01-01\n---\n\n# 見出し\n"
+        assert body_offset(text) == split(text).body_offset
+
+    def test_CRLFでもsplitと一致する(self) -> None:
+        text = "---\r\nid: ABC\r\n---\r\n本文\r\n"
+        assert body_offset(text) == split(text).body_offset
+
+    def test_YAMLを読まないので速い(self) -> None:
+        """1 万語のノートで打鍵のたびに呼ばれる。"""
+        import time
+
+        text = "---\nid: ABC\n---\n" + "本文の行\n" * 5000
+        started = time.perf_counter()
+        for _ in range(100):
+            body_offset(text)
+        elapsed = (time.perf_counter() - started) * 1000 / 100
+        assert elapsed < 1.0, f"1 回あたり {elapsed:.3f}ms"

@@ -81,6 +81,17 @@ def _normalize(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
+def body_offset(text: str) -> int:
+    """本文の開始位置だけを返す。front matter が無ければ 0。
+
+    `split()` と同じ値を返すが、**YAML を読まない**。エディタが打鍵のたびに
+    「カーソルが front matter の中にいないか」を確かめるのに使うため、
+    `yaml.load()` まで走らせられない。
+    """
+    match = _FRONT_MATTER_RE.match(_normalize(text))
+    return match.end() if match else 0
+
+
 def split(text: str) -> FrontMatter:
     """テキストを front matter と本文に分ける。
 

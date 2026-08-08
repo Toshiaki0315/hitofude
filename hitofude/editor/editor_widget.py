@@ -20,7 +20,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QPlainTextEdit, QTextEdit, QWidget
 
-from hitofude.core import search
+from hitofude.core import frontmatter, search
 from hitofude.core.document import plain_text
 from hitofude.core.models import BlockInfo
 from hitofude.editor import commands, painter_overlay, table
@@ -28,8 +28,27 @@ from hitofude.editor.highlighter import MarkdownHighlighter
 from hitofude.editor.input_handler import EnterKind, enter_action, indent_action
 from hitofude.theme import LIGHT, ThemeColors
 
+# 本文を書き換えるキー。front matter を守るために丸める必要がある入力
+_EDITING_KEYS = frozenset(
+    {
+        Qt.Key.Key_Backspace,
+        Qt.Key.Key_Delete,
+        Qt.Key.Key_Return,
+        Qt.Key.Key_Enter,
+        Qt.Key.Key_Tab,
+        Qt.Key.Key_Backtab,
+    }
+)
+
 DEFAULT_FONT_FAMILY = "Hiragino Sans"
 DEFAULT_POINT_SIZE = 15.0
+
+
+def _modifies_text(event: QKeyEvent) -> bool:
+    """その打鍵が本文を書き換えるか。"""
+    if event.key() in _EDITING_KEYS:
+        return True
+    return bool(event.text()) and not (event.modifiers() & Qt.KeyboardModifier.ControlModifier)
 
 
 class MarkdownEditor(QPlainTextEdit):
@@ -269,6 +288,10 @@ class MarkdownEditor(QPlainTextEdit):
     def inputMethodEvent(self, event: QInputMethodEvent) -> None:
         # プリエディット文字列の有無が変換中かどうかそのもの。
         # `inputMethodQuery()` では確定前後を確実には区別できない。
+        if not self._composing:
+            # 変換の開始位置を本文の中へ寄せる。変換中に動かすと
+            # プリエディットが壊れるので、始まる前だけ
+            self._guard_front_matter()
         self._composing = bool(event.preeditString())
         super().inputMethodEvent(event)
 
@@ -281,6 +304,10 @@ class MarkdownEditor(QPlainTextEdit):
         """
         if self._composing:
             super().keyPressEvent(event)
+            return
+
+        if _modifies_text(event) and self._guard_front_matter(event):
+            event.accept()
             return
 
         plain = event.modifiers() in (
@@ -306,6 +333,40 @@ class MarkdownEditor(QPlainTextEdit):
             return
 
         super().keyPressEvent(event)
+
+    # -------------------------------------------------- front matter の保護
+
+    def _guard_front_matter(self, event: QKeyEvent | None = None) -> bool:
+        """front matter より前を編集させない。捨てるべき入力なら True。
+
+        front matter はハイライタが潰すので**画面には見えない**。位置 0 は
+        見た目の先頭でも実際には `---` の前で、そこへ打つと front matter が
+        本文の下へ押し出される。`split()` が認識できなくなり、`id` と
+        `modified` が黙って失われる（新規ノートを作ってすぐ打つと起きた）。
+
+        選択があるときは**始点だけ**を本文の先頭へ丸める。`Cmd+A` で選んで
+        打ち直す操作を、front matter を残したまま成立させるため。
+        """
+        offset = frontmatter.body_offset(self.toPlainText())
+        if offset == 0:
+            return False
+
+        cursor = self.textCursor()
+        start, end = cursor.selectionStart(), cursor.selectionEnd()
+        if start < offset:
+            cursor.setPosition(offset)
+            if end > offset:
+                cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+            self.setTextCursor(cursor)
+            cursor = self.textCursor()
+
+        # 本文の先頭で Backspace を押しても front matter を食べさせない
+        return (
+            event is not None
+            and event.key() == Qt.Key.Key_Backspace
+            and not cursor.hasSelection()
+            and cursor.position() <= offset
+        )
 
     @staticmethod
     def _is_unhandled_command(event: QKeyEvent) -> bool:
@@ -423,6 +484,7 @@ class MarkdownEditor(QPlainTextEdit):
 
     def insertFromMimeData(self, source) -> None:
         """選択があってクリップボードが URL ならリンクにする（spec §5.5-5）。"""
+        self._guard_front_matter()
         cursor = self.textCursor()
         text = source.text() if source.hasText() else ""
         if cursor.hasSelection() and commands.is_url(text):

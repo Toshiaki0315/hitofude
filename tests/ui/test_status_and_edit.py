@@ -202,3 +202,74 @@ class TestClipboardSafety:
         window.editor.selectAll()
         window.dispatch_edit("copy")
         assert "コピーされる本文" in QApplication.clipboard().text()
+
+
+class TestFrontMatterSurvives:
+    """新規ノートを作ってすぐ打つ、というアプリの主要な流れの回帰テスト。
+
+    エディタは front matter を保持しているがハイライタが潰して見えない。
+    `setPlainText()` が置くカーソル位置 0 は `---` の前にあたるため、
+    そこへ打つと front matter が本文の下へ押し出され、`id` と `modified` が
+    黙って失われていた。
+    """
+
+    def test_開いた直後のカーソルは本文の先頭にある(self, window) -> None:
+        from hitofude.core import frontmatter
+
+        path = note(window, "メモ")
+        window.open_note(path)
+        expected = frontmatter.body_offset(window.editor.toPlainText())
+        assert expected > 0
+        assert window.editor.textCursor().position() == expected
+
+    def test_新規ノートですぐ打ってもidが残る(self, window, qtbot) -> None:
+        window.new_note()
+        qtbot.keyClicks(window.editor, "# kaimono")
+        window.flush()
+
+        assert window.current_note.meta.get("id") is not None
+
+    def test_新規ノートですぐ打ってもmodifiedが残る(self, window, qtbot) -> None:
+        window.new_note()
+        qtbot.keyClicks(window.editor, "# kaimono")
+        window.flush()
+
+        assert window.current_note.meta.get("modified") is not None
+
+    def test_保存したファイルの1行目が区切りである(self, window, qtbot) -> None:
+        window.new_note()
+        qtbot.keyClicks(window.editor, "# kaimono")
+        window.flush()
+
+        text = window.current_note.path.read_text(encoding="utf-8")
+        assert text.startswith("---\n")
+
+    def test_打った内容は本文に入る(self, window, qtbot) -> None:
+        window.new_note()
+        qtbot.keyClicks(window.editor, "# kaimono")
+        window.flush()
+
+        from hitofude.core import frontmatter
+
+        body = frontmatter.split(window.current_note.path.read_text(encoding="utf-8")).body
+        assert body.startswith("# kaimono")
+
+    def test_保存のたびにmodifiedが進む(self, window, qtbot) -> None:
+        window.new_note()
+        qtbot.keyClicks(window.editor, "a")
+        window.flush()
+        first = window.current_note.meta.get("modified")
+
+        qtbot.keyClicks(window.editor, "b")
+        window.flush()
+        assert window.current_note.meta.get("modified") is not None
+        assert first is not None
+
+    def test_front_matterが無いノートは先頭から打てる(self, window, qtbot) -> None:
+        path = window.vault.root / "素のノート.md"
+        path.write_text("# midashi\n", encoding="utf-8")
+        window.vault_index.upsert_note(window.vault.read(path), window.vault.root)
+        window.refresh()
+        window.open_note(path)
+
+        assert window.editor.textCursor().position() == 0

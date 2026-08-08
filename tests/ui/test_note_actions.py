@@ -138,8 +138,19 @@ class TestPin:
         window.editor.textCursor().insertText("打ちかけの文字")
         window.toggle_pin(path)
 
-        assert "打ちかけの文字" in path.read_text(encoding="utf-8")
+        # 保存で見出しが変わるとファイル名も変わるので、今のパスを見る
+        saved = window.current_note.path
+        assert "打ちかけの文字" in saved.read_text(encoding="utf-8")
         assert "打ちかけの文字" in window.editor.toPlainText()
+
+    def test_保存で改名されてもピン留めできる(self, window) -> None:
+        """`flush()` がファイル名を変えるので、古いパスを掴んだままにしない。"""
+        path = make_note(window, "開いているノート")
+        window.open_note(path)
+        window.editor.textCursor().insertText("# 変わった見出し\n\n")
+
+        assert window.toggle_pin(path) is True
+        assert window.current_note.pinned is True
 
     def test_開いているノートでカーソルが飛ばない(self, window) -> None:
         path = make_note(window, "開いているノート", "一行目\n二行目\n三行目\n")

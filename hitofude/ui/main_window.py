@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
 from hitofude import APP_NAME, __version__
 from hitofude.app import ThemeWatcher
 from hitofude.config import Config
+from hitofude.core import frontmatter
 from hitofude.core.document import Note
 from hitofude.core.stats import count as count_text
 from hitofude.editor import exporter
@@ -551,11 +552,15 @@ class MainWindow(QMainWindow):
         ピン留めは front matter を書き換えるので、**エディタが古い本文の
         ままだと次の保存でピン留めが黙って消える**。
         """
-        if not path.is_file():
-            return False
         current = self._note is not None and self._note.path == path
         if current:
             self.flush()
+            # 保存でタイトルが変わるとファイル名も変わる（`_rename_if_title_changed`）。
+            # 古いパスを掴んだままだと、存在しないファイルを読みに行く
+            if self._note is not None:
+                path = self._note.path
+        if not path.is_file():
+            return False
 
         self._watcher.suppress(path)
         note = self._vault.set_pinned(path, not self._is_pinned(path))
@@ -577,6 +582,14 @@ class MainWindow(QMainWindow):
         self._db.remove_path(self._vault.root, path)
         self.refresh()
 
+    def _place_cursor_at_body(self, text: str) -> None:
+        offset = frontmatter.body_offset(text)
+        if offset == 0:
+            return
+        cursor = self._editor.textCursor()
+        cursor.setPosition(offset)
+        self._editor.setTextCursor(cursor)
+
     def _reload_open_note(self, note: Note) -> None:
         """開いているノートの本文をディスクの内容へ差し替える。
 
@@ -589,7 +602,9 @@ class MainWindow(QMainWindow):
         try:
             self._editor.setPlainText(note.text)
             cursor = self._editor.textCursor()
-            cursor.setPosition(min(position, self._editor.document().characterCount() - 1))
+            limit = self._editor.document().characterCount() - 1
+            body = frontmatter.body_offset(note.text)
+            cursor.setPosition(max(body, min(position, limit)))
             self._editor.setTextCursor(cursor)
             self._editor.document().setModified(False)
         finally:
@@ -626,6 +641,10 @@ class MainWindow(QMainWindow):
         self._loading = True
         try:
             self._editor.setPlainText(note.text)
+            # `setPlainText()` はカーソルを位置 0 に置くが、そこは front matter の
+            # 前にあたる。front matter は画面に見えないので、ユーザーは本文の
+            # 先頭にいるつもりで打ち始める（R4 により位置と文字数は 1:1）
+            self._place_cursor_at_body(note.text)
             self._editor.document().setModified(False)
         finally:
             self._loading = False
