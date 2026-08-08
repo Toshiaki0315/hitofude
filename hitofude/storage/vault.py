@@ -31,6 +31,11 @@ MANAGED_DIR = ".hitofude"
 DEFAULT_TRASH_DAYS = 30
 UNTITLED = "無題"
 
+MANUAL_TITLE = "Hitofude の使い方"
+MANUAL_RESOURCE = "manual.md"
+# 一度置いたら二度と置き直さない印。ユーザーが消したものを復活させない
+SEED_MARKER = "seeded"
+
 # ファイル名の上限は 255 バイト。日本語は 1 文字 3 バイトなので余裕を取る
 MAX_FILENAME_BYTES = 200
 
@@ -65,6 +70,16 @@ def unique_path(directory: Path, stem: str, suffix: str = ".md") -> Path:
         candidate = directory / f"{stem}-{index}{suffix}"
         index += 1
     return candidate
+
+
+def _read_resource(name: str) -> str | None:
+    """同梱リソースを読む。無くても起動を止めない。"""
+    from importlib.resources import files
+
+    try:
+        return (files("hitofude.resources") / name).read_text(encoding="utf-8")
+    except (FileNotFoundError, ModuleNotFoundError, OSError):
+        return None
 
 
 def _now() -> str:
@@ -172,6 +187,31 @@ class Vault:
         target = unique_path(self.root, path.stem, path.suffix)
         path.replace(target)
         return target
+
+    # ----------------------------------------------------------------- 初回
+
+    def is_empty(self) -> bool:
+        return next(iter(self.scan()), None) is None
+
+    def seed_manual(self) -> Note | None:
+        """初回だけ使い方ノートを置く。置いたノートを返す。置かなければ None。
+
+        条件は「vault が空」かつ「まだ置いたことがない」。印を `.hitofude` に
+        残すのは、**ユーザーが消したマニュアルを起動のたびに復活させない**ため。
+        印は消えてもよい（R9 と同じ扱い。最悪もう一度置かれるだけ）。
+        """
+        marker = self.managed_dir / SEED_MARKER
+        if marker.exists() or not self.is_empty():
+            return None
+
+        text = _read_resource(MANUAL_RESOURCE)
+        if text is None:
+            return None
+
+        note = self.create(MANUAL_TITLE, text)
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(_now(), encoding="utf-8")
+        return note
 
     def purge_trash(self, days: int = DEFAULT_TRASH_DAYS) -> list[Path]:
         """期限を過ぎたゴミ箱の中身を消す（spec §7.6）。起動時に呼ぶ。"""

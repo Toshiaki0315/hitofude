@@ -22,6 +22,10 @@ def window(qtbot, tmp_path: Path) -> MainWindow:
     settings = QSettings(str(tmp_path / "test.ini"), QSettings.Format.IniFormat)
     config = Config(settings)
     config.vault_path = tmp_path / "HitofudeNotes"
+    # 使い方ノートを置かせない（件数を数えるテストがずれるため）
+    marker = config.vault_path / ".hitofude" / "seeded"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("test", encoding="utf-8")
 
     widget = MainWindow(config)
     qtbot.addWidget(widget)

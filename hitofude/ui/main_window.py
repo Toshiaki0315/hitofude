@@ -172,6 +172,7 @@ class MainWindow(QMainWindow):
         self._sync_reporter.failed.connect(self._on_index_sync_failed)
         self._syncing_index = False
 
+        self._seed_manual()
         self.refresh()  # 前回の索引で先に描く。走査を待たずに操作できる
         self.start_index_sync()
         self.offer_recovery()
@@ -299,6 +300,15 @@ class MainWindow(QMainWindow):
     @property
     def current_note(self) -> Note | None:
         return self._note
+
+    def _seed_manual(self) -> None:
+        """初回起動なら使い方ノートを置いて開く（サンプル兼マニュアル）。"""
+        note = self._vault.seed_manual()
+        if note is None:
+            return
+        self._db.upsert_note(note, self._vault.root)
+        self.open_note(note.path)
+        logger.info("使い方ノートを置いた: %s", note.path.name)
 
     # ------------------------------------------------------------ リカバリ
 

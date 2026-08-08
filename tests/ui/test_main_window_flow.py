@@ -22,6 +22,11 @@ def config(tmp_path: Path, qapp) -> Config:
     settings = QSettings(str(tmp_path / "test.ini"), QSettings.Format.IniFormat)
     config = Config(settings)
     config.vault_path = tmp_path / "HitofudeNotes"
+    # 使い方ノートを置かせない。件数を数えるテストが 1 件ずれるため。
+    # 初回ノートそのものは TestWelcomeNote が見る
+    marker = config.vault_path / ".hitofude" / "seeded"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("test", encoding="utf-8")
     return config
 
 
@@ -608,3 +613,64 @@ class TestRefreshDoesNotReopen:
         window.note_list.note_activated.connect(opened.append)
         window.note_list.setCurrentIndex(window.note_list.model().index(1))
         assert len(opened) == 1
+
+
+class TestWelcomeNote:
+    """初回起動時の使い方ノート（ユーザー要望）。
+
+    他のテストは件数がずれるので置かせていない。ここだけ本来の挙動を見る。
+    """
+
+    @pytest.fixture
+    def fresh_config(self, tmp_path: Path, qapp) -> Config:
+        settings = QSettings(str(tmp_path / "fresh.ini"), QSettings.Format.IniFormat)
+        config = Config(settings)
+        config.vault_path = tmp_path / "FreshVault"
+        return config
+
+    def test_初回起動で置かれて開かれる(self, qtbot, fresh_config) -> None:
+        window = MainWindow(fresh_config)
+        qtbot.addWidget(window)
+        try:
+            assert window.note_list.model().rowCount() == 1
+            assert window.current_note is not None
+            assert "使い方" in window.current_note.path.name
+            assert "Markdown" in window.editor.toPlainText()
+        finally:
+            window.close()
+
+    def test_二度目の起動では増えない(self, qtbot, fresh_config) -> None:
+        first = MainWindow(fresh_config)
+        qtbot.addWidget(first)
+        first.close()
+
+        second = MainWindow(fresh_config)
+        qtbot.addWidget(second)
+        try:
+            assert second.note_list.model().rowCount() == 1
+        finally:
+            second.close()
+
+    def test_消したら復活しない(self, qtbot, fresh_config) -> None:
+        first = MainWindow(fresh_config)
+        qtbot.addWidget(first)
+        path = first.current_note.path
+        first.trash_current()
+        first.close()
+
+        second = MainWindow(fresh_config)
+        qtbot.addWidget(second)
+        try:
+            assert second.note_list.model().rowCount() == 0
+            assert not path.exists()
+        finally:
+            second.close()
+
+    def test_タグが索引に入る(self, qtbot, fresh_config) -> None:
+        window = MainWindow(fresh_config)
+        qtbot.addWidget(window)
+        try:
+            window.wait_for_index_sync()
+            assert [t.tag for t in window._db.tag_tree()]
+        finally:
+            window.close()
