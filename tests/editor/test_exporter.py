@@ -96,3 +96,64 @@ class TestSourceUntouched:
         source.write_text(SOURCE, encoding="utf-8")
         write_html(tmp_path / "out.html", source.read_text(encoding="utf-8"))
         assert source.read_text(encoding="utf-8") == SOURCE
+
+
+class TestMarkdown:
+    """Markdown での書き出し（ユーザー要望）。"""
+
+    def test_ファイルに書ける(self, qapp, tmp_path: Path) -> None:
+        from hitofude.editor.exporter import write_markdown
+
+        target = write_markdown(tmp_path / "out.md", SOURCE)
+        assert target.is_file()
+
+    def test_マーカーがそのまま残る(self, qapp, tmp_path: Path) -> None:
+        """R1: Markdown 書き出しは変換ではない。ソースがそのまま出る。"""
+        from hitofude.editor.exporter import write_markdown
+
+        target = write_markdown(tmp_path / "out.md", SOURCE)
+        written = target.read_text(encoding="utf-8")
+        assert "**強調**" in written
+        assert "`コード`" in written
+        assert "[リンク](https://example.com)" in written
+        assert "```python" in written
+
+    def test_front_matterは出さない(self, qapp, tmp_path: Path) -> None:
+        """HTML / PDF と同じ扱い。`id` や `modified` は共有相手に不要。"""
+        from hitofude.editor.exporter import write_markdown
+
+        written = write_markdown(tmp_path / "out.md", SOURCE).read_text(encoding="utf-8")
+        assert "ABC123" not in written
+        assert not written.startswith("---")
+
+    def test_front_matterを残すこともできる(self, qapp, tmp_path: Path) -> None:
+        from hitofude.editor.exporter import write_markdown
+
+        target = write_markdown(tmp_path / "out.md", SOURCE, keep_front_matter=True)
+        assert "ABC123" in target.read_text(encoding="utf-8")
+
+    def test_改行はLFで書く(self, qapp, tmp_path: Path) -> None:
+        from hitofude.editor.exporter import write_markdown
+
+        target = write_markdown(tmp_path / "out.md", "一行目\r\n二行目\r\n")
+        assert b"\r\n" not in target.read_bytes()
+
+    def test_末尾に改行を付ける(self, qapp, tmp_path: Path) -> None:
+        """行末に改行が無い .md は他のツールで扱いにくい。"""
+        from hitofude.editor.exporter import write_markdown
+
+        target = write_markdown(tmp_path / "out.md", "改行なし")
+        assert target.read_text(encoding="utf-8").endswith("\n")
+
+    def test_空でも壊れない(self, qapp, tmp_path: Path) -> None:
+        from hitofude.editor.exporter import write_markdown
+
+        assert write_markdown(tmp_path / "empty.md", "").is_file()
+
+    def test_書き出しても元のノートは変わらない(self, qapp, tmp_path: Path) -> None:
+        from hitofude.editor.exporter import write_markdown
+
+        source = tmp_path / "note.md"
+        source.write_text(SOURCE, encoding="utf-8")
+        write_markdown(tmp_path / "out.md", source.read_text(encoding="utf-8"))
+        assert source.read_text(encoding="utf-8") == SOURCE

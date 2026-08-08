@@ -50,6 +50,25 @@ def write_html(path: Path, text: str, *, title: str = "", theme: ThemeColors = L
     return path
 
 
+def write_markdown(path: Path, text: str, *, keep_front_matter: bool = False) -> Path:
+    """Markdown のまま書き出す。
+
+    HTML / PDF と違い**変換を挟まない**。マーカーはソースのまま出る。
+    Markdown は変換先ではなく元の形式なので、ここで手を加える理由がない（R1）。
+
+    front matter は既定で落とす。`id` や `modified` はこのアプリの管理情報で、
+    共有相手には意味がない。HTML / PDF と同じ扱い。vault のファイルそのものが
+    欲しいときは Finder でコピーすればよい。
+    """
+    body = text if keep_front_matter else frontmatter.split(text).body
+    normalized = body.replace("\r\n", "\n").replace("\r", "\n")
+    if normalized and not normalized.endswith("\n"):
+        # 行末に改行が無い `.md` は他のツールで扱いにくい
+        normalized += "\n"
+    path.write_text(normalized, encoding="utf-8", newline="\n")
+    return path
+
+
 def write_pdf(
     path: Path, text: str, *, theme: ThemeColors = LIGHT, base_point_size: float = 15.0
 ) -> Path:

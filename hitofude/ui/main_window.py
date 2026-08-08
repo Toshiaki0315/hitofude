@@ -227,6 +227,7 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
         self._add_action(file_menu, "ゴミ箱へ移動", "Ctrl+Backspace", self.trash_current)
         file_menu.addSeparator()
+        self._add_action(file_menu, "Markdown で書き出す…", "Ctrl+Shift+M", self.export_markdown)
         self._add_action(file_menu, "HTML で書き出す…", "Ctrl+Shift+E", self.export_html)
         self._add_action(file_menu, "PDF で書き出す…", "Ctrl+P", self.export_pdf)
 
@@ -676,14 +677,19 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------ エクスポート
 
+    def export_markdown(self) -> Path | None:
+        """Markdown のまま書き出す。変換を挟まない。"""
+        return self._export("Markdown で書き出す", "Markdown (*.md)", ".md", self._write_markdown)
+
     def export_html(self) -> Path | None:
         """spec §9 Phase 6。R2 の例外はエクスポート層に閉じている。"""
-        return self._export("HTML で書き出す", "HTML (*.html)", ".html", exporter.write_html)
+        return self._export("HTML で書き出す", "HTML (*.html)", ".html", self._write_html)
 
     def export_pdf(self) -> Path | None:
-        return self._export("PDF で書き出す", "PDF (*.pdf)", ".pdf", exporter.write_pdf)
+        return self._export("PDF で書き出す", "PDF (*.pdf)", ".pdf", self._write_pdf)
 
     def _export(self, caption: str, filter_: str, suffix: str, writer) -> Path | None:
+        """保存先を尋ねて書き出す。`writer` は `(Path, str) -> Path`。"""
         if self._note is None:
             return None
         self.flush()
@@ -691,19 +697,21 @@ class MainWindow(QMainWindow):
         chosen, _ = QFileDialog.getSaveFileName(self, caption, suggested, filter_)
         if not chosen:
             return None
-        return self._write_export(Path(chosen), writer)
+        return writer(Path(chosen), self._editor.toPlainText())
 
-    def _write_export(self, target: Path, writer) -> Path:
-        """ダイアログを介さず呼べるようにしてある（テスト用）。"""
-        text = self._editor.toPlainText()
-        if writer is exporter.write_html:
-            return writer(
-                target,
-                text,
-                title=self._note.title if self._note else "",
-                theme=self._theme_watcher.colors,
-            )
-        return writer(
+    def _write_markdown(self, target: Path, text: str) -> Path:
+        return exporter.write_markdown(target, text)
+
+    def _write_html(self, target: Path, text: str) -> Path:
+        return exporter.write_html(
+            target,
+            text,
+            title=self._note.title if self._note else "",
+            theme=self._theme_watcher.colors,
+        )
+
+    def _write_pdf(self, target: Path, text: str) -> Path:
+        return exporter.write_pdf(
             target,
             text,
             theme=self._theme_watcher.colors,
