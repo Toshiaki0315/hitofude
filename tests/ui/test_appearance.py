@@ -7,7 +7,8 @@ from PySide6.QtCore import QSettings, Qt
 
 from hitofude.config import Config
 from hitofude.theme import DARK, LIGHT, ThemeMode
-from hitofude.ui.main_window import SPLITTER_HANDLE_WIDTH, MainWindow
+from hitofude.ui.main_window import MainWindow
+from hitofude.ui.panes import SPLITTER_HANDLE_WIDTH
 
 pytestmark = pytest.mark.gui
 

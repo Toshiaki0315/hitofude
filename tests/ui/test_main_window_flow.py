@@ -483,9 +483,9 @@ class TestBackgroundIndexSync:
 
         ワーカーは db のパスだけを受け取り、自分で開く。
         """
-        from hitofude.ui.main_window import _IndexSyncTask
+        from hitofude.ui.index_sync import IndexSyncTask
 
-        task = _IndexSyncTask(window._db.path, window.vault, window._sync_reporter)
+        task = IndexSyncTask(window._db.path, window.vault, window._sync_reporter)
         assert task._db_path == window._db.path
         assert not hasattr(task, "_db")
 

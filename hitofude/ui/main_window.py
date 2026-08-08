@@ -12,17 +12,11 @@
 import logging
 import time
 from datetime import datetime
-from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
+from PySide6.QtCore import Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import (
-    QAction,
     QCloseEvent,
-    QColor,
-    QKeySequence,
-    QPainter,
-    QPaintEvent,
     QTextCursor,
 )
 from PySide6.QtWidgets import (
@@ -33,14 +27,12 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
-    QSplitter,
-    QSplitterHandle,
     QWidget,
 )
 
 from hitofude import APP_NAME, __version__
 from hitofude.app import ThemeWatcher
-from hitofude.config import DEFAULT_SPLITTER_SIZES, Config
+from hitofude.config import Config
 from hitofude.core import frontmatter
 from hitofude.core.document import Note, with_title
 from hitofude.core.stats import count as count_text
@@ -61,7 +53,14 @@ from hitofude.storage.watcher import ChangeKind, VaultWatcher
 from hitofude.theme import ThemeColors
 from hitofude.ui.conflict_dialog import ConflictDialog, Resolution
 from hitofude.ui.editor_pane import EditorPane
+from hitofude.ui.index_sync import IndexSyncTask, SyncReporter
+from hitofude.ui.menus import build_menus
 from hitofude.ui.note_list import NoteListView, NoteRole
+from hitofude.ui.panes import (
+    NOTE_LIST_MIN_WIDTH,
+    SIDEBAR_MIN_WIDTH,
+    PaneSplitter,
+)
 from hitofude.ui.preferences import PreferencesDialog
 from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
 from hitofude.ui.sidebar import ALL, Filter, FilterKind, Sidebar
@@ -69,80 +68,9 @@ from hitofude.ui.sidebar import ALL, Filter, FilterKind, Sidebar
 logger = logging.getLogger(__name__)
 
 
-class _Divider(QSplitterHandle):
-    """ペインの境界に引く 1px の線。"""
-
-    def paintEvent(self, event: QPaintEvent) -> None:
-        painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor(self.splitter().rule_color))
-
-
-class PaneSplitter(QSplitter):
-    """区切り線を自前で描く QSplitter。
-
-    **スタイルシートを使わない。** `setStyleSheet()` は子ウィジェットにも
-    波及し、`QPalette` より優先されるため、エディタのテーマ切替が効かなく
-    なる（実際に踏んだ）。線 1 本のために表示系全体の仕組みを壊せない。
-    """
-
-    def __init__(self, rule_color: str, parent: QWidget | None = None) -> None:
-        super().__init__(Qt.Orientation.Horizontal, parent)
-        self.rule_color = rule_color
-        self.setHandleWidth(SPLITTER_HANDLE_WIDTH)
-
-    def createHandle(self) -> QSplitterHandle:
-        return _Divider(self.orientation(), self)
-
-    def set_rule_color(self, color: str) -> None:
-        self.rule_color = color
-        for index in range(1, self.count()):
-            self.handle(index).update()
-
-
-class _SyncReporter(QObject):
-    """ワーカーから Qt スレッドへ結果を渡すための口。"""
-
-    finished = Signal(object)
-    failed = Signal(object)
-
-
-class _IndexSyncTask(QRunnable):
-    """vault の走査を背景で回す（spec §6.6, §7.3）。
-
-    5,000 ノートの初回構築は約 10 秒かかる。同期で走らせると、その間
-    ウィンドウが固まって操作できない。UI 側は前回の索引を読んだまま
-    操作でき、走査が終わったら一覧を差し替える。
-
-    **ワーカーは自分の `IndexDb` を開く。** sqlite3 の接続はスレッドを
-    またげないため、UI 側の接続を使い回してはいけない。
-    """
-
-    def __init__(self, db_path: Path, vault: Vault, reporter: _SyncReporter) -> None:
-        super().__init__()
-        self._db_path = db_path
-        self._vault = vault
-        self._reporter = reporter
-
-    def run(self) -> None:
-        try:
-            with IndexDb(self._db_path) as db:
-                result = db.sync(self._vault)
-        except Exception as error:
-            logger.exception("索引の同期に失敗した")
-            self._reporter.failed.emit(error)
-            return
-        self._reporter.finished.emit(result)
-
-
 DEFAULT_SIZE = (1100, 720)
 MINIMUM_SIZE = (720, 480)
 SAVE_TICK_MS = 200
-# ペインの区切り線。細くしないと掴む場所ではなく境界として読まれない
-SPLITTER_HANDLE_WIDTH = 1
-# ペインの最小幅。spec §5.1 の既定（180 / 280）より少し狭いところまでは
-# 縮められるが、それ以下には潰れないようにする
-SIDEBAR_MIN_WIDTH = 140
-NOTE_LIST_MIN_WIDTH = 200
 STASH_INTERVAL_SECONDS = 2.0
 # 文字数を数え直すまでの待ち。38,000 字のノートで 40ms 掛かる（実測）ので
 # 1 打ごとには数えられない
@@ -168,9 +96,6 @@ class MainWindow(QMainWindow):
         self._opening = False
         self._filter: Filter = ALL
 
-        # 隠す直前の幅。隠すと `QSplitter` の値が 0 になり、元の幅が失われる
-        self._pane_widths: dict[int, int] = {}
-
         self._build_ui()
         self._build_menus()
         self._restore_layout()
@@ -190,7 +115,7 @@ class MainWindow(QMainWindow):
         # **親を付けない。** ウィンドウの子にすると、ワーカーが結果を返す前に
         # ウィンドウごと破棄されて "Signal source has been deleted" で落ちる。
         # Python 側の参照（ここと QRunnable）が生存を保つ
-        self._sync_reporter = _SyncReporter()
+        self._sync_reporter = SyncReporter()
         self._sync_reporter.finished.connect(self._on_index_synced)
         self._sync_reporter.failed.connect(self._on_index_sync_failed)
         self._syncing_index = False
@@ -265,74 +190,7 @@ class MainWindow(QMainWindow):
         self._note_list.viewport().update()
 
     def _build_menus(self) -> None:
-        file_menu = self.menuBar().addMenu("ファイル")
-        self._add_action(file_menu, "新規ノート", QKeySequence.StandardKey.New, self.new_note)
-        self._add_action(file_menu, "保存", QKeySequence.StandardKey.Save, self.flush)
-        file_menu.addSeparator()
-        self._add_action(file_menu, "ピン留め", "Ctrl+Shift+P", self.toggle_pin_current)
-        self._add_action(file_menu, "ゴミ箱へ移動", "Ctrl+Backspace", self.trash_current)
-        file_menu.addSeparator()
-        self._add_action(file_menu, "Markdown で書き出す…", "Ctrl+Shift+M", self.export_markdown)
-        self._add_action(file_menu, "HTML で書き出す…", "Ctrl+Shift+E", self.export_html)
-        self._add_action(file_menu, "PDF で書き出す…", "Ctrl+P", self.export_pdf)
-
-        # StandardKey.Preferences はこの環境で空を返し、キーボードから
-        # 到達できなくなる。macOS の慣習どおり明示する
-        self._add_action(file_menu, "環境設定…", "Ctrl+,", self.open_preferences)
-
-        search_menu = self.menuBar().addMenu("検索")
-        self._add_action(search_menu, "クイックオープン", "Ctrl+O", self.quick_open)
-        self._add_action(search_menu, "全文検索", "Ctrl+Shift+F", self.full_text_search)
-        search_menu.addSeparator()
-        self._add_action(search_menu, "このノート内を検索", "Ctrl+F", self._pane.open_find)
-        self._add_action(search_menu, "次を検索", "Ctrl+G", self._pane.find_again)
-        self._add_action(
-            search_menu, "前を検索", "Ctrl+Shift+G", lambda: self._pane.find_again(backward=True)
-        )
-
-        edit_menu = self.menuBar().addMenu("編集")
-        # **フォーカスのあるウィジェットへ渡す。** ここで登録した
-        # ショートカットはウィンドウ全体に効くので、素通しにすると
-        # 検索欄で Cmd+A を押したのに本文が全選択される
-        for label, key, name in (
-            ("取り消す", QKeySequence.StandardKey.Undo, "undo"),
-            ("やり直す", QKeySequence.StandardKey.Redo, "redo"),
-            ("切り取り", QKeySequence.StandardKey.Cut, "cut"),
-            ("コピー", QKeySequence.StandardKey.Copy, "copy"),
-            ("貼り付け", QKeySequence.StandardKey.Paste, "paste"),
-            ("すべて選択", QKeySequence.StandardKey.SelectAll, "selectAll"),
-        ):
-            self._add_action(edit_menu, label, key, partial(self.dispatch_edit, name))
-        edit_menu.addSeparator()
-        # **Option を含むショートカットは使わない。** macOS では Option が
-        # 文字合成に使われ、Cmd+Option+T は `†` を生む。ショートカットが
-        # 発火せず、選択中だと選択範囲がその 1 文字に置き換わって消える
-        self._add_action(edit_menu, "表を整形", "Ctrl+Shift+L", self._editor.format_table)
-
-        view_menu = self.menuBar().addMenu("表示")
-        self._add_action(view_menu, "直前のノートへ戻る", "Ctrl+[", self.open_previous_note)
-        view_menu.addSeparator()
-        self._add_action(view_menu, "サイドバー", "Ctrl+1", self.toggle_sidebar)
-        self._add_action(view_menu, "ノートリスト", "Ctrl+2", self.toggle_note_list)
-        view_menu.addSeparator()
-        self._add_action(view_menu, "ソースモード", "Ctrl+/", self._editor.toggle_source_mode)
-        self._add_action(
-            view_menu, "フォーカスモード", "Ctrl+Shift+D", self._editor.toggle_focus_mode
-        )
-        self._add_action(
-            view_menu, "タイプライタモード", "Ctrl+Shift+Y", self._editor.toggle_typewriter_mode
-        )
-
-        help_menu = self.menuBar().addMenu("ヘルプ")
-        self._add_action(help_menu, f"{APP_NAME} について", "", self.show_about)
-
-    def _add_action(self, menu, label: str, shortcut, slot) -> QAction:
-        action = QAction(label, self)
-        action.setShortcut(QKeySequence(shortcut))
-        action.triggered.connect(slot)
-        menu.addAction(action)
-        self.addAction(action)  # メニューを開かなくてもショートカットが効くように
-        return action
+        build_menus(self)
 
     def _restore_layout(self) -> None:
         geometry = self._config.window_geometry
@@ -342,34 +200,7 @@ class MainWindow(QMainWindow):
         # 順序が逆だと割り当てた幅がその場で捨てられる
         self._sidebar.setVisible(self._config.sidebar_visible)
         self._note_list.setVisible(self._config.note_list_visible)
-        stored = self._config.splitter_sizes
-        for index in range(min(len(stored), self._splitter.count())):
-            if stored[index] >= self._splitter.widget(index).minimumWidth():
-                self._pane_widths[index] = stored[index]
-        self._splitter.setSizes(self._usable_sizes(stored))
-
-    def _usable_sizes(self, sizes: list[int]) -> list[int]:
-        """潰れた幅を既定へ戻す。
-
-        ペインを隠すと `QSplitter` はその幅を 0 にし、`closeEvent` がそのまま
-        保存する。次の起動でも 0 のまま復元されるため、**表示されているのに
-        幅 0 のペイン**ができていた。
-
-        戻すのは最小幅を下回っているときだけ。手で狭めた幅は保つ。
-        広げた分はエディタから借りて**合計を変えない**。合計がウィンドウ幅と
-        食い違うと `QSplitter` が比例配分し直し、せっかく戻した幅が縮む。
-        """
-        restored = list(sizes)
-        for index in range(min(len(restored), self._splitter.count())):
-            widget = self._splitter.widget(index)
-            # `isVisible()` はウィンドウを表示するまで常に False。ここは
-            # まだ `show()` の前なので、隠す意図があるかを `isHidden()` で見る
-            if widget.isHidden() or restored[index] >= widget.minimumWidth():
-                continue
-            wanted = max(DEFAULT_SPLITTER_SIZES[index], widget.minimumWidth())
-            restored[-1] = max(1, restored[-1] - (wanted - restored[index]))
-            restored[index] = wanted
-        return restored
+        self._splitter.restore_sizes(self._config.splitter_sizes)
 
     # ------------------------------------------------------------------ 参照
 
@@ -503,7 +334,7 @@ class MainWindow(QMainWindow):
             return
         self._syncing_index = True
         QThreadPool.globalInstance().start(
-            _IndexSyncTask(self._db.path, self._vault, self._sync_reporter)
+            IndexSyncTask(self._db.path, self._vault, self._sync_reporter)
         )
 
     def wait_for_index_sync(self, timeout_ms: int = 30000) -> bool:
@@ -1165,53 +996,14 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ 表示
 
     def toggle_sidebar(self) -> None:
-        self._toggle_pane(0)
+        self._splitter.toggle_pane(0)
 
     def toggle_note_list(self) -> None:
-        self._toggle_pane(1)
-
-    def _toggle_pane(self, index: int) -> None:
-        """ペインの表示を切り替える。出すときは使える幅を確保する。
-
-        隠したペインの幅は 0 になっている。`setVisible(True)` だけでは 0 の
-        ままなので、見えているつもりで見えないペインが残る。
-        """
-        widget = self._splitter.widget(index)
-        showing = widget.isHidden()
-        if not showing:
-            self._pane_widths[index] = self._splitter.sizes()[index]
-        widget.setVisible(showing)
-        if showing:
-            self._grow_pane(index)
-
-    def _grow_pane(self, index: int) -> None:
-        sizes = self._splitter.sizes()
-        widget = self._splitter.widget(index)
-        if sizes[index] >= widget.minimumWidth():
-            return
-
-        # 隠す前の幅へ戻す。覚えていなければ既定
-        wanted = self._pane_widths.get(index, DEFAULT_SPLITTER_SIZES[index])
-        wanted = max(wanted, widget.minimumWidth())
-        # 広げた分はエディタから借りる。全体の合計を変えないため
-        sizes[-1] = max(1, sizes[-1] - (wanted - sizes[index]))
-        sizes[index] = wanted
-        self._splitter.setSizes(sizes)
+        self._splitter.toggle_pane(1)
 
     def _apply_splitter_style(self, theme: ThemeColors) -> None:
         """ペインの境界に 1px の線を引く。"""
         self._splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {theme.rule}; }}")
-
-    def _sizes_to_keep(self) -> list[int]:
-        """保存する幅。隠れているペインは前回の値を残す。
-
-        隠れたペインの幅は 0 になる。そのまま保存すると、次に出したときに
-        ユーザーが決めた幅へ戻せない。
-        """
-        return [
-            self._pane_widths.get(index, size) if self._splitter.widget(index).isHidden() else size
-            for index, size in enumerate(self._splitter.sizes())
-        ]
 
     def _on_theme_changed(self, colors: ThemeColors) -> None:
         self._pane.set_theme(colors)
@@ -1228,7 +1020,7 @@ class MainWindow(QMainWindow):
         # **`isVisible()` を使わない。** ウィンドウ自体が隠れていると子も
         # False を返すため、`Cmd+H` で隠してから終了すると、出していたペインが
         # 「隠す」で保存され、次の起動が真っ白な窓になる（実際に踏んだ）
-        self._config.splitter_sizes = self._sizes_to_keep()
+        self._config.splitter_sizes = self._splitter.sizes_to_keep()
         self._config.sidebar_visible = not self._sidebar.isHidden()
         self._config.note_list_visible = not self._note_list.isHidden()
         self._config.window_geometry = self.saveGeometry()
