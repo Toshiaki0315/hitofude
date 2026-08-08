@@ -80,6 +80,9 @@ class TestVaultSetup:
         window = MainWindow(config)
         qtbot.addWidget(window)
         try:
+            # 走査は背景で回るので、終わるまで待つ（§6.6）
+            with qtbot.waitSignal(window.index_synced, timeout=15000):
+                pass
             assert window.note_list.model().rowCount() == 1
         finally:
             window.close()
@@ -421,3 +424,187 @@ class TestFullTextSearch:
         target = window._search_items("予算について")[0]
         window._on_palette_chosen(target.path)
         assert "予算" in window.editor.toPlainText()
+
+
+class TestBackgroundIndexSync:
+    """spec §6.6, §7.3: 起動時の走査は背景で回す。"""
+
+    def test_起動直後に走査が終わる(self, window, qtbot) -> None:
+        assert window.wait_for_index_sync() is True
+
+    def test_既存ノートが走査で拾われる(self, qtbot, config) -> None:
+        vault_root = config.vault_path
+        vault_root.mkdir(parents=True, exist_ok=True)
+        for index in range(3):
+            (vault_root / f"既存{index}.md").write_text(
+                f"# 既存{index}\n\n本文\n", encoding="utf-8"
+            )
+
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+        try:
+            with qtbot.waitSignal(window.index_synced, timeout=15000) as blocker:
+                pass
+            assert len(blocker.args[0].added) == 3
+            assert window.note_list.model().rowCount() == 3
+        finally:
+            window.close()
+
+    def test_走査中も一覧を触れる(self, qtbot, config) -> None:
+        """UI は前回の索引を読んだまま操作できる（§7.3）。"""
+        vault_root = config.vault_path
+        vault_root.mkdir(parents=True, exist_ok=True)
+        (vault_root / "既存.md").write_text("# 既存\n\n本文\n", encoding="utf-8")
+
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+        try:
+            # 走査の完了を待たずに呼べること（例外が出ない）
+            window.refresh()
+            window.note_list.current_path()
+            window.wait_for_index_sync()
+        finally:
+            window.close()
+
+    def test_二重に走らせない(self, window) -> None:
+        window.wait_for_index_sync()
+        window._syncing_index = True
+        window.start_index_sync()  # 何も起きない
+        assert window._syncing_index is True
+
+    def test_ワーカーはUI側の接続を使わない(self, window) -> None:
+        """sqlite3 の接続はスレッドをまたげない。
+
+        ワーカーは db のパスだけを受け取り、自分で開く。
+        """
+        from hitofude.ui.main_window import _IndexSyncTask
+
+        task = _IndexSyncTask(window._db.path, window.vault, window._sync_reporter)
+        assert task._db_path == window._db.path
+        assert not hasattr(task, "_db")
+
+
+class TestRecovery:
+    """クラッシュリカバリ（タスク 6-6 / spec §9 Phase 6）。"""
+
+    def test_保存できていれば退避は残らない(self, window) -> None:
+        window.new_note()
+        window.editor.setPlainText("# メモ\n\n本文\n")
+        window.flush()
+        assert window.pending_recovery() == []
+
+    def test_未保存のまま落ちた想定で退避される(self, window) -> None:
+        from hitofude.storage import autosave
+
+        window.new_note()
+        window.editor.setPlainText("# メモ\n\n落ちる前に書いた\n")
+        window._last_stash = 0.0  # 間隔の待ちを飛ばす
+        window._maybe_stash()
+
+        found = autosave.pending(window._recovery_root)
+        assert len(found) == 1
+        assert "落ちる前に書いた" in found[0].text
+
+    def test_復元は別ファイルとして書く(self, window) -> None:
+        """元のファイルを上書きしない。ディスク側を捨ててよいとは限らない。"""
+        window.new_note()
+        original = window.current_note.path
+        original.write_text("# メモ\n\nディスク上の内容\n", encoding="utf-8")
+
+        window.editor.setPlainText("# メモ\n\n復元したい内容\n")
+        window._last_stash = 0.0
+        window._maybe_stash()
+
+        restored = window.restore_pending()
+        assert len(restored) == 1
+        assert "復元" in restored[0].name
+        assert "復元したい内容" in restored[0].read_text(encoding="utf-8")
+        assert "ディスク上の内容" in original.read_text(encoding="utf-8")
+
+    def test_復元したら退避は消える(self, window) -> None:
+        window.new_note()
+        window.editor.setPlainText("# メモ\n\n本文\n")
+        window._last_stash = 0.0
+        window._maybe_stash()
+        window.restore_pending()
+        assert window.pending_recovery() == []
+
+    def test_復元したノートは一覧に出る(self, window) -> None:
+        window.new_note()
+        window.editor.setPlainText("# メモ\n\n本文\n")
+        window.flush()
+        window.editor.setPlainText("# メモ\n\n未保存の続き\n")
+        window._last_stash = 0.0
+        window._maybe_stash()
+
+        before = window.note_list.model().rowCount()
+        window.restore_pending()
+        assert window.note_list.model().rowCount() == before + 1
+
+    def test_退避が無ければ何も聞かない(self, window) -> None:
+        """QMessageBox が出るとテストが固まる。出ないことの確認でもある。"""
+        assert window.offer_recovery() == []
+
+    def test_保存すると退避が捨てられる(self, window) -> None:
+        window.new_note()
+        window.editor.setPlainText("# メモ\n\n本文\n")
+        window._last_stash = 0.0
+        window._maybe_stash()
+        assert window.pending_recovery() != []
+
+        window._debouncer.touch()
+        window.flush()
+        assert window.pending_recovery() == []
+
+
+class TestRefreshDoesNotReopen:
+    """一覧の更新でノートが開き直されないこと（回帰テスト）。
+
+    `set_rows()` は選択をやり直すので、そこで `note_activated` を出すと
+    更新のたびに `open_note` → `flush` → 競合ダイアログ、と連鎖して
+    アプリが固まる（実際に踏んだ）。
+    """
+
+    def test_一覧更新でノートを開き直さない(self, window) -> None:
+        window.new_note()
+        window.editor.setPlainText("# メモ\n\n本文\n")
+        window.flush()
+
+        opened: list = []
+        window.note_list.note_activated.connect(opened.append)
+        window.refresh()
+        assert opened == []
+
+    def test_行が増えても開き直さない(self, window) -> None:
+        window.new_note()
+        window.editor.setPlainText("# 一枚目\n\n本文\n")
+        window.flush()
+
+        opened: list = []
+        window.note_list.note_activated.connect(opened.append)
+        other = window.vault.root / "外から増えた.md"
+        other.write_text("# 外から増えた\n\n本文\n", encoding="utf-8")
+        window._db.upsert_note(window.vault.read(other), window.vault.root)
+        window.refresh()
+        assert opened == []
+
+    def test_編集中の内容が一覧更新で消えない(self, window) -> None:
+        """開き直すと setPlainText で書きかけが飛ぶ。"""
+        window.new_note()
+        window.editor.setPlainText("# メモ\n\n書きかけの内容\n")
+        window.refresh()
+        assert "書きかけの内容" in window.editor.toPlainText()
+
+    def test_ユーザー操作の選択では開く(self, window) -> None:
+        """止めるのはプログラムからの選択だけ。"""
+        window.new_note()
+        window.editor.setPlainText("# 一枚目\n\n本文\n")
+        window.flush()
+        window.new_note()
+        window.editor.setPlainText("# 二枚目\n\n本文\n")
+        window.flush()
+
+        opened: list = []
+        window.note_list.note_activated.connect(opened.append)
+        window.note_list.setCurrentIndex(window.note_list.model().index(1))
+        assert len(opened) == 1

@@ -10,9 +10,11 @@
 """
 
 import logging
+import time
+from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -28,6 +30,7 @@ from hitofude.config import Config
 from hitofude.core.document import Note
 from hitofude.editor import exporter
 from hitofude.editor.editor_widget import MarkdownEditor
+from hitofude.storage import autosave
 from hitofude.storage.autosave import Debouncer
 from hitofude.storage.index_db import IndexDb, NoteRow
 from hitofude.storage.vault import (
@@ -36,6 +39,7 @@ from hitofude.storage.vault import (
     check_conflict,
     keep_both_path,
     sanitize_filename,
+    unique_path,
 )
 from hitofude.storage.watcher import ChangeKind, VaultWatcher
 from hitofude.theme import ThemeColors
@@ -47,9 +51,46 @@ from hitofude.ui.sidebar import ALL, Filter, FilterKind, Sidebar
 
 logger = logging.getLogger(__name__)
 
+
+class _SyncReporter(QObject):
+    """ワーカーから Qt スレッドへ結果を渡すための口。"""
+
+    finished = Signal(object)
+    failed = Signal(object)
+
+
+class _IndexSyncTask(QRunnable):
+    """vault の走査を背景で回す（spec §6.6, §7.3）。
+
+    5,000 ノートの初回構築は約 10 秒かかる。同期で走らせると、その間
+    ウィンドウが固まって操作できない。UI 側は前回の索引を読んだまま
+    操作でき、走査が終わったら一覧を差し替える。
+
+    **ワーカーは自分の `IndexDb` を開く。** sqlite3 の接続はスレッドを
+    またげないため、UI 側の接続を使い回してはいけない。
+    """
+
+    def __init__(self, db_path: Path, vault: Vault, reporter: _SyncReporter) -> None:
+        super().__init__()
+        self._db_path = db_path
+        self._vault = vault
+        self._reporter = reporter
+
+    def run(self) -> None:
+        try:
+            with IndexDb(self._db_path) as db:
+                result = db.sync(self._vault)
+        except Exception as error:
+            logger.exception("索引の同期に失敗した")
+            self._reporter.failed.emit(error)
+            return
+        self._reporter.finished.emit(result)
+
+
 DEFAULT_SIZE = (1100, 720)
 MINIMUM_SIZE = (720, 480)
 SAVE_TICK_MS = 200
+STASH_INTERVAL_SECONDS = 2.0
 NEW_NOTE_TITLE = "無題"
 
 
@@ -64,6 +105,7 @@ class MainWindow(QMainWindow):
         self._db = IndexDb(self._vault.managed_dir / "index.sqlite")
         self._note: Note | None = None
         self._loading = False
+        self._opening = False
         self._filter: Filter = ALL
 
         self._build_ui()
@@ -71,6 +113,8 @@ class MainWindow(QMainWindow):
         self._restore_layout()
 
         self._debouncer = Debouncer()
+        self._recovery_root = autosave.recovery_root(self._vault.root)
+        self._last_stash = 0.0
         self._save_timer = QTimer(self)
         self._save_timer.setInterval(SAVE_TICK_MS)
         self._save_timer.timeout.connect(self._on_save_tick)
@@ -80,8 +124,17 @@ class MainWindow(QMainWindow):
         self._watcher.changed.connect(self._on_external_change)
         self._watcher.start()
 
-        self._db.sync(self._vault)
-        self.refresh()
+        # **親を付けない。** ウィンドウの子にすると、ワーカーが結果を返す前に
+        # ウィンドウごと破棄されて "Signal source has been deleted" で落ちる。
+        # Python 側の参照（ここと QRunnable）が生存を保つ
+        self._sync_reporter = _SyncReporter()
+        self._sync_reporter.finished.connect(self._on_index_synced)
+        self._sync_reporter.failed.connect(self._on_index_sync_failed)
+        self._syncing_index = False
+
+        self.refresh()  # 前回の索引で先に描く。走査を待たずに操作できる
+        self.start_index_sync()
+        self.offer_recovery()
 
     # ------------------------------------------------------------------ 構築
 
@@ -191,6 +244,77 @@ class MainWindow(QMainWindow):
     def current_note(self) -> Note | None:
         return self._note
 
+    # ------------------------------------------------------------ リカバリ
+
+    def pending_recovery(self) -> list:
+        return autosave.pending(self._recovery_root)
+
+    def offer_recovery(self) -> list[Path]:
+        """前回の未保存内容があれば復元を尋ねる（spec §9 Phase 6）。"""
+        stashes = self.pending_recovery()
+        if not stashes:
+            return []
+
+        answer = QMessageBox.question(
+            self,
+            "保存されていない変更が見つかりました",
+            f"前回終了したときに保存されていない変更が {len(stashes)} 件あります。\n"
+            "別ファイルとして復元しますか？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            autosave.clear_all(self._recovery_root)
+            return []
+        return self.restore_pending()
+
+    def restore_pending(self) -> list[Path]:
+        """退避を別ファイルとして書き出す。
+
+        **元のファイルを上書きしない。** 復元は「見つかった内容を失わない」
+        ためのもので、ディスク上の内容を捨ててよいとは限らない。
+        """
+        restored: list[Path] = []
+        for stashed in self.pending_recovery():
+            stamp = datetime.fromtimestamp(stashed.stashed_at).date().isoformat()
+            target = unique_path(self._vault.root, f"{stashed.source.stem} (復元 {stamp})")
+            self._watcher.suppress(target)
+            self._vault.write(target, stashed.text)
+            self._db.upsert_note(self._vault.read(target), self._vault.root)
+            restored.append(target)
+            logger.info("未保存の内容を復元した: %s", target.name)
+
+        autosave.clear_all(self._recovery_root)
+        self.refresh()
+        return restored
+
+    # ------------------------------------------------------------------ 索引
+
+    index_synced = Signal(object)
+    """走査が終わったときに `SyncResult` を載せて飛ぶ。"""
+
+    def start_index_sync(self) -> None:
+        """vault の走査を背景で始める。二重に走らせない。"""
+        if self._syncing_index:
+            return
+        self._syncing_index = True
+        QThreadPool.globalInstance().start(
+            _IndexSyncTask(self._db.path, self._vault, self._sync_reporter)
+        )
+
+    def wait_for_index_sync(self, timeout_ms: int = 30000) -> bool:
+        """走査の完了を待つ。テストと終了処理から使う。"""
+        return QThreadPool.globalInstance().waitForDone(timeout_ms)
+
+    def _on_index_synced(self, result) -> None:
+        self._syncing_index = False
+        if result.changed:
+            self.refresh()
+        self.index_synced.emit(result)
+
+    def _on_index_sync_failed(self, error: Exception) -> None:
+        self._syncing_index = False
+        logger.warning("索引の同期に失敗: %s", error)
+
     # ------------------------------------------------------------------ 一覧
 
     def refresh(self) -> None:
@@ -247,6 +371,15 @@ class MainWindow(QMainWindow):
 
     def open_note(self, path: Path) -> None:
         """ノートを開く。切り替え前に未保存の内容を書き出す（§7.4）。"""
+        if self._opening:
+            return  # 保存 → 一覧更新 → 選択変更 と回って戻ってくるのを止める
+        self._opening = True
+        try:
+            self._open_note(path)
+        finally:
+            self._opening = False
+
+    def _open_note(self, path: Path) -> None:
         self.flush()
         try:
             note = self._vault.read(path)
@@ -291,6 +424,25 @@ class MainWindow(QMainWindow):
     def _on_save_tick(self) -> None:
         if self._debouncer.due():
             self.flush()
+            return
+        if self._debouncer.pending:
+            self._maybe_stash()
+
+    def _maybe_stash(self) -> None:
+        """未保存の内容を退避する（spec §9 Phase 6）。
+
+        毎チック書くと 1 秒に 5 回ディスクを叩くので、間隔を空ける。
+        通常は 800ms で保存されるのでここまで来ることは少ないが、
+        保存できない状態（競合の未解決など）が続いたときの保険になる。
+        """
+        now = time.monotonic()
+        if self._note is None or now - self._last_stash < STASH_INTERVAL_SECONDS:
+            return
+        self._last_stash = now
+        try:
+            autosave.stash(self._recovery_root, self._note.path, self._editor.toPlainText())
+        except OSError:
+            logger.warning("未保存内容の退避に失敗した", exc_info=True)
 
     def flush(self, *, interactive: bool = True) -> None:
         """未保存の内容を今すぐ書く（§7.4 の即時フラッシュ）。
@@ -328,6 +480,7 @@ class MainWindow(QMainWindow):
         self._watcher.suppress(note.path)
         self._vault.write(note.path, payload)
 
+        autosave.discard(self._recovery_root, note.path)
         self._note = self._rename_if_title_changed(note, self._vault.read(note.path))
         self._db.upsert_note(self._note, self._vault.root)
         self.refresh()
@@ -539,5 +692,7 @@ class MainWindow(QMainWindow):
 
         self._save_timer.stop()
         self._watcher.stop()
+        # ワーカーが自分の接続で書いている最中に落とさない
+        self.wait_for_index_sync()
         self._db.close()
         super().closeEvent(event)

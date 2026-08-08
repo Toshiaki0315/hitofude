@@ -82,3 +82,19 @@ class TestTheme:
         window.theme_watcher.set_mode(ThemeMode.DARK)
         window.note_list.viewport().update()  # 例外が出ないこと
         assert window.theme_watcher.colors is DARK
+
+
+class TestWindowBasics:
+    """Phase 0-B から引き継いだ基本の検査。"""
+
+    def test_表示できる(self, window) -> None:
+        assert window.isVisible()
+
+    def test_ウィンドウタイトルがアプリ名である(self, window) -> None:
+        from hitofude import APP_NAME
+
+        assert APP_NAME in window.windowTitle()
+
+    def test_最小サイズが3ペインを置ける幅を確保している(self, window) -> None:
+        """spec §5.1: サイドバー 180px + ノートリスト 280px。"""
+        assert window.minimumWidth() >= 180 + 280

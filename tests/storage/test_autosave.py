@@ -126,3 +126,80 @@ class TestDebouncer:
         debouncer.touch()
         clock.advance(5.0)
         assert debouncer.remaining() == 0.0
+
+
+class TestRecovery:
+    """クラッシュリカバリ（タスク 6-6 / spec §9 Phase 6）。"""
+
+    def test_退避先はApplicationSupportの下(self, tmp_path: Path) -> None:
+        from hitofude.storage.autosave import recovery_root
+
+        got = recovery_root(Path("/vault"), home=tmp_path)
+        expected = tmp_path / "Library" / "Application Support" / "Hitofude" / "recovery"
+        assert got.parent == expected
+
+    def test_退避先はvaultごとに分かれる(self, tmp_path: Path) -> None:
+        """別の保管フォルダの未保存内容が出てくると混乱する。"""
+        from hitofude.storage.autosave import recovery_root
+
+        first = recovery_root(Path("/vault/A"), home=tmp_path)
+        second = recovery_root(Path("/vault/B"), home=tmp_path)
+        assert first != second
+
+    def test_退避して拾える(self, tmp_path: Path) -> None:
+        from hitofude.storage.autosave import pending, stash
+
+        stash(tmp_path, Path("/vault/メモ.md"), "未保存の本文\n")
+        found = pending(tmp_path)
+        assert len(found) == 1
+        assert found[0].source == Path("/vault/メモ.md")
+        assert found[0].text == "未保存の本文\n"
+
+    def test_同じノートは上書きする(self, tmp_path: Path) -> None:
+        from hitofude.storage.autosave import pending, stash
+
+        stash(tmp_path, Path("/vault/メモ.md"), "古い")
+        stash(tmp_path, Path("/vault/メモ.md"), "新しい")
+        found = pending(tmp_path)
+        assert len(found) == 1
+        assert found[0].text == "新しい"
+
+    def test_別のノートは別に退避される(self, tmp_path: Path) -> None:
+        from hitofude.storage.autosave import pending, stash
+
+        stash(tmp_path, Path("/vault/A.md"), "あ")
+        stash(tmp_path, Path("/vault/B.md"), "い")
+        assert len(pending(tmp_path)) == 2
+
+    def test_捨てられる(self, tmp_path: Path) -> None:
+        from hitofude.storage.autosave import discard, pending, stash
+
+        stash(tmp_path, Path("/vault/メモ.md"), "本文")
+        discard(tmp_path, Path("/vault/メモ.md"))
+        assert pending(tmp_path) == []
+
+    def test_無いものを捨てても壊れない(self, tmp_path: Path) -> None:
+        from hitofude.storage.autosave import discard
+
+        discard(tmp_path, Path("/vault/存在しない.md"))
+
+    def test_退避先が無ければ空(self, tmp_path: Path) -> None:
+        from hitofude.storage.autosave import pending
+
+        assert pending(tmp_path / "まだ無い") == []
+
+    def test_壊れた退避は飛ばす(self, tmp_path: Path) -> None:
+        """読めない退避のせいで起動できなくなってはいけない。"""
+        from hitofude.storage.autosave import pending, stash
+
+        stash(tmp_path, Path("/vault/正常.md"), "本文")
+        (tmp_path / "こわれた.source").write_text("/vault/欠けている.md", encoding="utf-8")
+        assert [s.source.name for s in pending(tmp_path)] == ["正常.md"]
+
+    def test_本文はそのまま読める形で置く(self, tmp_path: Path) -> None:
+        """復元の仕組みが壊れても手で救い出せること。"""
+        from hitofude.storage.autosave import stash
+
+        target = stash(tmp_path, Path("/vault/メモ.md"), "手で読める本文\n")
+        assert target.suffix == ".md"
+        assert target.read_text(encoding="utf-8") == "手で読める本文\n"

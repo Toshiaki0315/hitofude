@@ -101,7 +101,12 @@ class SyncResult:
 
 
 class IndexDb:
-    """1 スレッドから使う前提。別スレッドで使うなら接続を分けること。"""
+    """**1 接続 = 1 スレッド。** 別スレッドで使うなら `IndexDb` を作り直すこと。
+
+    sqlite3 の接続はスレッドをまたげない。起動時の走査を背景で回すときは、
+    ワーカー側が自分の接続を開く（`ui/main_window.py` の `_IndexSyncTask`）。
+    WAL なので、書いている最中も UI 側の読み取りはブロックされない。
+    """
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
@@ -111,6 +116,9 @@ class IndexDb:
         self._connection.execute("PRAGMA journal_mode = WAL")
         self._connection.execute("PRAGMA synchronous = NORMAL")
         self._connection.execute("PRAGMA foreign_keys = ON")
+        # 背景スレッドが書いている最中に UI 側が読むことがある。WAL なので
+        # 読み手はブロックされないが、書き込みの競合に備えて待つ余地を持たせる
+        self._connection.execute("PRAGMA busy_timeout = 5000")
         self._connection.executescript(SCHEMA)
         self._connection.commit()
 

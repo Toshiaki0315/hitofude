@@ -188,6 +188,9 @@ class NoteListView(QListView):
 
     def __init__(self, parent: QWidget | None = None, *, theme: ThemeColors = LIGHT) -> None:
         super().__init__(parent)
+        # setModel() の途中で currentChanged が呼ばれるので、
+        # ガードは何よりも先に用意しておく
+        self._suppress_activation = False
         self._model = NoteListModel(self)
         self._delegate = NoteItemDelegate(theme, self)
         self.setModel(self._model)
@@ -211,13 +214,27 @@ class NoteListView(QListView):
         row = self._model.note_at(self.currentIndex())
         return row.path if row is not None else None
 
-    def select_path(self, path: Path) -> None:
+    def select_path(self, path: Path, *, notify: bool = False) -> None:
+        """選択を移す。
+
+        既定では `note_activated` を出さない。一覧の更新（`set_rows`）でも
+        選択をやり直すため、ここで通知すると**更新のたびにノートが開き直され**、
+        保存や競合ダイアログまで連鎖する。ユーザーの操作による選択だけが
+        ノートを開くべき。
+        """
         index = self._model.index_of(path)
-        if index.isValid():
+        if not index.isValid():
+            return
+        self._suppress_activation = not notify
+        try:
             self.setCurrentIndex(index)
+        finally:
+            self._suppress_activation = False
 
     def currentChanged(self, current: QModelIndex, previous: QModelIndex) -> None:
         super().currentChanged(current, previous)
+        if self._suppress_activation:
+            return
         row = self._model.note_at(current)
         if row is not None:
             self.note_activated.emit(row.path)
