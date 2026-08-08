@@ -746,3 +746,57 @@ class TestCloseRace:
         window.close()
 
         window._on_index_sync_failed(OSError("後から届いた"))
+
+
+class TestIndexSyncTask:
+    """走査ワーカーそのもの（監査で被覆 67% と判明）。
+
+    ふだんは別スレッドで動くため計測に乗らず、**失敗経路が一度も
+    通っていなかった**。ここでは直に呼んで両方を確かめる。
+    """
+
+    def build(self, window):
+        from hitofude.ui.index_sync import IndexSyncTask, SyncReporter
+
+        reporter = SyncReporter()
+        got: dict[str, object] = {}
+        reporter.finished.connect(lambda result: got.update(finished=result))
+        reporter.failed.connect(lambda error: got.update(failed=error))
+        return IndexSyncTask(window._db.path, window.vault, reporter), got
+
+    def test_走査できたら結果が飛ぶ(self, window, config) -> None:
+        window.vault.create("走査されるノート", "# 走査されるノート\n")
+        task, got = self.build(window)
+
+        task.run()
+        assert "finished" in got
+        assert got["finished"].changed >= 1
+
+    def test_失敗したら失敗が飛ぶ(self, window, monkeypatch) -> None:
+        """走査が落ちても、UI 側は前回の索引のまま操作を続けられる。"""
+        from hitofude.storage.index_db import IndexDb
+
+        def explode(self, vault):
+            raise OSError("読めない")
+
+        monkeypatch.setattr(IndexDb, "sync", explode)
+        task, got = self.build(window)
+
+        task.run()
+        assert "failed" in got
+        assert "finished" not in got
+
+    def test_失敗しても例外を投げない(self, window, monkeypatch) -> None:
+        """`QRunnable` から例外が出るとスレッドプールごと不安定になる。"""
+        from hitofude.storage.index_db import IndexDb
+
+        monkeypatch.setattr(IndexDb, "sync", lambda self, vault: 1 / 0)
+        task, _ = self.build(window)
+
+        task.run()  # 落ちないこと
+
+    def test_UI側の接続を使わない(self, window) -> None:
+        """sqlite3 の接続はスレッドをまたげない。ワーカーは自分で開く。"""
+        task, _ = self.build(window)
+        assert task._db_path == window._db.path
+        assert not hasattr(task, "_db")

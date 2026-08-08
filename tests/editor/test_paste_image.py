@@ -14,20 +14,6 @@ from hitofude.editor.editor_widget import MarkdownEditor
 pytestmark = pytest.mark.gui
 
 
-def png_bytes(color: str = "red") -> bytes:
-    from PySide6.QtCore import QBuffer, QByteArray
-
-    image = QImage(4, 4, QImage.Format.Format_RGB32)
-    image.fill(QColor(color))
-    # 受け皿は変数で保持する（一時オブジェクトを渡すと SIGSEGV で落ちる）
-    storage = QByteArray()
-    buffer = QBuffer(storage)
-    buffer.open(QBuffer.OpenModeFlag.WriteOnly)
-    image.save(buffer, "PNG")
-    buffer.close()
-    return bytes(storage)
-
-
 @pytest.fixture
 def editor(qtbot) -> MarkdownEditor:
     widget = MarkdownEditor()
@@ -116,33 +102,33 @@ class TestPasteImage:
 
 
 class TestDropImageFile:
-    def test_画像ファイルを落とすとリンクが入る(self, wired, tmp_path) -> None:
+    def test_画像ファイルを落とすとリンクが入る(self, wired, tmp_path, png_bytes) -> None:
         source = tmp_path / "写真.png"
         source.write_bytes(png_bytes())
         wired.insertFromMimeData(file_mime(source))
         assert "![](attachments/1.png)" in wired.toPlainText()
 
-    def test_拡張子を保つ(self, wired, saved, tmp_path) -> None:
+    def test_拡張子を保つ(self, wired, saved, tmp_path, png_bytes) -> None:
         """JPEG を PNG に変換し直さない。無駄に劣化させない。"""
         source = tmp_path / "写真.jpg"
         source.write_bytes(png_bytes())
         wired.insertFromMimeData(file_mime(source))
         assert saved[0][1] == ".jpg"
 
-    def test_中身がそのまま渡る(self, wired, saved, tmp_path) -> None:
+    def test_中身がそのまま渡る(self, wired, saved, tmp_path, png_bytes) -> None:
         source = tmp_path / "写真.png"
-        data = png_bytes("blue")
+        data = png_bytes(color="blue")
         source.write_bytes(data)
         wired.insertFromMimeData(file_mime(source))
         assert saved[0][0] == data
 
-    def test_画像以外のファイルは扱わない(self, wired, saved, tmp_path) -> None:
+    def test_画像以外のファイルは扱わない(self, wired, saved, tmp_path, png_bytes) -> None:
         source = tmp_path / "資料.pdf"
         source.write_bytes(b"%PDF-1.4")
         wired.insertFromMimeData(file_mime(source))
         assert saved == []
 
-    def test_複数落としたら全部入る(self, wired, tmp_path) -> None:
+    def test_複数落としたら全部入る(self, wired, tmp_path, png_bytes) -> None:
         from PySide6.QtCore import QMimeData
 
         mime = QMimeData()
@@ -156,7 +142,7 @@ class TestDropImageFile:
         wired.insertFromMimeData(mime)
         assert wired.toPlainText().count("![](") == 2
 
-    def test_複数でもUndo1回で消える(self, wired, tmp_path) -> None:
+    def test_複数でもUndo1回で消える(self, wired, tmp_path, png_bytes) -> None:
         from PySide6.QtCore import QMimeData
 
         before = wired.toPlainText()
@@ -172,7 +158,7 @@ class TestDropImageFile:
         wired.undo()
         assert wired.toPlainText() == before
 
-    def test_読めないファイルでも落ちない(self, wired, tmp_path) -> None:
+    def test_読めないファイルでも落ちない(self, wired, tmp_path, png_bytes) -> None:
         missing = tmp_path / "居ない.png"
         wired.insertFromMimeData(file_mime(missing))
         assert wired.toPlainText() == "本文\n"

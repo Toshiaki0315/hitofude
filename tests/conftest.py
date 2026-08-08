@@ -51,3 +51,39 @@ def project_root() -> Path:
 def fixtures_dir() -> Path:
     """回帰テスト用サンプル `.md` の置き場（spec §10）。"""
     return PROJECT_ROOT / "tests" / "fixtures"
+
+
+@pytest.fixture
+def png_bytes():
+    """PNG のバイト列を作る。画像まわりのテストで使い回す（タスク A-2 系）。
+
+    **受け皿は変数で保持すること。** `QBuffer(QByteArray())` と書くと
+    一時オブジェクトが即座に回収され、解放済みの領域へ書いて SIGSEGV になる
+    （実際にテストがプロセスごと落ちた）。
+    """
+    from PySide6.QtCore import QBuffer, QByteArray
+    from PySide6.QtGui import QColor, QImage
+
+    def make(width: int = 100, height: int = 50, color: str = "red") -> bytes:
+        image = QImage(width, height, QImage.Format.Format_RGB32)
+        image.fill(QColor(color))
+        storage = QByteArray()
+        buffer = QBuffer(storage)
+        buffer.open(QBuffer.OpenModeFlag.WriteOnly)
+        image.save(buffer, "PNG")
+        buffer.close()
+        return bytes(storage)
+
+    return make
+
+
+@pytest.fixture
+def write_png(png_bytes):
+    """PNG をその場所へ書く。親フォルダも作る。"""
+
+    def make(path: Path, width: int = 100, height: int = 50, color: str = "red") -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(png_bytes(width, height, color))
+        return path
+
+    return make
