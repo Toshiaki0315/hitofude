@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 
 from hitofude import APP_NAME, __version__
 from hitofude.app import ThemeWatcher
-from hitofude.config import Config
+from hitofude.config import DEFAULT_SPLITTER_SIZES, Config
 from hitofude.core import frontmatter
 from hitofude.core.document import Note
 from hitofude.core.stats import count as count_text
@@ -137,6 +137,10 @@ MINIMUM_SIZE = (720, 480)
 SAVE_TICK_MS = 200
 # ペインの区切り線。細くしないと掴む場所ではなく境界として読まれない
 SPLITTER_HANDLE_WIDTH = 1
+# ペインの最小幅。spec §5.1 の既定（180 / 280）より少し狭いところまでは
+# 縮められるが、それ以下には潰れないようにする
+SIDEBAR_MIN_WIDTH = 140
+NOTE_LIST_MIN_WIDTH = 200
 STASH_INTERVAL_SECONDS = 2.0
 # 文字数を数え直すまでの待ち。38,000 字のノートで 40ms 掛かる（実測）ので
 # 1 打ごとには数えられない
@@ -214,6 +218,9 @@ class MainWindow(QMainWindow):
             base_point_size=self._config.font_point_size,
         )
         self._editor = self._pane.editor
+
+        self._sidebar.setMinimumWidth(SIDEBAR_MIN_WIDTH)
+        self._note_list.setMinimumWidth(NOTE_LIST_MIN_WIDTH)
 
         self._splitter = PaneSplitter(theme.rule)
         self._splitter.addWidget(self._sidebar)
@@ -321,9 +328,34 @@ class MainWindow(QMainWindow):
         geometry = self._config.window_geometry
         if geometry is not None:
             self.restoreGeometry(geometry)
-        self._splitter.setSizes(self._config.splitter_sizes)
+        # **表示状態を先に決める。** 隠れているウィジェットは幅 0 になるので、
+        # 順序が逆だと割り当てた幅がその場で捨てられる
         self._sidebar.setVisible(self._config.sidebar_visible)
         self._note_list.setVisible(self._config.note_list_visible)
+        self._splitter.setSizes(self._usable_sizes(self._config.splitter_sizes))
+
+    def _usable_sizes(self, sizes: list[int]) -> list[int]:
+        """潰れた幅を既定へ戻す。
+
+        ペインを隠すと `QSplitter` はその幅を 0 にし、`closeEvent` がそのまま
+        保存する。次の起動でも 0 のまま復元されるため、**表示されているのに
+        幅 0 のペイン**ができていた。
+
+        戻すのは最小幅を下回っているときだけ。手で狭めた幅は保つ。
+        広げた分はエディタから借りて**合計を変えない**。合計がウィンドウ幅と
+        食い違うと `QSplitter` が比例配分し直し、せっかく戻した幅が縮む。
+        """
+        restored = list(sizes)
+        for index in range(min(len(restored), self._splitter.count())):
+            widget = self._splitter.widget(index)
+            # `isVisible()` はウィンドウを表示するまで常に False。ここは
+            # まだ `show()` の前なので、隠す意図があるかを `isHidden()` で見る
+            if widget.isHidden() or restored[index] >= widget.minimumWidth():
+                continue
+            wanted = max(DEFAULT_SPLITTER_SIZES[index], widget.minimumWidth())
+            restored[-1] = max(1, restored[-1] - (wanted - restored[index]))
+            restored[index] = wanted
+        return restored
 
     # ------------------------------------------------------------------ 参照
 
@@ -980,10 +1012,34 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ 表示
 
     def toggle_sidebar(self) -> None:
-        self._sidebar.setVisible(not self._sidebar.isVisible())
+        self._toggle_pane(0)
 
     def toggle_note_list(self) -> None:
-        self._note_list.setVisible(not self._note_list.isVisible())
+        self._toggle_pane(1)
+
+    def _toggle_pane(self, index: int) -> None:
+        """ペインの表示を切り替える。出すときは使える幅を確保する。
+
+        隠したペインの幅は 0 になっている。`setVisible(True)` だけでは 0 の
+        ままなので、見えているつもりで見えないペインが残る。
+        """
+        widget = self._splitter.widget(index)
+        showing = widget.isHidden()
+        widget.setVisible(showing)
+        if showing:
+            self._grow_pane(index)
+
+    def _grow_pane(self, index: int) -> None:
+        sizes = self._splitter.sizes()
+        widget = self._splitter.widget(index)
+        if sizes[index] >= widget.minimumWidth():
+            return
+
+        wanted = max(DEFAULT_SPLITTER_SIZES[index], widget.minimumWidth())
+        # 広げた分はエディタから借りる。全体の合計を変えないため
+        sizes[-1] = max(1, sizes[-1] - (wanted - sizes[index]))
+        sizes[index] = wanted
+        self._splitter.setSizes(sizes)
 
     def _apply_splitter_style(self, theme: ThemeColors) -> None:
         """ペインの境界に 1px の線を引く。"""
