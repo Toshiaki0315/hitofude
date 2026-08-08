@@ -12,6 +12,7 @@
 import logging
 import time
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
@@ -24,7 +25,9 @@ from PySide6.QtGui import (
     QPaintEvent,
 )
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
+    QLabel,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -37,6 +40,7 @@ from hitofude import APP_NAME, __version__
 from hitofude.app import ThemeWatcher
 from hitofude.config import Config
 from hitofude.core.document import Note
+from hitofude.core.stats import count as count_text
 from hitofude.editor import exporter
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.storage import autosave
@@ -133,6 +137,11 @@ SAVE_TICK_MS = 200
 # ペインの区切り線。細くしないと掴む場所ではなく境界として読まれない
 SPLITTER_HANDLE_WIDTH = 1
 STASH_INTERVAL_SECONDS = 2.0
+# 文字数を数え直すまでの待ち。38,000 字のノートで 40ms 掛かる（実測）ので
+# 1 打ごとには数えられない
+STATS_DELAY_MS = 400
+DIRTY_MARK = "•"
+
 NEW_NOTE_TITLE = "無題"
 
 
@@ -174,6 +183,12 @@ class MainWindow(QMainWindow):
         self._sync_reporter.failed.connect(self._on_index_sync_failed)
         self._syncing_index = False
         self._closing = False
+        self._previous_path: Path | None = None
+
+        self._stats_timer = QTimer(self)
+        self._stats_timer.setSingleShot(True)
+        self._stats_timer.setInterval(STATS_DELAY_MS)
+        self._stats_timer.timeout.connect(self._update_stats)
 
         self._seed_manual()
         self.refresh()  # 前回の索引で先に描く。走査を待たずに操作できる
@@ -207,6 +222,10 @@ class MainWindow(QMainWindow):
         self._splitter.setChildrenCollapsible(False)
 
         self.setCentralWidget(self._splitter)
+
+        self._stats_label = QLabel("", self)
+        self.statusBar().addPermanentWidget(self._stats_label)
+        self.statusBar().setSizeGripEnabled(False)
 
         self._note_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._note_list.customContextMenuRequested.connect(self._show_context_menu)
@@ -254,12 +273,27 @@ class MainWindow(QMainWindow):
         )
 
         edit_menu = self.menuBar().addMenu("編集")
+        # **フォーカスのあるウィジェットへ渡す。** ここで登録した
+        # ショートカットはウィンドウ全体に効くので、素通しにすると
+        # 検索欄で Cmd+A を押したのに本文が全選択される
+        for label, key, name in (
+            ("取り消す", QKeySequence.StandardKey.Undo, "undo"),
+            ("やり直す", QKeySequence.StandardKey.Redo, "redo"),
+            ("切り取り", QKeySequence.StandardKey.Cut, "cut"),
+            ("コピー", QKeySequence.StandardKey.Copy, "copy"),
+            ("貼り付け", QKeySequence.StandardKey.Paste, "paste"),
+            ("すべて選択", QKeySequence.StandardKey.SelectAll, "selectAll"),
+        ):
+            self._add_action(edit_menu, label, key, partial(self.dispatch_edit, name))
+        edit_menu.addSeparator()
         # **Option を含むショートカットは使わない。** macOS では Option が
         # 文字合成に使われ、Cmd+Option+T は `†` を生む。ショートカットが
         # 発火せず、選択中だと選択範囲がその 1 文字に置き換わって消える
         self._add_action(edit_menu, "表を整形", "Ctrl+Shift+L", self._editor.format_table)
 
         view_menu = self.menuBar().addMenu("表示")
+        self._add_action(view_menu, "直前のノートへ戻る", "Ctrl+[", self.open_previous_note)
+        view_menu.addSeparator()
         self._add_action(view_menu, "サイドバー", "Ctrl+1", self.toggle_sidebar)
         self._add_action(view_menu, "ノートリスト", "Ctrl+2", self.toggle_note_list)
         view_menu.addSeparator()
@@ -586,6 +620,8 @@ class MainWindow(QMainWindow):
             logger.warning("ノートを開けなかった: %s", path)
             return
 
+        if self._note is not None and self._note.path != path:
+            self._previous_path = self._note.path
         self._note = note
         self._loading = True
         try:
@@ -595,8 +631,9 @@ class MainWindow(QMainWindow):
             self._loading = False
         self._debouncer.clear()
         self._pane.refresh_highlights()
-        self._pane.refresh_highlights()
-        self.setWindowTitle(f"{note.title} — {APP_NAME}")
+        self._update_title()
+        self._stats_timer.stop()
+        self._update_stats()
 
     def new_note(self) -> None:
         self.flush()
@@ -616,11 +653,56 @@ class MainWindow(QMainWindow):
         self._note = None
         self._editor.clear()
         self.refresh()
+        self._update_title()
+        self._update_stats()
 
     def _on_text_changed(self) -> None:
         if self._loading or self._note is None:
             return
         self._debouncer.touch()
+        self._update_title()
+        self._stats_timer.start()
+
+    # --------------------------------------------------------- 表示の更新
+
+    def _update_title(self) -> None:
+        """未保存なら印を付ける。
+
+        保存は自動なので、書けているのか黙っていると分からない。
+        """
+        if self._note is None:
+            self.setWindowTitle(APP_NAME)
+            return
+        mark = f"{DIRTY_MARK} " if self._debouncer.pending else ""
+        self.setWindowTitle(f"{mark}{self._note.title} — {APP_NAME}")
+
+    def _update_stats(self) -> None:
+        if self._note is None:
+            self._stats_label.setText("")
+            return
+        stats = count_text(self._editor.toPlainText())
+        self._stats_label.setText(f"{stats.characters:,} 文字 / {stats.words:,} 語")
+
+    def status_text(self) -> str:
+        return self._stats_label.text()
+
+    def dispatch_edit(self, name: str) -> None:
+        """編集操作をフォーカスのあるウィジェットへ渡す。
+
+        `QLineEdit` も `QPlainTextEdit` も同じ名前のメソッドを持つので、
+        取り違えずにそのまま呼べる。
+        """
+        target = QApplication.focusWidget() or self._editor
+        method = getattr(target, name, None)
+        if callable(method):
+            method()
+
+    def open_previous_note(self) -> None:
+        """直前に開いていたノートへ戻る。もう一度押すと行き来する。"""
+        target = self._previous_path
+        if target is None or not target.is_file():
+            return
+        self.open_note(target)
 
     def _on_save_tick(self) -> None:
         if self._debouncer.due():
@@ -685,7 +767,7 @@ class MainWindow(QMainWindow):
         self._note = self._rename_if_title_changed(note, self._vault.read(note.path))
         self._db.upsert_note(self._note, self._vault.root)
         self.refresh()
-        self.setWindowTitle(f"{self._note.title} — {APP_NAME}")
+        self._update_title()
 
     def _rename_if_title_changed(self, previous: Note, current: Note) -> Note:
         """タイトルが変わったらファイル名も合わせる（spec §7.1）。
