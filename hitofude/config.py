@@ -1,0 +1,162 @@
+"""設定の読み書き（spec §4）。
+
+`QSettings` を薄く包む。macOS では `~/Library/Preferences/` の plist に
+自動保存される。
+
+**設定ファイルは手で編集されうる**（そもそもプレーンテキストを扱うアプリを
+使う人はそうする）。壊れた値が入っていても起動できなくなってはいけないので、
+読み出しは必ず既定値へフォールバックする。
+"""
+
+from pathlib import Path
+
+from PySide6.QtCore import QByteArray, QSettings
+
+from hitofude.theme import ThemeMode
+
+DEFAULT_VAULT_NAME = "HitofudeNotes"
+DEFAULT_FONT_FAMILY = "Hiragino Sans"
+DEFAULT_MONO_FAMILY = "SF Mono"
+DEFAULT_POINT_SIZE = 15.0
+DEFAULT_TRASH_DAYS = 30
+
+# spec §5.1: サイドバー 180px / ノートリスト 280px / エディタ（可変）
+DEFAULT_SPLITTER_SIZES = [180, 280, 640]
+
+MIN_POINT_SIZE = 8.0
+MAX_POINT_SIZE = 72.0
+
+_VAULT = "vault/path"
+_THEME = "theme/mode"
+_FONT_FAMILY = "font/family"
+_FONT_SIZE = "font/size"
+_MONO_FAMILY = "font/mono"
+_TRASH_DAYS = "trash/days"
+_SPLITTER = "layout/splitter"
+_SIDEBAR = "layout/sidebar_visible"
+_NOTE_LIST = "layout/note_list_visible"
+_GEOMETRY = "layout/geometry"
+
+
+class Config:
+    def __init__(self, settings: QSettings | None = None) -> None:
+        self.settings = settings if settings is not None else QSettings()
+
+    # ------------------------------------------------------------------ vault
+
+    @property
+    def vault_path(self) -> Path:
+        stored = self.settings.value(_VAULT, "", type=str)
+        if stored:
+            return Path(stored)
+        return Path.home() / "Documents" / DEFAULT_VAULT_NAME
+
+    @vault_path.setter
+    def vault_path(self, value: Path) -> None:
+        self.settings.setValue(_VAULT, str(value))
+
+    @property
+    def has_vault(self) -> bool:
+        """ユーザーが保管フォルダを選んだことがあるか。初回起動の判定に使う。"""
+        return bool(self.settings.value(_VAULT, "", type=str))
+
+    # ------------------------------------------------------------------ 見た目
+
+    @property
+    def theme_mode(self) -> ThemeMode:
+        stored = self.settings.value(_THEME, ThemeMode.SYSTEM.value, type=str)
+        try:
+            return ThemeMode(stored)
+        except ValueError:
+            return ThemeMode.SYSTEM
+
+    @theme_mode.setter
+    def theme_mode(self, value: ThemeMode) -> None:
+        self.settings.setValue(_THEME, value.value)
+
+    @property
+    def font_family(self) -> str:
+        return self.settings.value(_FONT_FAMILY, DEFAULT_FONT_FAMILY, type=str)
+
+    @font_family.setter
+    def font_family(self, value: str) -> None:
+        self.settings.setValue(_FONT_FAMILY, value)
+
+    @property
+    def font_point_size(self) -> float:
+        size = self.settings.value(_FONT_SIZE, DEFAULT_POINT_SIZE, type=float)
+        if not MIN_POINT_SIZE <= size <= MAX_POINT_SIZE:
+            return DEFAULT_POINT_SIZE
+        return size
+
+    @font_point_size.setter
+    def font_point_size(self, value: float) -> None:
+        self.settings.setValue(_FONT_SIZE, float(value))
+
+    @property
+    def mono_family(self) -> str:
+        return self.settings.value(_MONO_FAMILY, DEFAULT_MONO_FAMILY, type=str)
+
+    @mono_family.setter
+    def mono_family(self, value: str) -> None:
+        self.settings.setValue(_MONO_FAMILY, value)
+
+    # ------------------------------------------------------------------ ゴミ箱
+
+    @property
+    def trash_days(self) -> int:
+        days = self.settings.value(_TRASH_DAYS, DEFAULT_TRASH_DAYS, type=int)
+        return days if days > 0 else DEFAULT_TRASH_DAYS
+
+    @trash_days.setter
+    def trash_days(self, value: int) -> None:
+        self.settings.setValue(_TRASH_DAYS, int(value))
+
+    # ---------------------------------------------------------------- レイアウト
+
+    @property
+    def splitter_sizes(self) -> list[int]:
+        stored = self.settings.value(_SPLITTER)
+        if not isinstance(stored, list) or len(stored) < 2:
+            return list(DEFAULT_SPLITTER_SIZES)
+        try:
+            return [int(value) for value in stored]
+        except (TypeError, ValueError):
+            return list(DEFAULT_SPLITTER_SIZES)
+
+    @splitter_sizes.setter
+    def splitter_sizes(self, value: list[int]) -> None:
+        self.settings.setValue(_SPLITTER, [int(size) for size in value])
+
+    @property
+    def sidebar_visible(self) -> bool:
+        return self.settings.value(_SIDEBAR, True, type=bool)
+
+    @sidebar_visible.setter
+    def sidebar_visible(self, value: bool) -> None:
+        self.settings.setValue(_SIDEBAR, bool(value))
+
+    @property
+    def note_list_visible(self) -> bool:
+        return self.settings.value(_NOTE_LIST, True, type=bool)
+
+    @note_list_visible.setter
+    def note_list_visible(self, value: bool) -> None:
+        self.settings.setValue(_NOTE_LIST, bool(value))
+
+    @property
+    def window_geometry(self) -> QByteArray | None:
+        stored = self.settings.value(_GEOMETRY)
+        if isinstance(stored, QByteArray) and not stored.isEmpty():
+            return stored
+        if isinstance(stored, bytes | bytearray) and stored:
+            return QByteArray(bytes(stored))
+        return None
+
+    @window_geometry.setter
+    def window_geometry(self, value: QByteArray | bytes) -> None:
+        self.settings.setValue(_GEOMETRY, QByteArray(bytes(value)))
+
+    def sync(self) -> None:
+        """ディスクへ書き出す。終了時に呼ぶ。"""
+        self.settings.sync()
