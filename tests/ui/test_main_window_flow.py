@@ -49,7 +49,8 @@ class TestLayout:
         splitter = window.centralWidget()
         assert splitter.widget(0) is window.sidebar
         assert splitter.widget(1) is window.note_list
-        assert splitter.widget(2) is window.editor
+        assert splitter.widget(2) is window.editor_pane
+        assert window.editor_pane.editor is window.editor
 
     def test_ペインをたためる(self, window) -> None:
         """spec §5.4: `Cmd+1` / `Cmd+2`。"""
@@ -720,3 +721,28 @@ class TestExport:
         window._write_markdown(tmp_path / "out.md", window.editor.toPlainText())
         assert path.is_file()
         assert "**強調**" in path.read_text(encoding="utf-8")
+
+
+class TestCloseRace:
+    """閉じたあとに走査結果が届く競合（実際に踏んだ）。
+
+    `closeEvent` はワーカーの完了を待つが、**そこから飛んだシグナルは
+    主スレッドの待ち行列に残る**。DB を閉じた後にそれが処理されると
+    閉じた接続へ問い合わせて `ProgrammingError` で落ちる。
+    """
+
+    def test_閉じたあとに走査結果が届いても落ちない(self, qtbot, config) -> None:
+        from types import SimpleNamespace
+
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+        window.close()
+
+        window._on_index_synced(SimpleNamespace(changed=1))
+
+    def test_閉じたあとの失敗通知でも落ちない(self, qtbot, config) -> None:
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+        window.close()
+
+        window._on_index_sync_failed(OSError("後から届いた"))

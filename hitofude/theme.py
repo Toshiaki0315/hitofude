@@ -34,6 +34,7 @@ class ThemeColors:
     tag_background: str
     tag_foreground: str
     rule: str
+    search_highlight: str
 
 
 LIGHT = ThemeColors(
@@ -51,6 +52,8 @@ LIGHT = ThemeColors(
     tag_background="#EDEDF0",
     tag_foreground="#5A5A60",
     rule="#E0E0E4",
+    # 検索の下敷き。`::ハイライト::` と見分けが付く色にする
+    search_highlight="#FFD79B",
 )
 
 DARK = ThemeColors(
@@ -68,6 +71,7 @@ DARK = ThemeColors(
     tag_background="#3A3A42",
     tag_foreground="#C9C9D1",
     rule="#3C3C42",
+    search_highlight="#7A5A28",
 )
 
 

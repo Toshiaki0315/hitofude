@@ -36,7 +36,9 @@ def window(qtbot, tmp_path: Path) -> MainWindow:
 
 class TestEditorIsReachable:
     def test_エディタが3ペインに入っている(self, window) -> None:
-        assert window.centralWidget().indexOf(window.editor) >= 0
+        # 検索バーと同居させるため、3 ペイン目は EditorPane になっている
+        assert window.centralWidget().indexOf(window.editor_pane) >= 0
+        assert window.editor.isVisibleTo(window.editor_pane)
 
     def test_editorプロパティで取れる(self, window) -> None:
         assert isinstance(window.editor, MarkdownEditor)

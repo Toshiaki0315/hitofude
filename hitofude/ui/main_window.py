@@ -53,6 +53,7 @@ from hitofude.storage.vault import (
 from hitofude.storage.watcher import ChangeKind, VaultWatcher
 from hitofude.theme import ThemeColors
 from hitofude.ui.conflict_dialog import ConflictDialog, Resolution
+from hitofude.ui.editor_pane import EditorPane
 from hitofude.ui.note_list import NoteListView, NoteRole
 from hitofude.ui.preferences import PreferencesDialog
 from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
@@ -172,6 +173,7 @@ class MainWindow(QMainWindow):
         self._sync_reporter.finished.connect(self._on_index_synced)
         self._sync_reporter.failed.connect(self._on_index_sync_failed)
         self._syncing_index = False
+        self._closing = False
 
         self._seed_manual()
         self.refresh()  # 前回の索引で先に描く。走査を待たずに操作できる
@@ -190,16 +192,17 @@ class MainWindow(QMainWindow):
 
         self._sidebar = Sidebar()
         self._note_list = NoteListView(theme=theme)
-        self._editor = MarkdownEditor(
+        self._pane = EditorPane(
             theme=theme,
             font_family=self._config.font_family,
             base_point_size=self._config.font_point_size,
         )
+        self._editor = self._pane.editor
 
         self._splitter = PaneSplitter(theme.rule)
         self._splitter.addWidget(self._sidebar)
         self._splitter.addWidget(self._note_list)
-        self._splitter.addWidget(self._editor)
+        self._splitter.addWidget(self._pane)
         self._splitter.setStretchFactor(2, 1)
         self._splitter.setChildrenCollapsible(False)
 
@@ -243,6 +246,12 @@ class MainWindow(QMainWindow):
         search_menu = self.menuBar().addMenu("検索")
         self._add_action(search_menu, "クイックオープン", "Ctrl+O", self.quick_open)
         self._add_action(search_menu, "全文検索", "Ctrl+Shift+F", self.full_text_search)
+        search_menu.addSeparator()
+        self._add_action(search_menu, "このノート内を検索", "Ctrl+F", self._pane.open_find)
+        self._add_action(search_menu, "次を検索", "Ctrl+G", self._pane.find_again)
+        self._add_action(
+            search_menu, "前を検索", "Ctrl+Shift+G", lambda: self._pane.find_again(backward=True)
+        )
 
         edit_menu = self.menuBar().addMenu("編集")
         # **Option を含むショートカットは使わない。** macOS では Option が
@@ -286,6 +295,10 @@ class MainWindow(QMainWindow):
     @property
     def editor(self) -> MarkdownEditor:
         return self._editor
+
+    @property
+    def editor_pane(self) -> EditorPane:
+        return self._pane
 
     @property
     def note_list(self) -> NoteListView:
@@ -383,6 +396,11 @@ class MainWindow(QMainWindow):
 
     def _on_index_synced(self, result) -> None:
         self._syncing_index = False
+        if self._closing:
+            # ワーカーの完了は待てても、そこから飛んだシグナルは主スレッドの
+            # 待ち行列に残る。`closeEvent` が DB を閉じた後にこれが処理されると
+            # 閉じた接続へ問い合わせて落ちる
+            return
         if result.changed:
             self.refresh()
         self.index_synced.emit(result)
@@ -543,6 +561,7 @@ class MainWindow(QMainWindow):
         finally:
             self._loading = False
         self._debouncer.clear()
+        self._pane.refresh_highlights()
 
     # ------------------------------------------------------------------ 編集
 
@@ -575,6 +594,8 @@ class MainWindow(QMainWindow):
         finally:
             self._loading = False
         self._debouncer.clear()
+        self._pane.refresh_highlights()
+        self._pane.refresh_highlights()
         self.setWindowTitle(f"{note.title} — {APP_NAME}")
 
     def new_note(self) -> None:
@@ -868,13 +889,14 @@ class MainWindow(QMainWindow):
         self._splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {theme.rule}; }}")
 
     def _on_theme_changed(self, colors: ThemeColors) -> None:
-        self._editor.set_theme(colors)
+        self._pane.set_theme(colors)
         self._note_list.set_theme(colors)
         self._splitter.set_rule_color(colors.rule)
 
     # ------------------------------------------------------------------ 終了
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        self._closing = True
         # 終了時は競合してもダイアログを出さない。ここでモーダルを開くと
         # アプリが終了できなくなる
         self.flush(interactive=False)

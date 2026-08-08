@@ -18,8 +18,9 @@ from PySide6.QtGui import (
     QTextBlock,
     QTextCursor,
 )
-from PySide6.QtWidgets import QPlainTextEdit, QWidget
+from PySide6.QtWidgets import QPlainTextEdit, QTextEdit, QWidget
 
+from hitofude.core import search
 from hitofude.core.document import plain_text
 from hitofude.core.models import BlockInfo
 from hitofude.editor import commands, painter_overlay, table
@@ -579,6 +580,99 @@ class MarkdownEditor(QPlainTextEdit):
         foreground = QPainter(self.viewport())
         painter_overlay.paint_foreground(foreground, decorations, self._theme, self.font())
         foreground.end()
+
+    # ------------------------------------------------------------ 検索・置換
+
+    def match_count(self, query: str, *, case_sensitive: bool = False) -> int:
+        return len(search.find_all(self.toPlainText(), query, case_sensitive=case_sensitive))
+
+    def find_text(
+        self, query: str, *, backward: bool = False, case_sensitive: bool = False
+    ) -> bool:
+        """次（前）の一致を選択する。見つかったら True。
+
+        **空振りではカーソルを動かさない。** 打ちかけの場所を見失うため。
+        """
+        cursor = self.textCursor()
+        origin = cursor.selectionStart() if backward else cursor.selectionEnd()
+        found = search.find_next(
+            self.toPlainText(), query, origin, backward=backward, case_sensitive=case_sensitive
+        )
+        if found is None:
+            return False
+
+        begin, end = found
+        cursor.setPosition(begin)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        self.setTextCursor(cursor)
+        self.ensureCursorVisible()
+        return True
+
+    def replace_selection(
+        self, query: str, replacement: str, *, case_sensitive: bool = False
+    ) -> bool:
+        """選択中の一致を置き換えて次へ進む。
+
+        選択が一致していなければ**探すだけ**にする。何が置き換わるか
+        見えていない状態で本文を書き換えない。
+        """
+        cursor = self.textCursor()
+        selected = cursor.selectedText().replace("\u2029", "\n")
+        matches = selected == query or (
+            not case_sensitive and selected.casefold() == query.casefold()
+        )
+        if not (query and matches):
+            return self.find_text(query, case_sensitive=case_sensitive)
+
+        cursor.insertText(replacement)
+        self.find_text(query, case_sensitive=case_sensitive)
+        return True
+
+    def replace_all_text(
+        self, query: str, replacement: str, *, case_sensitive: bool = False
+    ) -> int:
+        """すべての一致を置き換える。置き換えた件数を返す。
+
+        **`setPlainText()` を使わない。** 文書を作り直すと Undo 履歴が消え、
+        ハイライタの解析結果（`QTextBlockUserData`）も失われる。
+        `QTextCursor` で編集し、`beginEditBlock()` で 1 段にまとめるので
+        `Cmd+Z` 一回で元に戻る（R5 と同じ約束）。
+
+        後ろから置き換える。前から書き換えると、以降の位置がずれる。
+        """
+        matches = search.find_all(self.toPlainText(), query, case_sensitive=case_sensitive)
+        if not matches:
+            return 0
+
+        cursor = self.textCursor()
+        cursor.beginEditBlock()
+        try:
+            for begin, end in reversed(matches):
+                cursor.setPosition(begin)
+                cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+                cursor.insertText(replacement)
+        finally:
+            cursor.endEditBlock()
+        return len(matches)
+
+    def set_search_highlights(self, query: str, *, case_sensitive: bool = False) -> None:
+        """一致箇所すべてに下敷きを敷く。
+
+        `extraSelections` は文書を書き換えないので、マーカーの隠蔽（R4）にも
+        ブロックの解析結果にも触らない。空のクエリで消える。
+        """
+        matches = search.find_all(self.toPlainText(), query, case_sensitive=case_sensitive)
+        # ExtraSelection は QTextEdit 側に定義されている（QPlainTextEdit には無い）
+        selections: list[QTextEdit.ExtraSelection] = []
+        for begin, end in matches:
+            selection = QTextEdit.ExtraSelection()
+            selection.format.setBackground(QColor(self._theme.search_highlight))
+            cursor = QTextCursor(self.document())
+            cursor.setPosition(begin)
+            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+            selection.cursor = cursor
+            selections.append(selection)
+        self.setExtraSelections(selections)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
