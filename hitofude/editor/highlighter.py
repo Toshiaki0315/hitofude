@@ -37,6 +37,12 @@ DEFAULT_MONO_FAMILY = "Menlo"
 # 実在するものへ順に落とす。指定フォントが無い環境でも行の高さが暴れない
 MONO_FALLBACKS = ["Menlo", "Monaco", "Courier New"]
 
+# 表は**日本語も含めて**等幅でないと縦線が揃わない。Menlo など通常の
+# 等幅フォントは CJK グリフを持たず、フォールバック先の全角幅が半角の
+# ちょうど 2 倍にならないため桁がずれる（実測: Menlo 1.66 倍）。
+# BIZ UDGothic は macOS 標準で、全角:半角 = 2:1 が成立する数少ないフォント。
+TABLE_FAMILIES = ["BIZ UDGothic", "Menlo", "Monaco", "Courier New"]
+
 
 def mono_families(preferred: str) -> list[str]:
     """指定フォントに実在するフォールバックを足した並び。"""
@@ -279,7 +285,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._quote.setForeground(QColor(theme.quote_foreground))
 
         self._mono = QTextCharFormat()
-        self._mono.setFontFamilies(mono_families(self._mono_family))
+        self._mono.setFontFamilies(TABLE_FAMILIES)
 
         strong = QTextCharFormat()
         strong.setFontWeight(QFont.Weight.Bold)
