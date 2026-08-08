@@ -353,3 +353,71 @@ class TestRenameOnTitleChange:
         window.editor.setPlainText("# 会議メモ\n\n二枚目\n")
         window.flush()
         assert window.current_note.path.name == "会議メモ-2.md"
+
+
+class TestQuickOpen:
+    """spec §5.4: `Cmd+O` のあいまい検索パレット。"""
+
+    def _prepare(self, window) -> None:
+        for title, body in (("会議メモ", "来期の予算について"), ("読書メモ", "第3章まで")):
+            window.new_note()
+            window.editor.setPlainText(f"# {title}\n\n{body}\n")
+            window.flush()
+
+    def test_タイトルで絞り込める(self, window) -> None:
+        self._prepare(window)
+        assert [i.title for i in window._quick_open_items("会議")] == ["会議メモ"]
+
+    def test_飛び飛びの入力でも引ける(self, window) -> None:
+        self._prepare(window)
+        assert "会議メモ" in [i.title for i in window._quick_open_items("会モ")]
+
+    def test_空なら全部出る(self, window) -> None:
+        self._prepare(window)
+        assert len(window._quick_open_items("")) == 2
+
+    def test_選ぶとそのノートが開く(self, window) -> None:
+        self._prepare(window)
+        target = window._quick_open_items("会議")[0]
+        window._on_palette_chosen(target.path)
+        assert "来期の予算について" in window.editor.toPlainText()
+
+
+class TestFullTextSearch:
+    """spec §5.4: `Cmd+Shift+F` の全文検索。"""
+
+    def _prepare(self, window) -> None:
+        window.new_note()
+        window.editor.setPlainText("# 会議メモ\n\n来期の**予算**について話した\n")
+        window.flush()
+        window.new_note()
+        window.editor.setPlainText("# 読書メモ\n\n第3章まで読んだ\n")
+        window.flush()
+
+    def test_本文で引ける(self, window) -> None:
+        self._prepare(window)
+        assert [i.title for i in window._search_items("予算について")] == ["会議メモ"]
+
+    def test_装飾をまたいでも引ける(self, window) -> None:
+        self._prepare(window)
+        assert len(window._search_items("予算について")) == 1
+
+    def test_スニペットが付く(self, window) -> None:
+        self._prepare(window)
+        assert window._search_items("予算について")[0].subtitle
+
+    def test_スニペットに一致部分の印が入る(self, window) -> None:
+        from hitofude.storage.index_db import HIGHLIGHT_START
+
+        self._prepare(window)
+        assert HIGHLIGHT_START in window._search_items("予算について")[0].subtitle
+
+    def test_一致しなければ空(self, window) -> None:
+        self._prepare(window)
+        assert window._search_items("存在しない語") == []
+
+    def test_選ぶとそのノートが開く(self, window) -> None:
+        self._prepare(window)
+        target = window._search_items("予算について")[0]
+        window._on_palette_chosen(target.path)
+        assert "予算" in window.editor.toPlainText()

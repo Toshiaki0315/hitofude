@@ -105,6 +105,17 @@ class MarkdownEditor(QPlainTextEdit):
     def toggle_source_mode(self) -> None:
         self.set_source_mode(not self._highlighter.source_mode)
 
+    def set_font_family(self, family: str) -> None:
+        font = self.font()
+        font.setFamily(family)
+        self.setFont(font)
+
+    def set_base_point_size(self, size: float) -> None:
+        font = self.font()
+        font.setPointSizeF(size)
+        self.setFont(font)
+        self._highlighter.set_base_point_size(size)
+
     # --------------------------------------------------------------- 入力
 
     def is_composing(self) -> bool:

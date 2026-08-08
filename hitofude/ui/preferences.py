@@ -1,0 +1,145 @@
+"""環境設定（spec §5.4）。
+
+フォント / テーマ / 保管フォルダ / ゴミ箱の保持日数。
+
+**保管フォルダの変更は再起動が要る**ことを画面に出す。索引も監視も
+起動時に開いた vault に紐づいているため、黙って切り替えると
+「一覧が更新されない」という分かりにくい壊れ方をする。
+"""
+
+from pathlib import Path
+
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QDoubleSpinBox,
+    QFileDialog,
+    QFontComboBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
+)
+
+from hitofude.config import MAX_POINT_SIZE, MIN_POINT_SIZE, Config
+from hitofude.theme import ThemeMode
+
+THEME_LABELS = {
+    ThemeMode.SYSTEM: "システムに合わせる",
+    ThemeMode.LIGHT: "ライト",
+    ThemeMode.DARK: "ダーク",
+}
+
+MAX_TRASH_DAYS = 3650
+
+
+class PreferencesDialog(QDialog):
+    applied = Signal()
+    """設定が書き込まれたあとに飛ぶ。呼び出し側が見た目を更新する。"""
+
+    def __init__(self, config: Config, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._config = config
+        self.setWindowTitle("環境設定")
+        self.setMinimumWidth(420)
+
+        form = QFormLayout()
+
+        self._font = QFontComboBox(self)
+        self._font.setCurrentText(config.font_family)
+        form.addRow("本文フォント", self._font)
+
+        self._size = QDoubleSpinBox(self)
+        self._size.setRange(MIN_POINT_SIZE, MAX_POINT_SIZE)
+        self._size.setSingleStep(0.5)
+        self._size.setSuffix(" pt")
+        self._size.setValue(config.font_point_size)
+        form.addRow("文字サイズ", self._size)
+
+        self._mono = QFontComboBox(self)
+        self._mono.setFontFilters(QFontComboBox.FontFilter.MonospacedFonts)
+        self._mono.setCurrentText(config.mono_family)
+        form.addRow("等幅フォント", self._mono)
+
+        self._theme = QComboBox(self)
+        for mode, label in THEME_LABELS.items():
+            self._theme.addItem(label, mode)
+        self._theme.setCurrentIndex(self._theme.findData(config.theme_mode))
+        form.addRow("テーマ", self._theme)
+
+        self._vault_label = QLabel(str(config.vault_path), self)
+        self._vault_label.setWordWrap(True)
+        self._vault_button = QPushButton("変更…", self)
+        self._vault_button.clicked.connect(self._choose_vault)
+        vault_row = QHBoxLayout()
+        vault_row.addWidget(self._vault_label, 1)
+        vault_row.addWidget(self._vault_button)
+        form.addRow("保管フォルダ", vault_row)
+
+        self._trash_days = QSpinBox(self)
+        self._trash_days.setRange(1, MAX_TRASH_DAYS)
+        self._trash_days.setSuffix(" 日")
+        self._trash_days.setValue(config.trash_days)
+        form.addRow("ゴミ箱の保持", self._trash_days)
+
+        self._restart_note = QLabel("保管フォルダの変更は再起動後に反映されます。", self)
+        self._restart_note.setVisible(False)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addWidget(self._restart_note)
+        layout.addWidget(buttons)
+
+        self._pending_vault: Path | None = None
+
+    # ------------------------------------------------------------------ 参照
+
+    @property
+    def selected_theme(self) -> ThemeMode:
+        return self._theme.currentData()
+
+    @property
+    def selected_vault(self) -> Path:
+        return self._pending_vault or self._config.vault_path
+
+    # ------------------------------------------------------------------ 動作
+
+    def _choose_vault(self) -> None:
+        chosen = QFileDialog.getExistingDirectory(
+            self, "保管フォルダを選ぶ", str(self._config.vault_path)
+        )
+        if chosen:
+            self.set_vault(Path(chosen))
+
+    def set_vault(self, path: Path) -> None:
+        """フォルダ選択の結果を反映する。ダイアログを介さず呼べるようにしてある。"""
+        self._pending_vault = path
+        self._vault_label.setText(str(path))
+        self._restart_note.setVisible(path != self._config.vault_path)
+
+    def accept(self) -> None:
+        self.apply()
+        super().accept()
+
+    def apply(self) -> None:
+        """入力内容を設定へ書き込む。"""
+        self._config.font_family = self._font.currentText()
+        self._config.font_point_size = self._size.value()
+        self._config.mono_family = self._mono.currentText()
+        self._config.theme_mode = self.selected_theme
+        self._config.trash_days = self._trash_days.value()
+        if self._pending_vault is not None:
+            self._config.vault_path = self._pending_vault
+        self._config.sync()
+        self.applied.emit()

@@ -34,6 +34,8 @@ from hitofude.storage.watcher import ChangeKind, VaultWatcher
 from hitofude.theme import ThemeColors
 from hitofude.ui.conflict_dialog import ConflictDialog, Resolution
 from hitofude.ui.note_list import NoteListView
+from hitofude.ui.preferences import PreferencesDialog
+from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
 from hitofude.ui.sidebar import ALL, Filter, FilterKind, Sidebar
 
 logger = logging.getLogger(__name__)
@@ -113,6 +115,14 @@ class MainWindow(QMainWindow):
         self._add_action(file_menu, "保存", QKeySequence.StandardKey.Save, self.flush)
         file_menu.addSeparator()
         self._add_action(file_menu, "ゴミ箱へ移動", "Ctrl+Backspace", self.trash_current)
+
+        self._add_action(
+            file_menu, "環境設定…", QKeySequence.StandardKey.Preferences, self.open_preferences
+        )
+
+        search_menu = self.menuBar().addMenu("検索")
+        self._add_action(search_menu, "クイックオープン", "Ctrl+O", self.quick_open)
+        self._add_action(search_menu, "全文検索", "Ctrl+Shift+F", self.full_text_search)
 
         view_menu = self.menuBar().addMenu("表示")
         self._add_action(view_menu, "サイドバー", "Ctrl+1", self.toggle_sidebar)
@@ -387,6 +397,57 @@ class MainWindow(QMainWindow):
         else:
             self._note = None
             self._editor.clear()
+
+    # ------------------------------------------------------------------ 検索
+
+    def quick_open(self) -> None:
+        """`Cmd+O`。タイトルへのあいまい一致で開く（spec §5.4）。"""
+        palette = self._make_palette("ノートを開く…")
+        palette.set_provider(self._quick_open_items)
+        palette.open_with()
+
+    def full_text_search(self) -> None:
+        """`Cmd+Shift+F`。本文を検索する（spec §5.4）。"""
+        palette = self._make_palette("本文を検索…")
+        palette.set_provider(self._search_items)
+        palette.open_with()
+
+    def _make_palette(self, placeholder: str) -> Palette:
+        palette = Palette(self, placeholder=placeholder, theme=self._theme_watcher.colors)
+        palette.chosen.connect(self._on_palette_chosen)
+        # 開くたびに作り直す。前回の入力と結果が残っていると誤操作の元になる
+        palette.finished.connect(palette.deleteLater)
+        return palette
+
+    def _quick_open_items(self, query: str) -> list[PaletteItem]:
+        items = [
+            PaletteItem(title=row.title, subtitle=row.preview, path=row.path)
+            for row in self._db.notes()
+        ]
+        return fuzzy_filter(query, items)
+
+    def _search_items(self, query: str) -> list[PaletteItem]:
+        return [
+            PaletteItem(title=hit.title, subtitle=hit.snippet, path=hit.path)
+            for hit in self._db.search(query)
+        ]
+
+    def _on_palette_chosen(self, relative: Path) -> None:
+        self.open_note(self._vault.root / relative)
+        self._note_list.select_path(relative)
+
+    def open_preferences(self) -> None:
+        """`Cmd+,`（spec §5.4）。"""
+        dialog = PreferencesDialog(self._config, self)
+        dialog.applied.connect(self._apply_preferences)
+        dialog.exec()
+
+    def _apply_preferences(self) -> None:
+        """設定を今の画面へ反映する。保管フォルダだけは再起動が要る。"""
+        self._editor.set_font_family(self._config.font_family)
+        self._editor.set_base_point_size(self._config.font_point_size)
+        self._theme_watcher.set_mode(self._config.theme_mode)
+        self._vault.purge_trash(self._config.trash_days)
 
     # ------------------------------------------------------------------ 表示
 

@@ -19,6 +19,11 @@ from hitofude.core.document import Note, searchable_text
 # trigram は 3 文字単位で索引するため、2 文字以下のクエリは構造上ヒットしない
 MIN_TRIGRAM_QUERY = 3
 
+# スニペットの一致部分を挟む印。HTML を直接返させると本文中の `<` が
+# タグとして解釈されるため、表示直前に UI 側が変換する
+HIGHLIGHT_START = "\x02"
+HIGHLIGHT_END = "\x03"
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS notes (
     id           TEXT PRIMARY KEY,
@@ -287,14 +292,19 @@ class IndexDb:
         rows = self._connection.execute(
             """
             SELECT notes.id AS id, notes.path AS path, notes.title AS title,
-                   snippet(notes_fts, 1, '', '', '…', 12) AS snippet
+                   snippet(notes_fts, 1, :start, :end, '…', 12) AS snippet
             FROM notes_fts
             JOIN notes ON notes.id = notes_fts.note_id
-            WHERE notes_fts MATCH ? AND notes.trashed = 0
+            WHERE notes_fts MATCH :query AND notes.trashed = 0
             ORDER BY rank
-            LIMIT ?
+            LIMIT :limit
             """,
-            (_quote(text), limit),
+            {
+                "query": _quote(text),
+                "limit": limit,
+                "start": HIGHLIGHT_START,
+                "end": HIGHLIGHT_END,
+            },
         )
         return [_to_hit(row) for row in rows]
 
