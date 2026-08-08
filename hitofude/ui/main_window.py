@@ -148,6 +148,8 @@ STATS_DELAY_MS = 400
 DIRTY_MARK = "•"
 
 NEW_NOTE_TITLE = "無題"
+PINNED_NOTICE = "ピン留めしているノートは削除できません。先にピン留めを外してください。"
+NOTICE_MS = 5000
 
 
 class MainWindow(QMainWindow):
@@ -560,7 +562,10 @@ class MainWindow(QMainWindow):
         label = "ピン留めを外す" if self._is_pinned(path) else "ピン留め"
         menu.addAction(label).triggered.connect(lambda: self.toggle_pin(path))
         menu.addSeparator()
-        menu.addAction("ゴミ箱へ移動").triggered.connect(lambda: self.trash_note(path))
+        trash = menu.addAction("ゴミ箱へ移動")
+        trash.triggered.connect(lambda: self.trash_note(path))
+        # 項目ごと消すと理由が分からない。押せない状態で見せる
+        trash.setEnabled(not self._is_pinned(path))
         return menu
 
     def _is_pinned(self, path: Path) -> bool:
@@ -612,14 +617,27 @@ class MainWindow(QMainWindow):
     def toggle_pin_current(self) -> bool:
         return False if self._note is None else self.toggle_pin(self._note.path)
 
-    def trash_note(self, path: Path) -> None:
+    def trash_note(self, path: Path) -> bool:
+        """ゴミ箱へ移す。移せたら True。
+
+        **ピン留めしているノートは移さない。** ピン留めは「これは残す」と
+        いう意思表示で、削除と噛み合わない。
+        """
         if self._note is not None and self._note.path == path:
-            self.trash_current()
-            return
+            return self.trash_current()
+        if self._is_pinned(path):
+            self._notify_pinned()
+            return False
+
         self._watcher.suppress(path)
         self._vault.trash(path)
         self._db.remove_path(self._vault.root, path)
         self.refresh()
+        return True
+
+    def _notify_pinned(self) -> None:
+        """黙って無視すると、押し間違いなのか壊れたのか分からない。"""
+        self.statusBar().showMessage(PINNED_NOTICE, NOTICE_MS)
 
     def _place_cursor_at_body(self, text: str) -> None:
         offset = frontmatter.body_offset(text)
@@ -701,9 +719,13 @@ class MainWindow(QMainWindow):
         self.open_note(note.path)
         self._note_list.select_path(note.path.relative_to(self._vault.root))
 
-    def trash_current(self) -> None:
+    def trash_current(self) -> bool:
         if self._note is None:
-            return
+            return False
+        if self._note.pinned:
+            self._notify_pinned()
+            return False
+
         path = self._note.path
         self._watcher.suppress(path)
         self._vault.trash(path)
@@ -713,6 +735,7 @@ class MainWindow(QMainWindow):
         self.refresh()
         self._update_title()
         self._update_stats()
+        return True
 
     def _on_text_changed(self) -> None:
         if self._loading or self._note is None:

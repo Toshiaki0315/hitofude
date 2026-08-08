@@ -205,3 +205,92 @@ class TestContextMenu:
         from PySide6.QtCore import Qt
 
         assert window.note_list.contextMenuPolicy() == Qt.ContextMenuPolicy.CustomContextMenu
+
+
+class TestPinnedIsProtected:
+    """ピン留めしたノートはゴミ箱へ移せない。
+
+    ピン留めは「これは残す」という意思表示なので、削除と噛み合わない。
+    黙って無視すると押し間違いに気づけないため、理由を伝える。
+    """
+
+    def test_ゴミ箱へ移せない(self, window) -> None:
+        path = make_note(window, "留めたノート")
+        window.toggle_pin(path)
+
+        assert window.trash_note(path) is False
+        assert path.is_file()
+
+    def test_一覧から消えない(self, window) -> None:
+        path = make_note(window, "留めたノート")
+        window.toggle_pin(path)
+        window.trash_note(path)
+        window.set_filter(ALL)
+        assert "留めたノート" in titles(window)
+
+    def test_開いているノートでも消えない(self, window) -> None:
+        path = make_note(window, "留めたノート")
+        window.toggle_pin(path)
+        window.open_note(path)
+
+        assert window.trash_current() is False
+        assert window.current_note is not None
+        assert window.editor.toPlainText() != ""
+
+    def test_理由が伝わる(self, window) -> None:
+        """黙って何も起きないと、壊れたのか効かないのか分からない。"""
+        path = make_note(window, "留めたノート")
+        window.toggle_pin(path)
+        window.trash_note(path)
+        assert "ピン留め" in window.statusBar().currentMessage()
+
+    def test_ピン留めを外せば消せる(self, window) -> None:
+        path = make_note(window, "留めたノート")
+        window.toggle_pin(path)
+        window.toggle_pin(path)
+
+        assert window.trash_note(path) is True
+        assert not path.exists()
+
+    def test_留めていなければ今まで通り消せる(self, window) -> None:
+        path = make_note(window, "ふつうのノート")
+        assert window.trash_note(path) is True
+        assert not path.exists()
+
+    def test_留めていない現在のノートも消せる(self, window) -> None:
+        path = make_note(window, "ふつうのノート")
+        window.open_note(path)
+        assert window.trash_current() is True
+        assert window.current_note is None
+
+    def test_右クリックのゴミ箱へ移動が無効になる(self, window) -> None:
+        """項目ごと消すと理由が分からない。押せない状態で見せる。"""
+        path = make_note(window, "留めたノート")
+        window.toggle_pin(path)
+
+        menu = window.context_menu_for(path.relative_to(window.vault.root))
+        try:
+            trash = next(a for a in menu.actions() if a.text() == "ゴミ箱へ移動")
+            assert trash.isEnabled() is False
+        finally:
+            menu.deleteLater()
+
+    def test_留めていなければ有効なまま(self, window) -> None:
+        path = make_note(window, "ふつうのノート")
+        menu = window.context_menu_for(path.relative_to(window.vault.root))
+        try:
+            trash = next(a for a in menu.actions() if a.text() == "ゴミ箱へ移動")
+            assert trash.isEnabled() is True
+        finally:
+            menu.deleteLater()
+
+    def test_ゴミ箱の中身には関係しない(self, window) -> None:
+        """ゴミ箱にあるノートは既に削除済み。ここでピン留めは見ない。"""
+        path = make_note(window, "ノート")
+        trashed = window.vault.trash(path)
+        window.set_filter(TRASH)
+        labels = [
+            a.text()
+            for a in window.context_menu_for(trashed.relative_to(window.vault.root)).actions()
+        ]
+        assert labels == ["元に戻す"]
