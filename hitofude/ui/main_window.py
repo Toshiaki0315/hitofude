@@ -164,6 +164,9 @@ class MainWindow(QMainWindow):
         self._opening = False
         self._filter: Filter = ALL
 
+        # 隠す直前の幅。隠すと `QSplitter` の値が 0 になり、元の幅が失われる
+        self._pane_widths: dict[int, int] = {}
+
         self._build_ui()
         self._build_menus()
         self._restore_layout()
@@ -332,7 +335,11 @@ class MainWindow(QMainWindow):
         # 順序が逆だと割り当てた幅がその場で捨てられる
         self._sidebar.setVisible(self._config.sidebar_visible)
         self._note_list.setVisible(self._config.note_list_visible)
-        self._splitter.setSizes(self._usable_sizes(self._config.splitter_sizes))
+        stored = self._config.splitter_sizes
+        for index in range(min(len(stored), self._splitter.count())):
+            if stored[index] >= self._splitter.widget(index).minimumWidth():
+                self._pane_widths[index] = stored[index]
+        self._splitter.setSizes(self._usable_sizes(stored))
 
     def _usable_sizes(self, sizes: list[int]) -> list[int]:
         """潰れた幅を既定へ戻す。
@@ -1025,6 +1032,8 @@ class MainWindow(QMainWindow):
         """
         widget = self._splitter.widget(index)
         showing = widget.isHidden()
+        if not showing:
+            self._pane_widths[index] = self._splitter.sizes()[index]
         widget.setVisible(showing)
         if showing:
             self._grow_pane(index)
@@ -1035,7 +1044,9 @@ class MainWindow(QMainWindow):
         if sizes[index] >= widget.minimumWidth():
             return
 
-        wanted = max(DEFAULT_SPLITTER_SIZES[index], widget.minimumWidth())
+        # 隠す前の幅へ戻す。覚えていなければ既定
+        wanted = self._pane_widths.get(index, DEFAULT_SPLITTER_SIZES[index])
+        wanted = max(wanted, widget.minimumWidth())
         # 広げた分はエディタから借りる。全体の合計を変えないため
         sizes[-1] = max(1, sizes[-1] - (wanted - sizes[index]))
         sizes[index] = wanted
@@ -1044,6 +1055,17 @@ class MainWindow(QMainWindow):
     def _apply_splitter_style(self, theme: ThemeColors) -> None:
         """ペインの境界に 1px の線を引く。"""
         self._splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {theme.rule}; }}")
+
+    def _sizes_to_keep(self) -> list[int]:
+        """保存する幅。隠れているペインは前回の値を残す。
+
+        隠れたペインの幅は 0 になる。そのまま保存すると、次に出したときに
+        ユーザーが決めた幅へ戻せない。
+        """
+        return [
+            self._pane_widths.get(index, size) if self._splitter.widget(index).isHidden() else size
+            for index, size in enumerate(self._splitter.sizes())
+        ]
 
     def _on_theme_changed(self, colors: ThemeColors) -> None:
         self._pane.set_theme(colors)
@@ -1057,9 +1079,12 @@ class MainWindow(QMainWindow):
         # 終了時は競合してもダイアログを出さない。ここでモーダルを開くと
         # アプリが終了できなくなる
         self.flush(interactive=False)
-        self._config.splitter_sizes = self._splitter.sizes()
-        self._config.sidebar_visible = self._sidebar.isVisible()
-        self._config.note_list_visible = self._note_list.isVisible()
+        # **`isVisible()` を使わない。** ウィンドウ自体が隠れていると子も
+        # False を返すため、`Cmd+H` で隠してから終了すると、出していたペインが
+        # 「隠す」で保存され、次の起動が真っ白な窓になる（実際に踏んだ）
+        self._config.splitter_sizes = self._sizes_to_keep()
+        self._config.sidebar_visible = not self._sidebar.isHidden()
+        self._config.note_list_visible = not self._note_list.isHidden()
         self._config.window_geometry = self.saveGeometry()
         self._config.sync()
 

@@ -144,3 +144,62 @@ class TestToggle:
             window.toggle_sidebar()
             window.toggle_sidebar()
         assert window.centralWidget().sizes()[0] >= DEFAULT_SPLITTER_SIZES[0]
+
+
+class TestSaveOnClose:
+    """終了時に「隠す」が勝手に保存されないこと（ユーザー報告の原因）。
+
+    `isVisible()` は**ウィンドウ自体が隠れていると子も False** を返す。
+    アプリを `Cmd+H` で隠してから終了すると、出していたペインまで
+    「隠す」で保存され、次の起動で真っ白な窓になっていた。
+    """
+
+    def test_普通に閉じれば表示のまま保存される(self, qtbot, config) -> None:
+        window = open_window(qtbot, config)
+        window.close()
+        assert config.sidebar_visible is True
+        assert config.note_list_visible is True
+
+    def test_ウィンドウを隠してから閉じても表示のまま(self, qtbot, config) -> None:
+        window = open_window(qtbot, config)
+        window.hide()
+        window.close()
+        assert config.sidebar_visible is True
+        assert config.note_list_visible is True
+
+    def test_最小化してから閉じても表示のまま(self, qtbot, config) -> None:
+        window = open_window(qtbot, config)
+        window.showMinimized()
+        window.close()
+        assert config.sidebar_visible is True
+
+    def test_自分で隠したペインはちゃんと隠すで保存される(self, qtbot, config) -> None:
+        window = open_window(qtbot, config)
+        window.toggle_sidebar()
+        window.close()
+        assert config.sidebar_visible is False
+        assert config.note_list_visible is True
+
+    def test_隠したペインの幅を0で保存しない(self, qtbot, config) -> None:
+        """0 で保存すると、次に出したとき元の幅へ戻せない。"""
+        window = open_window(qtbot, config)
+        window.centralWidget().setSizes([220, 300, 578])
+        window.toggle_sidebar()
+        window.close()
+        assert config.splitter_sizes[0] == 220
+
+    def test_見えているペインの幅は今の値で保存する(self, qtbot, config) -> None:
+        window = open_window(qtbot, config)
+        window.centralWidget().setSizes([220, 300, 578])
+        window.close()
+        assert config.splitter_sizes[:2] == [220, 300]
+
+    def test_隠して閉じて開き直しても幅が残る(self, qtbot, config) -> None:
+        window = open_window(qtbot, config)
+        window.centralWidget().setSizes([220, 300, 578])
+        window.toggle_sidebar()
+        window.close()
+
+        again = open_window(qtbot, config)
+        again.toggle_sidebar()
+        assert again.centralWidget().sizes()[0] == 220
