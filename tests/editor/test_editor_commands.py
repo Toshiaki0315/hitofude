@@ -222,3 +222,48 @@ class TestImeGuardStillApplies:
         QApplication.sendEvent(editor, QInputMethodEvent("にほんご", []))
         qtbot.keyClick(editor, Qt.Key.Key_B, CMD)
         assert "**" not in editor.toPlainText()
+
+
+class TestUnknownCommandKeys:
+    """未処理の Cmd 組み合わせで文字を入れない（回帰テスト）。
+
+    macOS では Option が文字合成に使われる。`Cmd+Option+T` は `†` を生み、
+    選択中に押すと**選択範囲がその 1 文字に置き換わって消える**。
+    実際に表 4 行を失った。
+    """
+
+    def _send(self, editor, key, text: str, modifiers) -> None:
+        from PySide6.QtCore import QEvent
+        from PySide6.QtGui import QKeyEvent
+        from PySide6.QtWidgets import QApplication
+
+        QApplication.sendEvent(editor, QKeyEvent(QEvent.Type.KeyPress, key, modifiers, text))
+
+    def test_CmdOptionTで文字が入らない(self, editor) -> None:
+        editor.setPlainText("消えては困る内容")
+        select(editor, 0, 8)
+        self._send(
+            editor,
+            Qt.Key.Key_T,
+            "†",
+            CMD | Qt.KeyboardModifier.AltModifier,
+        )
+        assert editor.toPlainText() == "消えては困る内容"
+
+    def test_知らないCmdの組み合わせでも消えない(self, editor) -> None:
+        editor.setPlainText("表の中身")
+        select(editor, 0, 4)
+        for key, text in ((Qt.Key.Key_J, "∆"), (Qt.Key.Key_G, "©"), (Qt.Key.Key_5, "%")):
+            self._send(editor, key, text, CMD | Qt.KeyboardModifier.AltModifier)
+        assert editor.toPlainText() == "表の中身"
+
+    def test_修飾なしの文字は普通に入る(self, editor) -> None:
+        editor.setPlainText("")
+        self._send(editor, Qt.Key.Key_A, "a", Qt.KeyboardModifier.NoModifier)
+        assert editor.toPlainText() == "a"
+
+    def test_割り当て済みのCmdは効く(self, editor, qtbot) -> None:
+        editor.setPlainText("これは強調です")
+        select(editor, 3, 5)
+        qtbot.keyClick(editor, Qt.Key.Key_B, CMD)
+        assert editor.toPlainText() == "これは**強調**です"

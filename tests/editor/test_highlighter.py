@@ -296,3 +296,29 @@ class TestWithWidget:
         assert not is_hidden(edit.document(), 0, 5)
         assert is_hidden(edit.document(), 1, 0)
         assert block_data(edit.document(), 1).info.type is BlockType.HEADING
+
+
+class TestMonoFallback:
+    """`SF Mono` は macOS がアプリに公開しておらず解決されない（回帰テスト）。
+
+    実在しないフォントを指定すると Qt が警告を出し、行の高さがばらつく。
+    """
+
+    def test_実在するフォントへ落ちる(self) -> None:
+        from hitofude.editor.highlighter import mono_families
+
+        families = mono_families("SF Mono")
+        assert families[0] == "SF Mono"
+        assert "Menlo" in families
+
+    def test_既定は実在するフォント(self, qapp) -> None:
+        from PySide6.QtGui import QFontDatabase
+
+        from hitofude.editor.highlighter import DEFAULT_MONO_FAMILY
+
+        assert DEFAULT_MONO_FAMILY in set(QFontDatabase.families())
+
+    def test_コードに複数の候補が入る(self, document, highlighter) -> None:
+        set_text(document, "`code`")
+        families = char_format(document, 0, 1).fontFamilies()
+        assert len(families) > 1, "フォールバックが入っていない"

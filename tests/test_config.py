@@ -67,7 +67,14 @@ class TestFont:
         assert config.font_point_size == pytest.approx(17.5)
 
     def test_等幅フォントも持つ(self, config) -> None:
-        assert config.mono_family == "SF Mono"
+        """既定は実在するフォント。
+
+        spec §5.2 は `SF Mono` を指定しているが、macOS はアプリに公開して
+        いないため解決されず、Qt が警告を出して行の高さがばらつく。
+        """
+        from PySide6.QtGui import QFontDatabase
+
+        assert config.mono_family in set(QFontDatabase.families())
 
     @pytest.mark.parametrize("size", [0, -3, 500])
     def test_極端な文字サイズは既定に戻す(self, config, size) -> None:

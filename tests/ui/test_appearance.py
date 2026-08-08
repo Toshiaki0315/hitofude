@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, Qt
 
 from hitofude.config import Config
 from hitofude.theme import DARK, LIGHT, ThemeMode
@@ -176,3 +176,96 @@ class TestTableFormatting:
         window.editor.setPlainText("価格は 100 | 税込です\n")
         data = window.editor.document().findBlockByNumber(0).userData()
         assert data.info.type is BlockType.PARAGRAPH
+
+
+class TestShortcutRegistration:
+    """メニューとショートカットの登録漏れ・衝突を検出する（回帰テスト）。
+
+    「表を整形」はメニューへの追加が抜けたまま気づけなかった。
+    `format_table()` を直接呼ぶテストしか無く、**ユーザーが辿る経路**を
+    誰も見ていなかったため。
+    """
+
+    def _shortcuts(self, window) -> dict[str, str]:
+        found: dict[str, str] = {}
+        for action in window.actions():
+            text = action.shortcut().toString()
+            if text:
+                found[text] = action.text()
+        return found
+
+    def test_表を整形が登録されている(self, window) -> None:
+        assert "Ctrl+Shift+L" in self._shortcuts(window)
+
+    @pytest.mark.parametrize(
+        ("shortcut", "label"),
+        [
+            ("Ctrl+N", "新規ノート"),
+            ("Ctrl+S", "保存"),
+            ("Ctrl+O", "クイックオープン"),
+            ("Ctrl+Shift+F", "全文検索"),
+            ("Ctrl+Shift+L", "表を整形"),
+            ("Ctrl+,", "環境設定…"),
+            ("Ctrl+1", "サイドバー"),
+            ("Ctrl+2", "ノートリスト"),
+            ("Ctrl+/", "ソースモード"),
+        ],
+    )
+    def test_主要なショートカットが揃っている(self, window, shortcut: str, label: str) -> None:
+        assert self._shortcuts(window).get(shortcut) == label
+
+    def test_ショートカットが衝突していない(self, window) -> None:
+        texts = [
+            action.shortcut().toString()
+            for action in window.actions()
+            if action.shortcut().toString()
+        ]
+        duplicates = {text for text in texts if texts.count(text) > 1}
+        assert not duplicates, f"重複: {duplicates}"
+
+    def test_Optionを含むショートカットを使わない(self, window) -> None:
+        """macOS では Option が文字合成に使われ、ショートカットが発火しない。"""
+        using_alt = [
+            action.text()
+            for action in window.actions()
+            if "Alt" in action.shortcut().toString() or "Opt" in action.shortcut().toString()
+        ]
+        assert using_alt == []
+
+    def test_ショートカットで表が整形される(self, window, qtbot) -> None:
+        """ユーザーが辿る経路そのものを通す。"""
+        from hitofude.editor.table import display_width
+
+        window.editor.setPlainText("| 名前 | 個数 |\n|---|---:|\n| りんご | 3 |\n")
+        cursor = window.editor.textCursor()
+        cursor.setPosition(0)
+        window.editor.setTextCursor(cursor)
+
+        qtbot.keyClick(
+            window.editor,
+            Qt.Key.Key_L,
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+        )
+        lines = window.editor.toPlainText().split("\n")[:3]
+        assert len({display_width(line) for line in lines}) == 1, lines
+
+    def test_表全体を選択したまま整形できる(self, window, qtbot) -> None:
+        """選択の末尾は表の下の空行になる。先頭側を見ないと見つからない。"""
+        from PySide6.QtGui import QTextCursor
+
+        from hitofude.editor.table import display_width
+
+        window.editor.setPlainText("| 名前 | 個数 |\n|---|---:|\n| りんご | 3 |\n")
+        cursor = window.editor.textCursor()
+        cursor.setPosition(0)
+        cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
+        window.editor.setTextCursor(cursor)
+
+        qtbot.keyClick(
+            window.editor,
+            Qt.Key.Key_L,
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+        )
+        lines = window.editor.toPlainText().split("\n")[:3]
+        assert len({display_width(line) for line in lines}) == 1, lines
+        assert "りんご" in window.editor.toPlainText()

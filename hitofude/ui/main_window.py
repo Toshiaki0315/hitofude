@@ -229,13 +229,19 @@ class MainWindow(QMainWindow):
         self._add_action(file_menu, "HTML で書き出す…", "Ctrl+Shift+E", self.export_html)
         self._add_action(file_menu, "PDF で書き出す…", "Ctrl+P", self.export_pdf)
 
-        self._add_action(
-            file_menu, "環境設定…", QKeySequence.StandardKey.Preferences, self.open_preferences
-        )
+        # StandardKey.Preferences はこの環境で空を返し、キーボードから
+        # 到達できなくなる。macOS の慣習どおり明示する
+        self._add_action(file_menu, "環境設定…", "Ctrl+,", self.open_preferences)
 
         search_menu = self.menuBar().addMenu("検索")
         self._add_action(search_menu, "クイックオープン", "Ctrl+O", self.quick_open)
         self._add_action(search_menu, "全文検索", "Ctrl+Shift+F", self.full_text_search)
+
+        edit_menu = self.menuBar().addMenu("編集")
+        # **Option を含むショートカットは使わない。** macOS では Option が
+        # 文字合成に使われ、Cmd+Option+T は `†` を生む。ショートカットが
+        # 発火せず、選択中だと選択範囲がその 1 文字に置き換わって消える
+        self._add_action(edit_menu, "表を整形", "Ctrl+Shift+L", self._editor.format_table)
 
         view_menu = self.menuBar().addMenu("表示")
         self._add_action(view_menu, "サイドバー", "Ctrl+1", self.toggle_sidebar)

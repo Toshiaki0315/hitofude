@@ -178,7 +178,7 @@ class MarkdownEditor(QPlainTextEdit):
         """
         cursor = self.textCursor()
         lines = self.toPlainText().split("\n")
-        found = table.find_table(lines, cursor.blockNumber())
+        found = table.find_table(lines, self._table_anchor_line(cursor))
         if found is None:
             return False
 
@@ -205,6 +205,18 @@ class MarkdownEditor(QPlainTextEdit):
         edit.setPosition(moved.position() + min(column, max(0, moved.length() - 1)))
         self.setTextCursor(edit)
         return True
+
+    def _table_anchor_line(self, cursor: QTextCursor) -> int:
+        """整形の起点にする行。
+
+        選択があるときはキャレットが選択の**末尾**にあり、表全体を選ぶと
+        表の下の空行を指してしまう。選択の先頭側を見る。
+        """
+        if not cursor.hasSelection():
+            return cursor.blockNumber()
+        probe = QTextCursor(cursor)
+        probe.setPosition(cursor.selectionStart())
+        return probe.blockNumber()
 
     def set_base_point_size(self, size: float) -> None:
         font = self.font()
@@ -251,8 +263,17 @@ class MarkdownEditor(QPlainTextEdit):
             return
         if plain and self._handle_auto_pair(event.text()):
             return
+        if self._is_unhandled_command(event):
+            # 知らない Cmd の組み合わせで文字を入れない。macOS では
+            # Cmd+Option+T が `†` を生む。選択中だと**選択範囲が消える**
+            event.accept()
+            return
 
         super().keyPressEvent(event)
+
+    @staticmethod
+    def _is_unhandled_command(event: QKeyEvent) -> bool:
+        return bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier) and bool(event.text())
 
     # ----------------------------------------------------------- コマンド
 

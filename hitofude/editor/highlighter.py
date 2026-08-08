@@ -30,7 +30,18 @@ from hitofude.theme import LIGHT, ThemeColors
 # 0 は Qt が「未指定」と解釈するため使えない。
 HIDDEN_POINT_SIZE = 0.5
 
-DEFAULT_MONO_FAMILY = "SF Mono"
+DEFAULT_MONO_FAMILY = "Menlo"
+
+# `SF Mono` は spec §5.2 の指定だが、macOS はアプリに公開していないため
+# 指定しても解決されない（Qt が "missing font family" を警告する）。
+# 実在するものへ順に落とす。指定フォントが無い環境でも行の高さが暴れない
+MONO_FALLBACKS = ["Menlo", "Monaco", "Courier New"]
+
+
+def mono_families(preferred: str) -> list[str]:
+    """指定フォントに実在するフォールバックを足した並び。"""
+    return [preferred, *(name for name in MONO_FALLBACKS if name != preferred)]
+
 
 # spec §5.2 の見出しサイズ（本文サイズに対する倍率）
 HEADING_SCALE = {1: 1.8, 2: 1.5, 3: 1.25, 4: 1.1, 5: 1.0, 6: 0.95}
@@ -260,7 +271,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             self._heading[level] = fmt
 
         self._code_block = QTextCharFormat()
-        self._code_block.setFontFamilies([self._mono_family])
+        self._code_block.setFontFamilies(mono_families(self._mono_family))
         self._code_block.setForeground(QColor(theme.code_foreground))
         self._code_block.setBackground(QColor(theme.code_background))
 
@@ -268,7 +279,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._quote.setForeground(QColor(theme.quote_foreground))
 
         self._mono = QTextCharFormat()
-        self._mono.setFontFamilies([self._mono_family])
+        self._mono.setFontFamilies(mono_families(self._mono_family))
 
         strong = QTextCharFormat()
         strong.setFontWeight(QFont.Weight.Bold)
@@ -281,7 +292,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         strong_em.setFontItalic(True)
 
         code = QTextCharFormat()
-        code.setFontFamilies([self._mono_family])
+        code.setFontFamilies(mono_families(self._mono_family))
         code.setBackground(QColor(theme.code_background))
         code.setForeground(QColor(theme.code_foreground))
 

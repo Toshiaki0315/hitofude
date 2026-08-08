@@ -16,7 +16,8 @@ from hitofude.theme import ThemeMode
 
 DEFAULT_VAULT_NAME = "HitofudeNotes"
 DEFAULT_FONT_FAMILY = "Hiragino Sans"
-DEFAULT_MONO_FAMILY = "SF Mono"
+# `SF Mono` は macOS がアプリに公開していないので既定にできない（§5.2）
+DEFAULT_MONO_FAMILY = "Menlo"
 DEFAULT_POINT_SIZE = 15.0
 DEFAULT_TRASH_DAYS = 30
 
