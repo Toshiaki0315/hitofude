@@ -26,6 +26,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QFileDialog,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QSplitter,
     QSplitterHandle,
@@ -52,7 +53,7 @@ from hitofude.storage.vault import (
 from hitofude.storage.watcher import ChangeKind, VaultWatcher
 from hitofude.theme import ThemeColors
 from hitofude.ui.conflict_dialog import ConflictDialog, Resolution
-from hitofude.ui.note_list import NoteListView
+from hitofude.ui.note_list import NoteListView, NoteRole
 from hitofude.ui.preferences import PreferencesDialog
 from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
 from hitofude.ui.sidebar import ALL, Filter, FilterKind, Sidebar
@@ -204,6 +205,9 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(self._splitter)
 
+        self._note_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._note_list.customContextMenuRequested.connect(self._show_context_menu)
+
         self._sidebar.filter_changed.connect(self._on_filter_changed)
         self._note_list.note_activated.connect(self._on_note_activated)
         self._editor.textChanged.connect(self._on_text_changed)
@@ -225,6 +229,7 @@ class MainWindow(QMainWindow):
         self._add_action(file_menu, "新規ノート", QKeySequence.StandardKey.New, self.new_note)
         self._add_action(file_menu, "保存", QKeySequence.StandardKey.Save, self.flush)
         file_menu.addSeparator()
+        self._add_action(file_menu, "ピン留め", "Ctrl+Shift+P", self.toggle_pin_current)
         self._add_action(file_menu, "ゴミ箱へ移動", "Ctrl+Backspace", self.trash_current)
         file_menu.addSeparator()
         self._add_action(file_menu, "Markdown で書き出す…", "Ctrl+Shift+M", self.export_markdown)
@@ -293,6 +298,10 @@ class MainWindow(QMainWindow):
     @property
     def vault(self) -> Vault:
         return self._vault
+
+    @property
+    def vault_index(self) -> IndexDb:
+        return self._db
 
     @property
     def theme_watcher(self) -> ThemeWatcher:
@@ -427,9 +436,113 @@ class MainWindow(QMainWindow):
             )
         return rows
 
-    def _on_filter_changed(self, target: Filter) -> None:
+    def set_filter(self, target: Filter) -> None:
         self._filter = target
         self._note_list.set_rows(self._rows_for(target))
+
+    def _on_filter_changed(self, target: Filter) -> None:
+        self.set_filter(target)
+
+    # ------------------------------------------------------- 一覧からの操作
+
+    def _show_context_menu(self, point) -> None:
+        relative = self._note_list.indexAt(point).data(NoteRole.PATH)
+        if relative is None:
+            return
+        menu = self.context_menu_for(Path(relative))
+        menu.exec(self._note_list.viewport().mapToGlobal(point))
+        menu.deleteLater()
+
+    def context_menu_for(self, relative: Path) -> QMenu:
+        """一覧の右クリックメニュー。ゴミ箱かどうかで中身が変わる。
+
+        ゴミ箱の中身にピン留めや改名を許すと、戻したときの状態が読めない。
+        ここで出せる操作を絞っておく。
+        """
+        path = self._vault.root / relative
+        menu = QMenu(self)
+        if self._filter.kind is FilterKind.TRASH:
+            menu.addAction("元に戻す").triggered.connect(lambda: self.restore_note(path))
+            return menu
+
+        label = "ピン留めを外す" if self._is_pinned(path) else "ピン留め"
+        menu.addAction(label).triggered.connect(lambda: self.toggle_pin(path))
+        menu.addSeparator()
+        menu.addAction("ゴミ箱へ移動").triggered.connect(lambda: self.trash_note(path))
+        return menu
+
+    def _is_pinned(self, path: Path) -> bool:
+        try:
+            return self._vault.read(path).pinned
+        except OSError:
+            return False
+
+    def restore_note(self, path: Path) -> Path | None:
+        """ゴミ箱から vault 直下へ戻す。戻した先を返す。
+
+        **索引にも入れる。** ファイルを動かすだけでは一覧に出てこない。
+        """
+        if not path.is_file():
+            return None
+        self._watcher.suppress(path)
+        target = self._vault.restore(path)
+        self._watcher.suppress(target)
+        self._db.upsert_note(self._vault.read(target), self._vault.root)
+        self.refresh()
+        logger.info("ゴミ箱から戻した: %s", target.name)
+        return target
+
+    def toggle_pin(self, path: Path) -> bool:
+        """ピン留めを反転する。反転後の状態を返す。
+
+        開いているノートなら、先に保存してから本文を読み直す。
+        ピン留めは front matter を書き換えるので、**エディタが古い本文の
+        ままだと次の保存でピン留めが黙って消える**。
+        """
+        if not path.is_file():
+            return False
+        current = self._note is not None and self._note.path == path
+        if current:
+            self.flush()
+
+        self._watcher.suppress(path)
+        note = self._vault.set_pinned(path, not self._is_pinned(path))
+        self._db.upsert_note(note, self._vault.root)
+        if current:
+            self._reload_open_note(note)
+        self.refresh()
+        return note.pinned
+
+    def toggle_pin_current(self) -> bool:
+        return False if self._note is None else self.toggle_pin(self._note.path)
+
+    def trash_note(self, path: Path) -> None:
+        if self._note is not None and self._note.path == path:
+            self.trash_current()
+            return
+        self._watcher.suppress(path)
+        self._vault.trash(path)
+        self._db.remove_path(self._vault.root, path)
+        self.refresh()
+
+    def _reload_open_note(self, note: Note) -> None:
+        """開いているノートの本文をディスクの内容へ差し替える。
+
+        カーソル位置は保つ。ノートを開くときと違い、**ユーザーは今そこを
+        見ている**ので、先頭へ飛ばされると操作の流れが切れる。
+        """
+        position = self._editor.textCursor().position()
+        self._note = note
+        self._loading = True
+        try:
+            self._editor.setPlainText(note.text)
+            cursor = self._editor.textCursor()
+            cursor.setPosition(min(position, self._editor.document().characterCount() - 1))
+            self._editor.setTextCursor(cursor)
+            self._editor.document().setModified(False)
+        finally:
+            self._loading = False
+        self._debouncer.clear()
 
     # ------------------------------------------------------------------ 編集
 

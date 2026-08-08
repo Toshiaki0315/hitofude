@@ -210,6 +210,7 @@ class TestShortcutRegistration:
             ("Ctrl+O", "クイックオープン"),
             ("Ctrl+Shift+F", "全文検索"),
             ("Ctrl+Shift+L", "表を整形"),
+            ("Ctrl+Shift+P", "ピン留め"),
             ("Ctrl+Shift+M", "Markdown で書き出す…"),
             ("Ctrl+Shift+E", "HTML で書き出す…"),
             ("Ctrl+P", "PDF で書き出す…"),

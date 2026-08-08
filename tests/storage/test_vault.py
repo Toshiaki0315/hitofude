@@ -219,3 +219,66 @@ class TestPurgeTrash:
 
     def test_ゴミ箱が無くても壊れない(self, vault) -> None:
         assert vault.purge_trash(days=30) == []
+
+
+class TestSetPinned:
+    """ピン留め（サイドバーの「お気に入り」に入れる操作）。
+
+    front matter の `pinned` を書き換える。`modified` は触らない。
+    ピン留めは本文の編集ではないので、一覧の並び順を動かすのは筋が悪い。
+    """
+
+    def test_ピン留めできる(self, vault: Vault) -> None:
+        note = vault.create("メモ", "本文\n")
+        assert vault.set_pinned(note.path, True).pinned is True
+
+    def test_ピン留めを外せる(self, vault: Vault) -> None:
+        note = vault.create("メモ", "本文\n")
+        vault.set_pinned(note.path, True)
+        assert vault.set_pinned(note.path, False).pinned is False
+
+    def test_外すと鍵ごと消える(self, vault: Vault) -> None:
+        """`pinned: false` を残さない。書いていないことは書かない。"""
+        note = vault.create("メモ", "本文\n")
+        vault.set_pinned(note.path, True)
+        vault.set_pinned(note.path, False)
+        assert "pinned" not in note.path.read_text(encoding="utf-8")
+
+    def test_往復するとファイルが元に戻る(self, vault: Vault) -> None:
+        note = vault.create("メモ", "本文\n")
+        before = note.path.read_text(encoding="utf-8")
+        vault.set_pinned(note.path, True)
+        vault.set_pinned(note.path, False)
+        assert note.path.read_text(encoding="utf-8") == before
+
+    def test_本文を変えない(self, vault: Vault) -> None:
+        note = vault.create("メモ", "# 見出し\n\n**強調** と `コード`\n")
+        vault.set_pinned(note.path, True)
+        assert "**強調** と `コード`" in note.path.read_text(encoding="utf-8")
+
+    def test_modifiedを動かさない(self, vault: Vault) -> None:
+        """ピン留めは編集ではない。一覧の並びが変わるのはおかしい。"""
+        note = vault.create("メモ", "本文\n")
+        before = note.meta.get("modified")
+        assert vault.set_pinned(note.path, True).meta.get("modified") == before
+
+    def test_front_matterが無いノートにも付けられる(self, vault: Vault) -> None:
+        vault.ensure_layout()
+        path = vault.root / "素のノート.md"
+        path.write_text("見出しも何もない本文\n", encoding="utf-8")
+        updated = vault.set_pinned(path, True)
+        assert updated.pinned is True
+        assert "見出しも何もない本文" in path.read_text(encoding="utf-8")
+
+    def test_front_matterが壊れていても本文を失わない(self, vault: Vault) -> None:
+        """G3: メタデータを理由に本文を失わせない。"""
+        vault.ensure_layout()
+        path = vault.root / "壊れたノート.md"
+        path.write_text("---\n: : 壊れた YAML\n---\n大事な本文\n", encoding="utf-8")
+        vault.set_pinned(path, True)
+        assert "大事な本文" in path.read_text(encoding="utf-8")
+
+    def test_同じ値を二度書いても壊れない(self, vault: Vault) -> None:
+        note = vault.create("メモ", "本文\n")
+        vault.set_pinned(note.path, True)
+        assert vault.set_pinned(note.path, True).pinned is True

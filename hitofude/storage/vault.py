@@ -157,6 +157,28 @@ class Vault:
             return text
         return frontmatter.join({**parsed.meta, "modified": _now()}, parsed.body)
 
+    def set_pinned(self, path: Path, pinned: bool) -> Note:
+        """front matter の `pinned` を書き換える。
+
+        **`modified` は触らない。** ピン留めは本文の編集ではないので、
+        一覧の並び順が動くのは筋が悪い。
+
+        外すときは `pinned: false` を残さず鍵ごと消す。書いていないことを
+        ファイルに書かないため、ピン留め → 解除でファイルが元の姿へ戻る。
+
+        front matter が壊れていても本文は必ず残す（G3）。`split()` が
+        壊れたメタデータを空として返すので、ここでは何も特別扱いしない。
+        """
+        parsed = frontmatter.split(path.read_text(encoding="utf-8"))
+        meta = dict(parsed.meta)
+        if pinned:
+            meta["pinned"] = True
+        else:
+            meta.pop("pinned", None)
+
+        save_atomic(path, frontmatter.join(meta, parsed.body))
+        return self.read(path)
+
     # ----------------------------------------------------------------- 移動
 
     def rename(self, path: Path, title: str) -> Path:
