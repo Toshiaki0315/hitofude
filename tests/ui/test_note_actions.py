@@ -294,3 +294,88 @@ class TestPinnedIsProtected:
             for a in window.context_menu_for(trashed.relative_to(window.vault.root)).actions()
         ]
         assert labels == ["元に戻す"]
+
+
+class TestAttachmentWiring:
+    """貼り付けた画像が vault に落ちて、書き出しにも出る（タスク A-2）。"""
+
+    def png(self) -> bytes:
+        from PySide6.QtCore import QBuffer, QByteArray
+        from PySide6.QtGui import QColor, QImage
+
+        image = QImage(8, 8, QImage.Format.Format_RGB32)
+        image.fill(QColor("red"))
+        storage = QByteArray()
+        buffer = QBuffer(storage)
+        buffer.open(QBuffer.OpenModeFlag.WriteOnly)
+        image.save(buffer, "PNG")
+        buffer.close()
+        return bytes(storage)
+
+    def test_エディタに受け口が繋がっている(self, window) -> None:
+        assert window.save_attachment(self.png(), ".png") is not None
+
+    def test_attachmentsに保存される(self, window) -> None:
+        window.save_attachment(self.png(), ".png")
+        saved = list(window.vault.attachments_dir.glob("*.png"))
+        assert len(saved) == 1
+        assert saved[0].read_bytes() == self.png()
+
+    def test_返るのは相対リンク(self, window) -> None:
+        link = window.save_attachment(self.png(), ".png")
+        assert link.startswith("![](attachments/")
+        assert str(window.vault.root) not in link
+
+    def test_貼り付けから本文へ入る(self, window) -> None:
+        from PySide6.QtCore import QMimeData
+        from PySide6.QtGui import QColor, QImage
+
+        path = make_note(window, "画像を貼るノート")
+        window.open_note(path)
+
+        image = QImage(8, 8, QImage.Format.Format_RGB32)
+        image.fill(QColor("red"))
+        mime = QMimeData()
+        mime.setImageData(image)
+        window.editor.insertFromMimeData(mime)
+
+        assert "![](attachments/" in window.editor.toPlainText()
+
+    def test_保存したノートに残る(self, window) -> None:
+        from PySide6.QtCore import QMimeData
+        from PySide6.QtGui import QColor, QImage
+
+        path = make_note(window, "画像を貼るノート")
+        window.open_note(path)
+        image = QImage(8, 8, QImage.Format.Format_RGB32)
+        image.fill(QColor("red"))
+        mime = QMimeData()
+        mime.setImageData(image)
+        window.editor.insertFromMimeData(mime)
+        window.flush()
+
+        assert "![](attachments/" in window.current_note.path.read_text(encoding="utf-8")
+
+    def test_HTML書き出しに画像が埋まる(self, window, tmp_path: Path) -> None:
+        path = make_note(window, "画像のノート")
+        window.open_note(path)
+        link = window.save_attachment(self.png(), ".png")
+        window.editor.textCursor().insertText(f"\n{link}\n")
+        window.flush()
+
+        target = window._write_html(tmp_path / "out.html", window.editor.toPlainText())
+        assert "data:image/png;base64," in target.read_text(encoding="utf-8")
+
+    def test_PDF書き出しでも落ちない(self, window, tmp_path: Path) -> None:
+        path = make_note(window, "画像のノート")
+        window.open_note(path)
+        link = window.save_attachment(self.png(), ".png")
+        window.editor.textCursor().insertText(f"\n{link}\n")
+
+        target = window._write_pdf(tmp_path / "out.pdf", window.editor.toPlainText())
+        assert target.read_bytes().startswith(b"%PDF")
+
+    def test_添付は一覧に出てこない(self, window) -> None:
+        window.save_attachment(self.png(), ".png")
+        window.refresh()
+        assert all("attachments" not in t for t in titles(window) if t)

@@ -249,6 +249,7 @@ class MainWindow(QMainWindow):
         self._editor.textChanged.connect(self._on_text_changed)
         self._theme_watcher.changed.connect(self._on_theme_changed)
 
+        self._editor.set_attachment_handler(self.save_attachment)
         self._editor.set_mono_family(self._config.mono_family)
         self._apply_list_font()
         self._editor.setFocus()
@@ -572,6 +573,25 @@ class MainWindow(QMainWindow):
 
     def _on_filter_changed(self, target: Filter) -> None:
         self.set_filter(target)
+
+    # --------------------------------------------------------------- 添付
+
+    def save_attachment(self, data: bytes, suffix: str) -> str | None:
+        """貼られた画像を vault へ置き、本文へ挿す Markdown を返す。
+
+        エディタから呼ばれる。**保存できなければ None を返す**。壊れた
+        リンクを本文へ書くより、何も入らないほうが分かりやすい。
+        """
+        try:
+            path = self._vault.add_attachment(data, suffix)
+        except OSError:
+            logger.warning("添付を保存できなかった", exc_info=True)
+            return None
+
+        # 自分で書いたファイルなので、外部変更として拾わせない
+        self._watcher.suppress(path)
+        logger.info("添付を保存した: %s", path.name)
+        return self._vault.attachment_link(path)
 
     # ------------------------------------------------------- 一覧からの操作
 
@@ -1044,6 +1064,7 @@ class MainWindow(QMainWindow):
             text,
             title=self._note.title if self._note else "",
             theme=self._theme_watcher.colors,
+            base_path=self._vault.root,
         )
 
     def _write_pdf(self, target: Path, text: str) -> Path:
@@ -1052,6 +1073,7 @@ class MainWindow(QMainWindow):
             text,
             theme=self._theme_watcher.colors,
             base_point_size=self._config.font_point_size,
+            base_path=self._vault.root,
         )
 
     def show_about(self) -> None:
@@ -1073,6 +1095,7 @@ class MainWindow(QMainWindow):
         """設定を今の画面へ反映する。保管フォルダだけは再起動が要る。"""
         self._editor.set_font_family(self._config.font_family)
         self._editor.set_base_point_size(self._config.font_point_size)
+        self._editor.set_attachment_handler(self.save_attachment)
         self._editor.set_mono_family(self._config.mono_family)
         self._apply_list_font()
         self._theme_watcher.set_mode(self._config.theme_mode)

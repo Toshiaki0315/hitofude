@@ -22,7 +22,7 @@ from pathlib import Path
 
 from hitofude.core import frontmatter
 from hitofude.core.document import Note, new_id
-from hitofude.storage.autosave import save_atomic
+from hitofude.storage.autosave import save_atomic, save_bytes_atomic
 
 MARKDOWN_SUFFIXES = (".md", ".markdown")
 ATTACHMENTS_DIR = "attachments"
@@ -44,6 +44,20 @@ _ILLEGAL_RE = re.compile(r"[/:\\]")
 _WHITESPACE_RE = re.compile(r"\s+")
 
 _SKIP_DIRS = frozenset({TRASH_DIR, MANAGED_DIR, ATTACHMENTS_DIR})
+
+DEFAULT_ATTACHMENT_SUFFIX = ".png"
+# 拡張子に通す文字。パス区切りや空白を持ち込ませない
+_SUFFIX_RE = re.compile(r"[^a-z0-9]")
+
+
+def attachment_suffix(raw: str) -> str:
+    """貼り付け元から来た拡張子を、ファイル名に使える形へ直す。
+
+    クリップボードやドロップ元の文字列をそのまま繋ぐと、`../` や空白で
+    attachments の外へ書ける。英数字だけ残す。
+    """
+    cleaned = _SUFFIX_RE.sub("", raw.lower().rsplit(".", 1)[-1])
+    return f".{cleaned}" if cleaned else DEFAULT_ATTACHMENT_SUFFIX
 
 
 def sanitize_filename(title: str) -> str:
@@ -178,6 +192,32 @@ class Vault:
 
         save_atomic(path, frontmatter.join(meta, parsed.body))
         return self.read(path)
+
+    # --------------------------------------------------------------- 添付
+
+    def add_attachment(self, data: bytes, suffix: str = DEFAULT_ATTACHMENT_SUFFIX) -> Path:
+        """画像などを `attachments/` へ置き、その場所を返す（spec §7.1）。
+
+        名前は時刻から作る。並べたときに貼った順になるほうが、後から
+        探すときに手がかりになる。同名があれば `-2` を付けて上書きしない。
+        """
+        self.attachments_dir.mkdir(parents=True, exist_ok=True)
+        stem = datetime.now().strftime("%Y%m%d-%H%M%S")
+        path = unique_path(self.attachments_dir, stem, attachment_suffix(suffix))
+        save_bytes_atomic(path, data)
+        return path
+
+    def attachment_link(self, path: Path) -> str:
+        """本文へ挿す Markdown。**vault からの相対パス**で書く。
+
+        絶対パスで書くと、保管フォルダごと移したときに全部切れる。
+        素の `.md` として他のアプリでも読めることを保つ（G3）。
+        """
+        try:
+            relative = path.relative_to(self.root)
+        except ValueError:
+            relative = Path(ATTACHMENTS_DIR) / path.name
+        return f"![]({relative.as_posix()})"
 
     # ----------------------------------------------------------------- 移動
 

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from hitofude.editor.exporter import to_html, write_html, write_pdf
+from hitofude.editor.exporter import to_html, write_html, write_markdown, write_pdf
 
 pytestmark = pytest.mark.gui
 
@@ -157,3 +157,71 @@ class TestMarkdown:
         source.write_text(SOURCE, encoding="utf-8")
         write_markdown(tmp_path / "out.md", source.read_text(encoding="utf-8"))
         assert source.read_text(encoding="utf-8") == SOURCE
+
+
+class TestImages:
+    """本文の画像は vault からの相対パスで書かれている（タスク A-2）。
+
+    書き出し先から見て解決できないと、貼った画像が黙って抜け落ちる。
+    """
+
+    def _note_with_image(self, tmp_path: Path) -> tuple[Path, str]:
+        from PySide6.QtCore import QBuffer, QByteArray
+        from PySide6.QtGui import QColor, QImage
+
+        attachments = tmp_path / "attachments"
+        attachments.mkdir()
+        image = QImage(8, 8, QImage.Format.Format_RGB32)
+        image.fill(QColor("red"))
+        storage = QByteArray()
+        buffer = QBuffer(storage)
+        buffer.open(QBuffer.OpenModeFlag.WriteOnly)
+        image.save(buffer, "PNG")
+        buffer.close()
+        (attachments / "写真.png").write_bytes(bytes(storage))
+        return tmp_path, "# 見出し\n\n![](attachments/写真.png)\n"
+
+    def test_HTMLに画像が埋まる(self, qapp, tmp_path: Path) -> None:
+        """「外部リソースを参照しない」を保つため data URI にする。"""
+        base, text = self._note_with_image(tmp_path)
+        target = write_html(tmp_path / "out.html", text, base_path=base)
+        assert "data:image/png;base64," in target.read_text(encoding="utf-8")
+
+    def test_HTMLがファイルを参照しない(self, qapp, tmp_path: Path) -> None:
+        base, text = self._note_with_image(tmp_path)
+        written = write_html(tmp_path / "out.html", text, base_path=base).read_text(
+            encoding="utf-8"
+        )
+        assert "attachments/" not in written
+
+    def test_画像が無くても書き出せる(self, qapp, tmp_path: Path) -> None:
+        """壊れたリンクで書き出しごと失敗させない。"""
+        target = write_html(
+            tmp_path / "out.html", "![](attachments/居ない.png)\n", base_path=tmp_path
+        )
+        assert target.is_file()
+
+    def test_vaultの外は読みに行かない(self, qapp, tmp_path: Path) -> None:
+        """本文は手で編集できる。`../` で任意のファイルを埋め込ませない。"""
+        secret = tmp_path.parent / "秘密.png"
+        secret.write_bytes(b"\x89PNG himitsu")
+        written = write_html(
+            tmp_path / "out.html", "![](../秘密.png)\n", base_path=tmp_path
+        ).read_text(encoding="utf-8")
+        assert "base64" not in written
+
+    def test_PDFに画像が入る(self, qapp, tmp_path: Path) -> None:
+        base, text = self._note_with_image(tmp_path)
+        without = write_pdf(tmp_path / "a.pdf", "# 見出し\n\n本文\n", base_path=base)
+        with_image = write_pdf(tmp_path / "b.pdf", text, base_path=base)
+        assert with_image.stat().st_size > without.stat().st_size
+
+    def test_Markdownは相対パスのまま(self, qapp, tmp_path: Path) -> None:
+        """R1: Markdown 書き出しは変換ではない。"""
+        _, text = self._note_with_image(tmp_path)
+        written = write_markdown(tmp_path / "out.md", text).read_text(encoding="utf-8")
+        assert "![](attachments/写真.png)" in written
+
+    def test_base_pathを渡さなくても書ける(self, qapp, tmp_path: Path) -> None:
+        """既存の呼び出しを壊さない。"""
+        assert write_html(tmp_path / "out.html", "# 見出し\n").is_file()

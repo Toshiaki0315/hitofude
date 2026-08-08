@@ -38,6 +38,25 @@ def save_atomic(path: Path, text: str) -> None:
         raise
 
 
+def save_bytes_atomic(path: Path, data: bytes) -> None:
+    """`save_atomic()` のバイト列版（添付ファイル用）。
+
+    テキスト版と違い改行の変換をしない。画像にとって `\r\n` はデータの
+    一部で、触ると壊れる。
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + TEMP_SUFFIX)
+    try:
+        with temporary.open("wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.replace(path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
 @dataclass
 class Debouncer:
     """「最後の変更から一定時間経ったら書く」を判断する（spec §7.4）。

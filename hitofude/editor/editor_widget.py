@@ -5,10 +5,15 @@
 コストを下げるため、他のモジュールから `QPlainTextEdit` を直接触らない。
 """
 
+import logging
+from collections.abc import Callable
+from pathlib import Path
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import (
     QColor,
     QFont,
+    QImage,
     QInputMethodEvent,
     QKeyEvent,
     QPainter,
@@ -40,8 +45,14 @@ _EDITING_KEYS = frozenset(
     }
 )
 
+# 落とされたファイルを画像として扱う拡張子。ここに無いものは素通しする
+IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".heic"})
+CLIPBOARD_IMAGE_SUFFIX = ".png"
+
 DEFAULT_FONT_FAMILY = "Hiragino Sans"
 DEFAULT_POINT_SIZE = 15.0
+
+logger = logging.getLogger(__name__)
 
 
 def _modifies_text(event: QKeyEvent) -> bool:
@@ -65,6 +76,8 @@ class MarkdownEditor(QPlainTextEdit):
     ) -> None:
         super().__init__(parent)
         self._theme = theme
+        # 添付の保存先を知らないまま受け取るための口（R3 の分担を UI 側でも保つ）
+        self._attachment_handler: Callable[[bytes, str], str | None] | None = None
 
         font = QFont(font_family)
         font.setPointSizeF(base_point_size)
@@ -482,9 +495,111 @@ class MarkdownEditor(QPlainTextEdit):
         self.setTextCursor(cursor)
         return True
 
+    # ------------------------------------------------------------------ 添付
+
+    def set_attachment_handler(self, handler: Callable[[bytes, str], str | None] | None) -> None:
+        """画像を受け取ったときの保存先を差し込む。
+
+        エディタは**どこへ保存するかを知らない**。バイト列と拡張子を渡し、
+        返ってきた Markdown を挿すだけ。保存先を決めるのは `storage/vault.py`。
+        繋がっていなければ画像を受け取らない（壊れたリンクを本文へ書かない）。
+        """
+        self._attachment_handler = handler
+
+    def canInsertFromMimeData(self, source) -> bool:
+        if self._looks_like_attachment(source):
+            return True
+        return super().canInsertFromMimeData(source)
+
+    def _looks_like_attachment(self, source) -> bool:
+        """添付として扱うつもりの貼り付け元か。**読めるかどうかは見ない。**
+
+        読めなかったときに素通しすると、`file:///...png` という文字列が
+        本文へ落ちる。扱うつもりだったなら、失敗しても何も入れない。
+        """
+        if self._attachment_handler is None:
+            return False
+        if source.hasImage():
+            return True
+        return any(
+            url.isLocalFile() and Path(url.toLocalFile()).suffix.lower() in IMAGE_SUFFIXES
+            for url in (source.urls() if source.hasUrls() else [])
+        )
+
+    def _attachments_in(self, source) -> list[tuple[bytes, str]]:
+        """貼り付け元から取り出せる添付。無ければ空。"""
+        if self._attachment_handler is None:
+            return []
+
+        if source.hasImage():
+            data = self._encode_image(source.imageData())
+            return [(data, CLIPBOARD_IMAGE_SUFFIX)] if data else []
+
+        found: list[tuple[bytes, str]] = []
+        for url in source.urls() if source.hasUrls() else []:
+            if not url.isLocalFile():
+                continue
+            path = Path(url.toLocalFile())
+            if path.suffix.lower() not in IMAGE_SUFFIXES:
+                continue
+            try:
+                found.append((path.read_bytes(), path.suffix))
+            except OSError:
+                logger.warning("落とされたファイルを読めなかった: %s", path)
+        return found
+
+    @staticmethod
+    def _encode_image(image) -> bytes:
+        """クリップボードの画像を PNG にする。
+
+        元の形式が分からないので、**可逆な形式に決め打つ**。
+        """
+        from PySide6.QtCore import QBuffer, QByteArray
+
+        picture = image if isinstance(image, QImage) else QImage(image)
+        if picture.isNull():
+            return b""
+
+        # **`QBuffer(QByteArray())` と書かない。** 一時オブジェクトが即座に
+        # 回収され、解放済みの領域を指したまま書き込んで SIGSEGV になる。
+        # 受け皿を変数で保持してから渡す
+        storage = QByteArray()
+        buffer = QBuffer(storage)
+        buffer.open(QBuffer.OpenModeFlag.WriteOnly)
+        picture.save(buffer, "PNG")
+        buffer.close()
+        return bytes(storage)
+
+    def _insert_attachments(self, attachments: list[tuple[bytes, str]]) -> bool:
+        """保存して Markdown を挿す。1 回の Undo で戻せるようまとめる。"""
+        handler = self._attachment_handler
+        if handler is None:
+            return False
+
+        links = []
+        for data, suffix in attachments:
+            link = handler(data, suffix)
+            if link:
+                links.append(link)
+        if not links:
+            return False
+
+        cursor = self.textCursor()
+        cursor.beginEditBlock()
+        try:
+            cursor.insertText("\n".join(links))
+        finally:
+            cursor.endEditBlock()
+        return True
+
     def insertFromMimeData(self, source) -> None:
         """選択があってクリップボードが URL ならリンクにする（spec §5.5-5）。"""
         self._guard_front_matter()
+
+        if self._looks_like_attachment(source):
+            self._insert_attachments(self._attachments_in(source))
+            return
+
         cursor = self.textCursor()
         text = source.text() if source.hasText() else ""
         if cursor.hasSelection() and commands.is_url(text):

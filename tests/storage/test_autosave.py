@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from hitofude.storage.autosave import DEBOUNCE_SECONDS, Debouncer, save_atomic
+from hitofude.storage.autosave import (
+    DEBOUNCE_SECONDS,
+    Debouncer,
+    save_atomic,
+    save_bytes_atomic,
+)
 
 
 class TestSaveAtomic:
@@ -203,3 +208,35 @@ class TestRecovery:
         target = stash(tmp_path, Path("/vault/メモ.md"), "手で読める本文\n")
         assert target.suffix == ".md"
         assert target.read_text(encoding="utf-8") == "手で読める本文\n"
+
+
+class TestSaveBytes:
+    """画像などバイト列の保存（タスク A-2）。テキストと同じ約束で書く。"""
+
+    def test_書ける(self, tmp_path: Path) -> None:
+        target = tmp_path / "画像.png"
+        save_bytes_atomic(target, b"\x89PNG\r\n")
+        assert target.read_bytes() == b"\x89PNG\r\n"
+
+    def test_改行を変換しない(self, tmp_path: Path) -> None:
+        """テキストと違い `\\r\\n` はデータの一部。触ると画像が壊れる。"""
+        target = tmp_path / "画像.png"
+        save_bytes_atomic(target, b"a\r\nb")
+        assert target.read_bytes() == b"a\r\nb"
+
+    def test_親フォルダを作る(self, tmp_path: Path) -> None:
+        target = tmp_path / "深い" / "階層" / "画像.png"
+        save_bytes_atomic(target, b"data")
+        assert target.is_file()
+
+    def test_失敗したら一時ファイルを残さない(self, tmp_path: Path, monkeypatch) -> None:
+        import os
+
+        def explode(fileno: int) -> None:
+            raise OSError("書けない")
+
+        monkeypatch.setattr(os, "fsync", explode)
+        target = tmp_path / "画像.png"
+        with pytest.raises(OSError):
+            save_bytes_atomic(target, b"data")
+        assert list(tmp_path.iterdir()) == []

@@ -282,3 +282,64 @@ class TestSetPinned:
         note = vault.create("メモ", "本文\n")
         vault.set_pinned(note.path, True)
         assert vault.set_pinned(note.path, True).pinned is True
+
+
+class TestAttachments:
+    """画像などの添付（タスク A-2）。
+
+    `attachments/` は作るだけで一度も使われていなかった。
+    貼り付けた画像をここへ置き、本文からは**相対パス**で参照する。
+    """
+
+    def test_保存できる(self, vault: Vault) -> None:
+        path = vault.add_attachment(b"\x89PNG fake", ".png")
+        assert path.is_file()
+        assert path.read_bytes() == b"\x89PNG fake"
+
+    def test_attachmentsの中に置く(self, vault: Vault) -> None:
+        path = vault.add_attachment(b"data", ".png")
+        assert path.parent == vault.attachments_dir
+
+    def test_ノートの一覧に出てこない(self, vault: Vault) -> None:
+        """`.md` ではないし、`scan()` は attachments を除く。"""
+        vault.add_attachment(b"data", ".png")
+        assert list(vault.scan()) == []
+
+    def test_同じ名前でも上書きしない(self, vault: Vault) -> None:
+        first = vault.add_attachment("ひとつめ".encode(), ".png")
+        second = vault.add_attachment("ふたつめ".encode(), ".png")
+        assert first != second
+        assert first.read_bytes() == "ひとつめ".encode()
+
+    def test_拡張子を保つ(self, vault: Vault) -> None:
+        assert vault.add_attachment(b"data", ".jpg").suffix == ".jpg"
+
+    def test_点を付け忘れても効く(self, vault: Vault) -> None:
+        assert vault.add_attachment(b"data", "png").suffix == ".png"
+
+    def test_拡張子が無ければpngにする(self, vault: Vault) -> None:
+        assert vault.add_attachment(b"data", "").suffix == ".png"
+
+    @pytest.mark.parametrize("bad", ["../evil", "a/b", ".p g", ".md ", ".PNG"])
+    def test_変な拡張子を持ち込ませない(self, vault: Vault, bad: str) -> None:
+        path = vault.add_attachment(b"data", bad)
+        assert path.parent == vault.attachments_dir
+        assert "/" not in path.name
+        assert path.suffix.islower()
+
+    def test_名前は時刻から作る(self, vault: Vault) -> None:
+        """並べたときに撮った順になるほうが探しやすい。"""
+        name = vault.add_attachment(b"data", ".png").stem
+        assert name[:8].isdigit()
+
+    def test_相対リンクを作れる(self, vault: Vault) -> None:
+        path = vault.add_attachment(b"data", ".png")
+        assert vault.attachment_link(path) == f"![]({ATTACHMENTS_DIR}/{path.name})"
+
+    def test_リンクはvaultからの相対(self, vault: Vault) -> None:
+        """絶対パスで書くと、フォルダごと移したときに全部切れる。"""
+        link = vault.attachment_link(vault.add_attachment(b"data", ".png"))
+        assert str(vault.root) not in link
+
+    def test_中身が空でも落ちない(self, vault: Vault) -> None:
+        assert vault.add_attachment(b"", ".png").is_file()
