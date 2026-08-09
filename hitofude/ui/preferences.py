@@ -30,9 +30,12 @@ from hitofude.config import (
     DEFAULT_FONT_FAMILY,
     DEFAULT_MONO_FAMILY,
     DEFAULT_POINT_SIZE,
+    DEFAULT_TAB_WIDTH,
     DEFAULT_TRASH_DAYS,
     MAX_POINT_SIZE,
+    MAX_TAB_WIDTH,
     MIN_POINT_SIZE,
+    MIN_TAB_WIDTH,
     Config,
 )
 from hitofude.theme import ThemeMode
@@ -74,6 +77,13 @@ class PreferencesDialog(QDialog):
         self._mono.setCurrentText(config.mono_family)
         form.addRow("等幅フォント", self._mono)
 
+        self._tab_width = QSpinBox(self)
+        self._tab_width.setRange(MIN_TAB_WIDTH, MAX_TAB_WIDTH)
+        self._tab_width.setSuffix(" 文字")
+        self._tab_width.setValue(config.tab_width)
+        self._tab_width.setToolTip("タブを何文字ぶんの幅で見せるか。書いた文字は変わりません。")
+        form.addRow("タブ幅", self._tab_width)
+
         self._theme = QComboBox(self)
         for mode, label in THEME_LABELS.items():
             self._theme.addItem(label, mode)
@@ -107,7 +117,7 @@ class PreferencesDialog(QDialog):
         # `ResetRole` に置くと OS の作法どおり左端へ並ぶ
         self._reset = buttons.addButton("デフォルトに戻す", QDialogButtonBox.ButtonRole.ResetRole)
         self._reset.setToolTip(
-            "フォント・テーマ・ゴミ箱の保持を既定へ戻します（保管フォルダはそのまま）"
+            "フォント・タブ幅・テーマ・ゴミ箱の保持を既定へ戻します（保管フォルダはそのまま）"
         )
         self._reset.clicked.connect(self.reset_to_defaults)
 
@@ -160,6 +170,7 @@ class PreferencesDialog(QDialog):
         self._size.setValue(DEFAULT_POINT_SIZE)
         self._mono.setCurrentText(DEFAULT_MONO_FAMILY)
         self._theme.setCurrentIndex(self._theme.findData(ThemeMode.SYSTEM))
+        self._tab_width.setValue(DEFAULT_TAB_WIDTH)
         self._trash_days.setValue(DEFAULT_TRASH_DAYS)
 
     def accept(self) -> None:
@@ -172,6 +183,7 @@ class PreferencesDialog(QDialog):
         self._config.font_point_size = self._size.value()
         self._config.mono_family = self._mono.currentText()
         self._config.theme_mode = self.selected_theme
+        self._config.tab_width = self._tab_width.value()
         self._config.trash_days = self._trash_days.value()
         if self._pending_vault is not None:
             self._config.vault_path = self._pending_vault

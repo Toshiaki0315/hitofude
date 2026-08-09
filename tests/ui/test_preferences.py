@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QSettings
 
-from hitofude.config import Config
+from hitofude.config import DEFAULT_TAB_WIDTH, MAX_TAB_WIDTH, MIN_TAB_WIDTH, Config
 from hitofude.theme import ThemeMode
 from hitofude.ui.preferences import PreferencesDialog
 
@@ -226,3 +226,68 @@ class TestResetToDefaults:
 
         qtbot.mouseClick(widget.reset_button, Qt.MouseButton.LeftButton)
         assert widget._trash_days.value() == self.defaults()[3]
+
+
+class TestTabWidth:
+    """タブ幅（ユーザー要望）。"""
+
+    def test_今の値が入っている(self, config, qtbot) -> None:
+        config.tab_width = 2
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        assert dialog._tab_width.value() == 2
+
+    def test_変更が書き込まれる(self, config, qtbot) -> None:
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        dialog._tab_width.setValue(8)
+        dialog.apply()
+        assert config.tab_width == 8
+
+    def test_範囲は1から8(self, config, qtbot) -> None:
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        assert (dialog._tab_width.minimum(), dialog._tab_width.maximum()) == (
+            MIN_TAB_WIDTH,
+            MAX_TAB_WIDTH,
+        )
+
+    def test_デフォルトに戻すで4になる(self, config, qtbot) -> None:
+        config.tab_width = 8
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        dialog.reset_to_defaults()
+        assert dialog._tab_width.value() == DEFAULT_TAB_WIDTH
+
+
+class TestTabWidthApplied:
+    """設定した幅がエディタに届くこと（結線の検査）。"""
+
+    def test_起動時に反映される(self, qtbot, tmp_path) -> None:
+        from PySide6.QtCore import QSettings
+
+        from hitofude.config import Config
+        from hitofude.ui.main_window import MainWindow
+
+        settings = QSettings(str(tmp_path / "t.ini"), QSettings.Format.IniFormat)
+        config = Config(settings)
+        config.vault_path = tmp_path / "Notes"
+        config.tab_width = 2
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+        assert window.editor.tab_width() == 2
+
+    def test_環境設定の変更が届く(self, qtbot, tmp_path) -> None:
+        from PySide6.QtCore import QSettings
+
+        from hitofude.config import Config
+        from hitofude.ui.main_window import MainWindow
+
+        settings = QSettings(str(tmp_path / "t.ini"), QSettings.Format.IniFormat)
+        config = Config(settings)
+        config.vault_path = tmp_path / "Notes"
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+        config.tab_width = 8
+        window._apply_preferences()
+        assert window.editor.tab_width() == 8

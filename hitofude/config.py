@@ -21,6 +21,11 @@ DEFAULT_FONT_FAMILY = "Hiragino Sans"
 DEFAULT_MONO_FAMILY = "Menlo"
 DEFAULT_POINT_SIZE = 15.0
 DEFAULT_TRASH_DAYS = 30
+# タブ幅（文字数）。Markdown の世界では 4 が標準。Qt の既定は 80px 固定で、
+# 本文フォントだと 12 文字ぶんもあった（実測。ユーザーの違和感の元）
+DEFAULT_TAB_WIDTH = 4
+MIN_TAB_WIDTH = 1
+MAX_TAB_WIDTH = 8
 
 # spec §5.1: サイドバー 180px / ノートリスト 280px / エディタ（可変）
 DEFAULT_SPLITTER_SIZES = [180, 280, 640]
@@ -38,6 +43,7 @@ _SPLITTER = "layout/splitter"
 _SIDEBAR = "layout/sidebar_visible"
 _NOTE_LIST = "layout/note_list_visible"
 _TOOLBAR = "layout/toolbar_visible"
+_TAB_WIDTH = "editor/tab_width"
 _GEOMETRY = "layout/geometry"
 _LAST_NOTE = "session/last_note"
 
@@ -147,6 +153,25 @@ class Config:
     @note_list_visible.setter
     def note_list_visible(self, value: bool) -> None:
         self.settings.setValue(_NOTE_LIST, bool(value))
+
+    @property
+    def tab_width(self) -> int:
+        """タブを何文字ぶんの幅で見せるか。
+
+        範囲の外や壊れた値は既定へ戻す。設定ファイルは手で編集できるので、
+        変な値が入っていても**アプリが起動しなくなってはいけない**。
+        """
+        try:
+            width = int(self.settings.value(_TAB_WIDTH, DEFAULT_TAB_WIDTH))
+        except (TypeError, ValueError):
+            return DEFAULT_TAB_WIDTH
+        if not MIN_TAB_WIDTH <= width <= MAX_TAB_WIDTH:
+            return DEFAULT_TAB_WIDTH
+        return width
+
+    @tab_width.setter
+    def tab_width(self, value: int) -> None:
+        self.settings.setValue(_TAB_WIDTH, int(value))
 
     @property
     def toolbar_visible(self) -> bool:

@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import (
     QColor,
     QFont,
+    QFontMetricsF,
     QInputMethodEvent,
     QKeyEvent,
     QKeySequence,
@@ -47,6 +48,8 @@ _EDITING_KEYS = frozenset(
 
 DEFAULT_FONT_FAMILY = "Hiragino Sans"
 DEFAULT_POINT_SIZE = 15.0
+# タブ幅（文字数）。既定は `config.DEFAULT_TAB_WIDTH` と揃える
+DEFAULT_TAB_WIDTH = 4
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +84,8 @@ class MarkdownEditor(QPlainTextEdit):
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self.setFrameShape(QPlainTextEdit.Shape.NoFrame)
         self.setTabChangesFocus(False)
+        self._tab_width = DEFAULT_TAB_WIDTH
+        self._apply_tab_width()
 
         self._images = ImageCache()
         self._highlighter = MarkdownHighlighter(
@@ -195,10 +200,29 @@ class MarkdownEditor(QPlainTextEdit):
         QApplication.clipboard().setText(self.plain_text_selection())
         return True
 
+    def tab_width(self) -> int:
+        """タブを何文字ぶんの幅で見せているか。"""
+        return self._tab_width
+
+    def set_tab_width(self, width: int) -> None:
+        """タブ幅を文字数で決める。
+
+        **px ではなく「空白いくつぶん」で持つ。** px で覚えると、文字サイズや
+        フォントを変えたときにタブだけ幅が合わなくなる。Qt の既定は 80px 固定で、
+        本文フォントだと 12 文字ぶんもあった（実測。違和感の元）。
+        """
+        self._tab_width = max(1, int(width))
+        self._apply_tab_width()
+
+    def _apply_tab_width(self) -> None:
+        metrics = QFontMetricsF(self.font())
+        self.setTabStopDistance(metrics.horizontalAdvance(" " * self._tab_width))
+
     def set_font_family(self, family: str) -> None:
         font = self.font()
         font.setFamily(family)
         self.setFont(font)
+        self._apply_tab_width()  # 字幅が変わるとタブの文字数も変わる
 
     def set_mono_family(self, family: str) -> None:
         self._highlighter.set_mono_family(family)
@@ -289,6 +313,7 @@ class MarkdownEditor(QPlainTextEdit):
         font.setPointSizeF(size)
         self.setFont(font)
         self._highlighter.set_base_point_size(size)
+        self._apply_tab_width()  # 字幅が変わるとタブの文字数も変わる
 
     # --------------------------------------------------------------- 入力
 

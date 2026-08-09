@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QSettings
 
-from hitofude.config import DEFAULT_VAULT_NAME, Config
+from hitofude.config import DEFAULT_TAB_WIDTH, DEFAULT_VAULT_NAME, Config
 from hitofude.theme import ThemeMode
 
 pytestmark = pytest.mark.gui
@@ -170,3 +170,30 @@ class TestLastNote:
 
         config.settings.setValue("session/last_note", "抜け道/秘密.md")
         assert config.last_note is None
+
+
+class TestTabWidth:
+    """タブ幅（ユーザー要望）。
+
+    Qt の既定は 80px 固定で、本文フォントだと 12 文字ぶんもあった（実測）。
+    Markdown の世界では 4 文字が標準なので、そこを既定にする。
+    """
+
+    def test_既定は4文字(self, config) -> None:
+        assert config.tab_width == DEFAULT_TAB_WIDTH == 4
+
+    def test_変えられる(self, config) -> None:
+        config.tab_width = 2
+        assert config.tab_width == 2
+
+    def test_小さすぎる値は既定に戻す(self, config) -> None:
+        config.settings.setValue("editor/tab_width", 0)
+        assert config.tab_width == DEFAULT_TAB_WIDTH
+
+    def test_大きすぎる値は既定に戻す(self, config) -> None:
+        config.settings.setValue("editor/tab_width", 999)
+        assert config.tab_width == DEFAULT_TAB_WIDTH
+
+    def test_壊れた値でも落ちない(self, config) -> None:
+        config.settings.setValue("editor/tab_width", "あ")
+        assert config.tab_width == DEFAULT_TAB_WIDTH

@@ -191,6 +191,7 @@ class MainWindow(QMainWindow):
         self._editor.set_attachment_handler(self.save_attachment)
         self._editor.set_image_base(self._vault.root)
         self._editor.set_mono_family(self._config.mono_family)
+        self._editor.set_tab_width(self._config.tab_width)
         self._apply_list_font()
         self._editor.setFocus()
 
@@ -1019,6 +1020,7 @@ class MainWindow(QMainWindow):
         self._editor.set_attachment_handler(self.save_attachment)
         self._editor.set_image_base(self._vault.root)
         self._editor.set_mono_family(self._config.mono_family)
+        self._editor.set_tab_width(self._config.tab_width)
         self._apply_list_font()
         self._theme_watcher.set_mode(self._config.theme_mode)
         self._vault.purge_trash(self._config.trash_days)

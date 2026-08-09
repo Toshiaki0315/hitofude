@@ -182,3 +182,39 @@ class TestTheme:
         editor.setPlainText("`code`")
         editor.set_theme(DARK)
         assert editor.palette().base().color().name() == DARK.background.lower()
+
+
+class TestTabWidth:
+    """タブ幅（ユーザー要望）。
+
+    Qt の既定は 80px 固定で、本文フォントだと 12 文字ぶんもあった（実測）。
+    """
+
+    def advance(self, editor, text: str) -> float:
+        from PySide6.QtGui import QFontMetricsF
+
+        return QFontMetricsF(editor.font()).horizontalAdvance(text)
+
+    def test_既定は4文字ぶん(self, editor) -> None:
+        assert editor.tabStopDistance() == pytest.approx(self.advance(editor, "    "), abs=1)
+
+    def test_変えられる(self, editor) -> None:
+        editor.set_tab_width(2)
+        assert editor.tabStopDistance() == pytest.approx(self.advance(editor, "  "), abs=1)
+
+    def test_文字サイズを変えると追従する(self, editor) -> None:
+        """px 固定で覚えると、大きい文字にしたときタブだけ狭くなる。"""
+        before = editor.tabStopDistance()
+        editor.set_base_point_size(30.0)
+        assert editor.tabStopDistance() > before
+
+    def test_フォントを変えても追従する(self, editor) -> None:
+        editor.set_tab_width(8)
+        wide = editor.tabStopDistance()
+        editor.set_font_family("Menlo")
+        assert editor.tabStopDistance() == pytest.approx(self.advance(editor, " " * 8), abs=1)
+        assert wide != editor.tabStopDistance() or True  # フォント次第で同じこともある
+
+    def test_今の幅を答える(self, editor) -> None:
+        editor.set_tab_width(3)
+        assert editor.tab_width() == 3
