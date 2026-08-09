@@ -317,6 +317,12 @@ class MarkdownEditor(QPlainTextEdit):
             super().keyPressEvent(event)
             return
 
+        if event.matches(QKeySequence.StandardKey.SelectAll):
+            # `cut()` と同じ理由。標準のキー割り当ては仮想メソッドを通らない
+            self.selectAll()
+            event.accept()
+            return
+
         if event.matches(QKeySequence.StandardKey.Cut):
             # `QPlainTextEdit` は標準のキー割り当てを内部で処理し、仮想メソッドの
             # `cut()` を通らない。守りのある経路へ寄せる
@@ -531,6 +537,24 @@ class MarkdownEditor(QPlainTextEdit):
         繋がっていなければ画像を受け取らない（壊れたリンクを本文へ書かない）。
         """
         self._attachment_handler = handler
+
+    def selectAll(self) -> None:
+        """本文だけを選ぶ。
+
+        front matter まで選ぶと、`id` や日時が画面に現れて選択色で塗られる
+        （選択範囲に入った要素は記号を見せる仕組みのため）。編集の経路では
+        丸めているので消えはしないが、**消えるように見える**し、コピーすれば
+        実際に混ざる。ユーザーにとっての「すべて」は本文。
+        """
+        offset = frontmatter.body_offset(self.toPlainText())
+        if offset == 0:
+            super().selectAll()
+            return
+
+        cursor = self.textCursor()
+        cursor.setPosition(offset)
+        cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
+        self.setTextCursor(cursor)
 
     def cut(self) -> None:
         """front matter ごと切り取らせない。
