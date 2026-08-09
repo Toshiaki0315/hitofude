@@ -308,3 +308,62 @@ class TestIndentedCodeLineByLine:
     def test_リストが終われば再び始まる(self) -> None:
         blocks = _classified("- 項目\n\nふつうの段落\n\n    code\n")
         assert blocks[4].type is BlockType.CODE_FENCE_BODY
+
+
+class TestQiitaNote:
+    """`:::note info` の囲み（B-3）。
+
+    ハイライタが通る行単位の経路（`classify_line`）で見る。書き出し側は
+    `tests/core/test_html.py`。**囲みの中でも他の記法は今まで通り効く**
+    ことが要で、そこが崩れると囲みを使った瞬間に本文の装飾が全部死ぬ。
+    """
+
+    def test_開始行は区切りとして分類する(self) -> None:
+        assert _classified(":::note info\n本文\n:::\n")[0].type is BlockType.NOTE_DELIMITER
+
+    def test_終了行も区切り(self) -> None:
+        assert _classified(":::note info\n本文\n:::\n")[2].type is BlockType.NOTE_DELIMITER
+
+    @pytest.mark.parametrize("kind", ["info", "warn", "alert"])
+    def test_種類を覚える(self, kind: str) -> None:
+        assert _classified(f":::note {kind}\n本文\n:::\n")[0].note_kind == kind
+
+    def test_種類を省くと情報扱い(self) -> None:
+        assert _classified(":::note\n本文\n:::\n")[0].note_kind == "info"
+
+    def test_知らない種類は情報扱い(self) -> None:
+        """綴りを間違えても囲みごと消えない（書き出しと同じ扱い）。"""
+        assert _classified(":::note なにか\n本文\n:::\n")[0].note_kind == "info"
+
+    def test_中の行にも種類が付く(self) -> None:
+        """縦線を引くのに要る。行ごとに描くので行ごとに知る必要がある。"""
+        assert _classified(":::note warn\n本文\n:::\n")[1].note_kind == "warn"
+
+    def test_中の行は普通に分類される(self) -> None:
+        blocks = _classified(":::note info\n# 見出し\n- 項目\n:::\n")
+        assert blocks[1].type is BlockType.HEADING
+        assert blocks[2].type is BlockType.BULLET_LIST_ITEM
+
+    def test_閉じたら種類は消える(self) -> None:
+        assert _classified(":::note info\n本文\n:::\n外\n")[3].note_kind is None
+
+    def test_囲みの外は何も付かない(self) -> None:
+        assert _classified("段落\n")[0].note_kind is None
+
+    def test_コードフェンスを挟んでも囲みは続く(self) -> None:
+        """フェンスは状態を作り直すので、そこで囲みを落としやすい。"""
+        blocks = _classified(":::note info\n```\nx\n```\n本文\n:::\n")
+        assert blocks[2].type is BlockType.CODE_FENCE_BODY
+        assert blocks[4].note_kind == "info"
+
+    def test_コードフェンスの中の区切りは囲みにしない(self) -> None:
+        blocks = _classified("```\n:::note info\n```\n")
+        assert blocks[1].type is BlockType.CODE_FENCE_BODY
+
+    def test_閉じ忘れても後続は壊れない(self) -> None:
+        blocks = _classified(":::note info\n本文\n")
+        assert blocks[1].type is BlockType.PARAGRAPH
+
+    def test_引用の中の区切りは囲みにしない(self) -> None:
+        """`> :::note` は引用の本文。行頭から始まるものだけを見る。"""
+        assert _classified("> :::note info\n")[0].type is BlockType.BLOCKQUOTE

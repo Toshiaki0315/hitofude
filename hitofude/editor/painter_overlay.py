@@ -26,6 +26,8 @@ from hitofude.theme import ThemeColors
 # spec §5.2
 QUOTE_BAR_WIDTH = 3
 QUOTE_BAR_STEP = 10
+# `:::note` の縦線（B-3）。引用より太くして、引用と区別が付くようにする
+NOTE_BAR_WIDTH = 4
 CODE_ACCENT_WIDTH = 4
 RULE_HEIGHT = 1
 LEFT_INSET = 2
@@ -52,6 +54,9 @@ class DecorationKind(Enum):
     CODE_BACKGROUND = auto()
     CODE_ACCENT = auto()
     QUOTE_BAR = auto()
+    NOTE_BAR = auto()
+    """`:::note` の囲み（B-3）。種類は `Decoration.text` に入れる。"""
+
     RULE = auto()
     CHECKBOX = auto()
     IMAGE = auto()
@@ -229,8 +234,24 @@ def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decora
             )
         )
 
+    if info.note_kind:
+        # 種類は `text` に載せる。色を決めるのは描く側（`paint`）で、
+        # ここはテーマを知らないままでいられる
+        result.append(
+            Decoration(
+                DecorationKind.NOTE_BAR,
+                QRectF(
+                    geometry.left() + LEFT_INSET, geometry.top(), NOTE_BAR_WIDTH, geometry.height()
+                ),
+                info.note_kind,
+            )
+        )
+
+    # 囲みの中では引用の縦線を右へ逃がす。同じ位置だと 2 本が重なって
+    # どちらも読めなくなる
+    quote_inset = LEFT_INSET + (NOTE_BAR_WIDTH + LEFT_INSET if info.note_kind else 0)
     for depth in range(info.quote_depth):
-        left = geometry.left() + LEFT_INSET + depth * QUOTE_BAR_STEP
+        left = geometry.left() + quote_inset + depth * QUOTE_BAR_STEP
         result.append(
             Decoration(
                 DecorationKind.QUOTE_BAR,
@@ -278,6 +299,15 @@ def _column_x(block: QTextBlock, column: int) -> float:
     return float(x[0]) if isinstance(x, tuple) else float(x)
 
 
+def _note_color(kind: str, theme: ThemeColors) -> str:
+    """`:::note` の種類から色を引く（B-3）。"""
+    return {
+        "info": theme.note_info,
+        "warn": theme.note_warn,
+        "alert": theme.note_alert,
+    }.get(kind, theme.note_info)
+
+
 def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) -> None:
     """組み立てた装飾を描く。背景に属するものだけを扱う。"""
     painter.save()
@@ -296,6 +326,8 @@ def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) 
                 painter.fillRect(decoration.rect, QColor(theme.accent))
             case DecorationKind.QUOTE_BAR:
                 painter.fillRect(decoration.rect, QColor(theme.quote_bar))
+            case DecorationKind.NOTE_BAR:
+                painter.fillRect(decoration.rect, QColor(_note_color(decoration.text, theme)))
             case DecorationKind.RULE:
                 painter.fillRect(decoration.rect, QColor(theme.rule))
             case DecorationKind.CHECKBOX:

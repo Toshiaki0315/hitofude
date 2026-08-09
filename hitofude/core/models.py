@@ -12,6 +12,11 @@ from enum import Enum, auto
 MIN_HEADING_LEVEL = 1
 MAX_HEADING_LEVEL = 6
 
+# `:::note` の種類（B-3 / Qiita 記法）。**知らない綴りは先頭に寄せる。**
+# 囲みごと消えるより、既定の見た目で出るほうがよい（`core/html.py` と揃える）
+NOTE_KINDS = ("info", "warn", "alert")
+DEFAULT_NOTE_KIND = NOTE_KINDS[0]
+
 
 class BlockType(Enum):
     """Markdown ソース 1 行の種別。`QTextBlock` 1 個に 1:1 で対応する。"""
@@ -29,6 +34,9 @@ class BlockType(Enum):
     TABLE_DELIMITER = auto()
     HORIZONTAL_RULE = auto()
     FRONT_MATTER = auto()
+    NOTE_DELIMITER = auto()
+    """`:::note info` と閉じの `:::`（B-3 / Qiita 記法）。"""
+
     BLANK = auto()
 
 
@@ -51,6 +59,13 @@ class BlockInfo:
     """コードフェンスの言語。`` ```python `` なら `"python"`。"""
 
     quote_depth: int = 0
+
+    note_kind: str | None = None
+    """`:::note` の種類（`info` / `warn` / `alert`）。
+
+    **囲みの中の行すべてに付く。** 縦線は行ごとに描くので、区切り行だけが
+    知っていても引けない。
+    """
 
     def __post_init__(self) -> None:
         for name in ("line", "level", "marker_len", "quote_depth"):
@@ -86,6 +101,9 @@ class BlockState:
     """リストの中か。中では字下げが入れ子を意味するのでコードにしない（§6.4）。"""
 
     in_indented_code: bool = False
+    note_kind: str = ""
+    """`:::note` の中に居るか。空文字なら囲みの外（B-3）。"""
+
     quote_depth: int = 0
     fence_char: str = ""
     fence_len: int = 0
@@ -101,9 +119,18 @@ class BlockState:
     _NOT_AFTER_BLANK = 1 << 13
     _IN_LIST = 1 << 14
     _INDENTED_CODE = 1 << 15
+    # 囲みの種類。0 は「囲みの外」。既定が 0 でなければならないので
+    # 種類の番号は 1 始まりで持つ（B-3）
+    _NOTE_SHIFT = 16
+    _NOTE_MASK = 0b11
 
     MAX_QUOTE_DEPTH = _QUOTE_MASK
     MAX_FENCE_LEN = _FENCE_LEN_MASK
+
+    @property
+    def in_note(self) -> bool:
+        """`:::note` の中か（B-3）。"""
+        return bool(self.note_kind)
 
     def encode(self) -> int:
         """`setCurrentBlockState()` に渡す非負の int にする。
@@ -130,6 +157,8 @@ class BlockState:
             value |= self._IN_LIST
         if self.in_indented_code:
             value |= self._INDENTED_CODE
+        if self.note_kind in NOTE_KINDS:
+            value |= (NOTE_KINDS.index(self.note_kind) + 1) << self._NOTE_SHIFT
         return value
 
     @classmethod
@@ -151,7 +180,13 @@ class BlockState:
             after_blank=not (value & cls._NOT_AFTER_BLANK),
             in_list=bool(value & cls._IN_LIST),
             in_indented_code=bool(value & cls._INDENTED_CODE),
+            note_kind=cls._decode_note(value),
         )
+
+    @classmethod
+    def _decode_note(cls, value: int) -> str:
+        index = (value >> cls._NOTE_SHIFT) & cls._NOTE_MASK
+        return NOTE_KINDS[index - 1] if index else ""
 
 
 class SpanType(Enum):
@@ -168,6 +203,8 @@ class SpanType(Enum):
     IMAGE = auto()
     TAG = auto()
     AUTOLINK = auto()
+    FOOTNOTE = auto()
+    """脚注の参照 `[^1]` と定義の頭（B-3 / Qiita 記法）。"""
 
 
 @dataclass(frozen=True, slots=True)

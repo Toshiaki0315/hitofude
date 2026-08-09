@@ -14,7 +14,13 @@ from dataclasses import dataclass, field, replace
 from markdown_it import MarkdownIt
 
 from hitofude.core import frontmatter
-from hitofude.core.models import BlockInfo, BlockState, BlockType
+from hitofude.core.models import (
+    DEFAULT_NOTE_KIND,
+    NOTE_KINDS,
+    BlockInfo,
+    BlockState,
+    BlockType,
+)
 
 _MD = MarkdownIt("commonmark").enable(["table", "strikethrough"])
 
@@ -34,6 +40,10 @@ _ORDERED_MARKER_RE = re.compile(r"^[ \t]*\d{1,9}[.)][ \t]+")
 _HEADING_LINE_RE = re.compile(r"^[ \t]*(?P<hashes>#{1,6})(?:[ \t]+|$)")
 _FENCE_LINE_RE = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
 _FRONT_MATTER_DELIM_RE = re.compile(r"^---[ \t]*$")
+# `:::note info`（B-3 / Qiita 記法）。行頭から始まるものだけを見る。
+# `> :::note` は引用の本文であって囲みではない
+_NOTE_OPEN_RE = re.compile(r"^:::[ \t]*note(?:[ \t]+(?P<kind>\S+))?[ \t]*$")
+_NOTE_CLOSE_RE = re.compile(r"^:::[ \t]*$")
 _RULE_LINE_RE = re.compile(r"^ {0,3}(?P<char>[-*_])(?:[ \t]*(?P=char)){2,}[ \t]*$")
 # 表の区切り行は `|` を必ず含み、`-` を必ず含み、それ以外は揃え指定と空白だけ。
 _TABLE_DELIM_LINE_RE = re.compile(r"^(?=[^\n]*\|)(?=[^\n]*-)[ \t|:\-]+$")
@@ -292,7 +302,11 @@ def classify_line(text: str, line: int, state: BlockState) -> tuple[BlockInfo, B
         return _classify_front_matter(text, line, state)
 
     if state.in_code:
-        return _classify_inside_fence(text, line, state)
+        return _in_note(_classify_inside_fence(text, line, state), state.note_kind)
+
+    note = _classify_note_delimiter(text, line, state)
+    if note is not None:
+        return note
 
     fence = _FENCE_LINE_RE.match(text)
     if fence is not None:
@@ -303,11 +317,52 @@ def classify_line(text: str, line: int, state: BlockState) -> tuple[BlockInfo, B
             type=BlockType.CODE_FENCE_OPEN,
             lang=info.split()[0] if info else None,
         )
-        return block, BlockState(
-            in_code=True, fence_char=marker[0], fence_len=len(marker), quote_depth=0
+        return _in_note(
+            (
+                block,
+                BlockState(
+                    in_code=True, fence_char=marker[0], fence_len=len(marker), quote_depth=0
+                ),
+            ),
+            state.note_kind,
         )
 
-    return _classify_body(text, line, state=state)
+    return _in_note(_classify_body(text, line, state=state), state.note_kind)
+
+
+def _classify_note_delimiter(
+    text: str, line: int, state: BlockState
+) -> tuple[BlockInfo, BlockState] | None:
+    """`:::note info` と閉じの `:::`（B-3 / Qiita 記法）。囲みの行でなければ None。"""
+    if state.in_note and _NOTE_CLOSE_RE.match(text):
+        block = BlockInfo(line=line, type=BlockType.NOTE_DELIMITER, note_kind=state.note_kind)
+        return block, BlockState()
+
+    opened = None if state.in_note else _NOTE_OPEN_RE.match(text)
+    if opened is None:
+        return None
+
+    kind = opened.group("kind") or DEFAULT_NOTE_KIND
+    if kind not in NOTE_KINDS:
+        # 綴り違いで囲みごと消えるより、既定の見た目で出るほうがよい
+        kind = DEFAULT_NOTE_KIND
+    block = BlockInfo(line=line, type=BlockType.NOTE_DELIMITER, note_kind=kind)
+    return block, BlockState(note_kind=kind)
+
+
+def _in_note(classified: tuple[BlockInfo, BlockState], kind: str) -> tuple[BlockInfo, BlockState]:
+    """囲みの中であることを、行の情報と次の行へ渡す状態の両方に足す。
+
+    **他の分類はそのまま通す。** 囲みの中でも見出しは見出し、コードはコード。
+    ここで型を塗り替えると、囲みを使った瞬間に中の装飾が全部死ぬ。
+
+    フェンスや front matter の分岐は状態を作り直すので、通り道すべてで
+    足し直さないと囲みが途中で切れる（実際にテストで落ちた）。
+    """
+    if not kind:
+        return classified
+    info, state = classified
+    return replace(info, note_kind=kind), replace(state, note_kind=kind)
 
 
 def _classify_front_matter(text: str, line: int, state: BlockState) -> tuple[BlockInfo, BlockState]:

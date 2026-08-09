@@ -145,3 +145,63 @@ class TestActuallyPaints:
         )
         assert found, "縦バーの色のピクセルが見つからない"
         assert with_quote != without
+
+
+class TestQiitaNote:
+    """`:::note` の囲み（B-3）。
+
+    囲みであることは**左の縦線**で表す。書き出し（`editor/exporter.py`）と
+    同じ表し方に揃えてある。
+    """
+
+    def test_囲みの行に縦線を描く(self, editor) -> None:
+        editor.setPlainText(":::note info\n本文\n:::")
+        assert kinds(editor).count(DecorationKind.NOTE_BAR) == 3
+
+    def test_囲みの外には描かない(self, editor) -> None:
+        editor.setPlainText(":::note info\n本文\n:::\n外")
+        assert kinds(editor).count(DecorationKind.NOTE_BAR) == 3
+
+    def test_種類を持ち歩く(self, editor) -> None:
+        editor.setPlainText(":::note warn\n本文\n:::")
+        assert {d.text for d in of_kind(editor, DecorationKind.NOTE_BAR)} == {"warn"}
+
+    def test_引用の縦バーとは別物(self, editor) -> None:
+        editor.setPlainText(":::note info\n本文\n:::")
+        assert DecorationKind.QUOTE_BAR not in kinds(editor)
+
+    def test_囲みの中の引用は縦線をずらす(self, editor) -> None:
+        """同じ位置に描くと 2 本が重なって、どちらも読めなくなる。"""
+        editor.setPlainText(":::note info\n> 引用\n:::")
+        note = of_kind(editor, DecorationKind.NOTE_BAR)[1]
+        quote = of_kind(editor, DecorationKind.QUOTE_BAR)[0]
+        assert quote.rect.left() >= note.rect.right()
+
+    def test_囲みの外の引用は元の位置(self, editor) -> None:
+        editor.setPlainText("> 引用")
+        assert of_kind(editor, DecorationKind.QUOTE_BAR)[0].rect.left() == pytest.approx(
+            editor.contentsRect().left() + 2, abs=2
+        )
+
+    def test_種類ごとに色が違う(self, editor) -> None:
+        from PySide6.QtGui import QColor, QImage
+
+        from hitofude.theme import LIGHT
+
+        def colors(kind: str) -> set[int]:
+            editor.setPlainText(f":::note {kind}\n本文\n:::")
+            image = QImage(editor.size(), QImage.Format.Format_ARGB32)
+            image.fill(QColor("white"))
+            editor.render(image)
+            return {
+                image.pixel(x, y)
+                for x in range(min(60, image.width()))
+                for y in range(min(60, image.height()))
+            }
+
+        for kind, color in (
+            ("info", LIGHT.note_info),
+            ("warn", LIGHT.note_warn),
+            ("alert", LIGHT.note_alert),
+        ):
+            assert QColor(color).rgb() in colors(kind), f"{kind} の色が出ていない"

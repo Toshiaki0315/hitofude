@@ -287,3 +287,38 @@ class TestImageOnlyLine:
     def test_絶対URLも返す(self) -> None:
         """描けるかは呼び出し側が決める。ここは形だけ見る。"""
         assert image_only_line("![](https://example.com/a.png)") == "https://example.com/a.png"
+
+
+class TestFootnote:
+    """脚注の参照 `[^1]`（B-3 / Qiita 記法）。
+
+    書き出しではリンクになる（`tests/core/test_html.py`）。画面でも
+    ただの文字に見えないよう、印として拾う。
+    """
+
+    def test_参照を拾う(self) -> None:
+        spans = scan("本文[^1]です")
+        assert [s.type for s in spans] == [SpanType.FOOTNOTE]
+
+    def test_範囲は角括弧ごと(self) -> None:
+        span = scan("本文[^1]です")[0]
+        assert (span.open_start, span.close_end) == (2, 6)
+
+    def test_日本語のラベルも拾う(self) -> None:
+        assert scan("本文[^注釈]です")[0].type is SpanType.FOOTNOTE
+
+    def test_ラベルを覚える(self) -> None:
+        assert scan("本文[^1]です")[0].payload == "1"
+
+    def test_定義の行も拾う(self) -> None:
+        """`[^1]: 注釈` の頭。"""
+        assert scan("[^1]: 注釈")[0].type is SpanType.FOOTNOTE
+
+    def test_リンクとは別物(self) -> None:
+        assert scan("[文字](url)")[0].type is not SpanType.FOOTNOTE
+
+    def test_コードの中は拾わない(self) -> None:
+        assert [s.type for s in scan("`[^1]`")] == [SpanType.CODE]
+
+    def test_キャレット無しの角括弧は拾わない(self) -> None:
+        assert scan("[1] ただの括弧") == []

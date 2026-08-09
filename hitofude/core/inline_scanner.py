@@ -29,6 +29,9 @@ _IMAGE_RE = re.compile(r"!\[(?P<text>[^\[\]]*)\]\((?P<url>[^()\s]*)\)")
 # 行まるごとが画像 1 つのときだけ、本文中に絵として描く（タスク A-2）
 _IMAGE_LINE_RE = re.compile(r"\A\s*!\[[^\[\]]*\]\((?P<url>[^()\s]+)\)\s*\Z")
 _LINK_RE = re.compile(r"(?<!!)\[(?P<text>[^\[\]]*)\]\((?P<url>[^()\s]*)\)")
+# 脚注の参照 `[^1]` と定義の頭 `[^1]:`（B-3 / Qiita 記法）。
+# `[1]` は拾わない。ただの角括弧と見分けが付かなくなる
+_FOOTNOTE_RE = re.compile(r"\[\^(?P<label>[^\[\]\s]+)\]")
 _AUTOLINK_RE = re.compile(r"<(?P<url>[A-Za-z][A-Za-z0-9+.\-]*:[^<>\s]+|[^@<>\s]+@[^@<>\s]+)>")
 _BARE_URL_RE = re.compile(r"(?<![\w/])(?P<url>https?://[^\s<>()\[\]\"'、。]+)")
 
@@ -235,6 +238,24 @@ def _scan_autolinks(text: str, mask: bytearray, spans: list[InlineSpan]) -> None
         _mark(mask, start, end)
 
 
+def _scan_footnotes(text: str, mask: bytearray, spans: list[InlineSpan]) -> None:
+    for match in _FOOTNOTE_RE.finditer(text):
+        start, end = match.span()
+        if not _is_free(mask, start, end):
+            continue
+        spans.append(
+            InlineSpan(
+                type=SpanType.FOOTNOTE,
+                open_start=start,
+                open_end=start,
+                close_start=end,
+                close_end=end,
+                payload=match.group("label"),
+            )
+        )
+        _mark(mask, start, end)
+
+
 def _scan_tags(text: str, mask: bytearray, spans: list[InlineSpan]) -> None:
     for match in TAG_RE.finditer(text):
         start, end = match.span()
@@ -265,6 +286,9 @@ def scan(text: str) -> list[InlineSpan]:
     # ADR-0001: リンクを裸の URL より先に確定する。
     # 逆順だと [text](url) の URL が先にマスクされ、リンクが成立しない。
     _scan_code(text, mask, spans)
+    # **リンクより先に見る。** `[^1]` はリンクの形に噛まないが、順を後ろに
+    # すると `[^1]: 注釈` の定義行で取り合いになる
+    _scan_footnotes(text, mask, spans)
     _scan_links(text, mask, spans)
     _scan_autolinks(text, mask, spans)
     _scan_delimited(text, mask, spans)

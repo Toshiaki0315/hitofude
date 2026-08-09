@@ -115,6 +115,9 @@ _FULLY_HIDDEN_TYPES = frozenset(
         BlockType.FRONT_MATTER,
         # 区切り行（`|---|---|`）は罫線として描くので文字は見せない
         BlockType.TABLE_DELIMITER,
+        # `:::note info` と閉じの `:::`（B-3）。囲みは縦線で表すので記号は要らない。
+        # カーソルを入れれば他の潰した行と同じように出てくる
+        BlockType.NOTE_DELIMITER,
     }
 )
 
@@ -482,6 +485,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             SpanType.AUTOLINK: link,
             SpanType.IMAGE: image,
             SpanType.TAG: tag,
+            # 脚注の参照（B-3）。リンクと同じ扱いにする。飛び先を持つ印という
+            # 意味では同じもので、色を分けても覚えることが増えるだけ
+            SpanType.FOOTNOTE: link,
         }
 
         # 未使用だが、リンクのクリック判定（Phase 6）で色を引くために保持する
