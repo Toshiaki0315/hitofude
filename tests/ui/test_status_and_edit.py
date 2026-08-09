@@ -82,9 +82,19 @@ class TestStats:
         # 見出し「メモ」2 文字 + 本文 5 文字。`#` と空行は数えない
         assert "7 文字" in window.status_text()
 
-    def test_単語数も出る(self, window) -> None:
+    def test_行数も出る(self, window) -> None:
         window.open_note(note(window, "メモ"))
-        assert "語" in window.status_text()
+        assert "行" in window.status_text()
+
+    def test_単語数は出さない(self, window) -> None:
+        """`東京都渋谷区` が 6 語では語数の意味を成さない（ユーザーの指摘）。"""
+        window.open_note(note(window, "メモ", "東京都渋谷区\n"))
+        assert "語" not in window.status_text()
+
+    def test_開いたノートの行数を数える(self, window) -> None:
+        window.open_note(note(window, "メモ", "あ\nい\n"))
+        # 見出し 1 行 + 空行 1 行 + 本文 2 行
+        assert "4 行" in window.status_text()
 
     def test_ノートを切り替えると数え直す(self, window) -> None:
         window.open_note(note(window, "短い", "あ\n"))
@@ -323,7 +333,7 @@ class TestStatusMargin:
         assert label.width() >= needed
 
     def test_何の数字か説明がある(self, window) -> None:
-        """「文字」「語」だけでは何を数えたか分からない。"""
+        """「文字」「行」だけでは何を数えたか分からない。"""
         tip = window._stats_label.toolTip()
         assert "装飾" in tip or "マーカー" in tip
-        assert "語" in tip
+        assert "行" in tip

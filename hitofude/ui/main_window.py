@@ -80,11 +80,7 @@ DIRTY_MARK = "•"
 # ステータスバー右端の余白。ウィンドウの角が丸いので、右端ぴったりに置くと
 # 最後の文字が欠ける（実際に欠けた）
 STATUS_RIGHT_MARGIN = 14
-STATS_TOOLTIP = (
-    "文字数と単語数。\n"
-    "装飾の記号（`**` など）と front matter は数えません。\n"
-    "日本語には語の区切りが無いので、漢字・かなは 1 文字を 1 語として数えます。"
-)
+STATS_TOOLTIP = "文字数と行数。\n装飾の記号（`**` など）と front matter、改行は数えません。"
 
 NEW_NOTE_TITLE = "無題"
 PINNED_NOTICE = "ピン留めしているノートは削除できません。先にピン留めを外してください。"
@@ -731,7 +727,7 @@ class MainWindow(QMainWindow):
             self._stats_label.setText("")
             return
         stats = count_text(self._editor.toPlainText())
-        self._stats_label.setText(f"{stats.characters:,} 文字 / {stats.words:,} 語")
+        self._stats_label.setText(f"{stats.characters:,} 文字 / {stats.lines:,} 行")
 
     def status_text(self) -> str:
         return self._stats_label.text()

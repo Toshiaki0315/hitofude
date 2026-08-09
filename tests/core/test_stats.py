@@ -38,25 +38,15 @@ class TestCharacters:
         assert count("").characters == 0
 
 
-class TestWords:
-    def test_英語は空白で割る(self) -> None:
-        assert count("hello brave new world").words == 4
+class TestNoWordCount:
+    """単語数は出さない（ユーザーの指摘で取りやめ）。
 
-    def test_日本語は1文字1語(self) -> None:
-        """空白で割れないので、CJK は文字数をそのまま語数にする。"""
-        assert count("こんにちは").words == 5
+    CJK を 1 文字 1 語として数えていたが、`東京都渋谷区` が 6 語になるなど
+    語数としての意味を成さなかった。数えるふりをするより出さないほうがよい。
+    """
 
-    def test_混ざっていても数えられる(self) -> None:
-        assert count("Qt と PySide").words == 3
-
-    def test_句読点だけの語は数えない(self) -> None:
-        assert count("hello, world!").words == 2
-
-    def test_空なら0(self) -> None:
-        assert count("").words == 0
-
-    def test_空白だけなら0(self) -> None:
-        assert count("   \n  ").words == 0
+    def test_単語数を持たない(self) -> None:
+        assert not hasattr(count("あいうえお"), "words")
 
 
 class TestLines:
@@ -75,13 +65,22 @@ class TestPerformance:
 
     @pytest.mark.parametrize("_", range(1))
     def test_1万語でも十分速い(self, _) -> None:
+        """素の実行で 63ms（実測）。
+
+        `make cov` はトレーサが入るので 3.6 倍まで伸びる（実測 228ms）。
+        測っているのは実装の速さであって計測器の速さではないので、
+        トレーサが居るときだけ枠を広げる。
+        """
+        import sys
         import time
 
         text = "これは日本語の文章です。**強調** も入ります。\n" * 2000
         started = time.perf_counter()
         count(text)
         elapsed = (time.perf_counter() - started) * 1000
-        assert elapsed < 200, f"{elapsed:.0f}ms かかった"
+
+        budget = 200.0 * (5 if sys.gettrace() or sys.monitoring.get_tool(2) else 1)
+        assert elapsed < budget, f"{elapsed:.0f}ms かかった（枠 {budget:.0f}ms）"
 
 
 class TestSymbolsInProse:
