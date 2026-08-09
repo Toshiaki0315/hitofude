@@ -20,12 +20,17 @@ __all__ = [
     "ThemeWatcher",
     "apply_theme",
     "create_application",
+    "enable_key_repeat",
+    "key_repeat_enabled",
     "macos_app_name",
     "set_macos_app_name",
     "system_is_dark",
 ]
 
 BUNDLE_NAME_KEY = "CFBundleName"
+# macOS は既定で、母音などを押し続けるとアクセント候補を出す。文章を書く
+# アプリでは繰り返しのほうが要る
+PRESS_AND_HOLD_KEY = "ApplePressAndHoldEnabled"
 CF_UTF8 = 0x08000100
 NAME_BUFFER_BYTES = 512
 
@@ -55,6 +60,134 @@ def _core_foundation():
     cf.CFStringGetCString.argtypes = [pointer, ctypes.c_char_p, ctypes.c_long, ctypes.c_uint32]
     cf.CFDictionarySetValue.argtypes = [pointer] * 3
     return cf
+
+
+def _objc():
+    """Objective-C ランタイムを ctypes で開く。
+
+    `set_macos_app_name()` と同じ理由で pyobjc は足さない。
+    """
+    import ctypes
+    import ctypes.util
+
+    path = ctypes.util.find_library("objc")
+    if path is None:
+        return None
+
+    runtime = ctypes.cdll.LoadLibrary(path)
+    runtime.objc_getClass.restype = ctypes.c_void_p
+    runtime.objc_getClass.argtypes = [ctypes.c_char_p]
+    runtime.sel_registerName.restype = ctypes.c_void_p
+    runtime.sel_registerName.argtypes = [ctypes.c_char_p]
+    return runtime
+
+
+def _send(runtime, target, selector: str, *args, types=(), returns=None):
+    """`objc_msgSend` を型付きで呼ぶ。
+
+    **引数と戻り値の型を毎回指定する。** 既定のままだとポインタとして
+    扱われ、`BOOL` を渡したところで壊れる。
+    """
+    import ctypes
+
+    signature = ctypes.CFUNCTYPE(
+        returns or ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, *types
+    )
+    call = signature(ctypes.cast(runtime.objc_msgSend, ctypes.c_void_p).value)
+    return call(target, runtime.sel_registerName(selector.encode()), *args)
+
+
+def _nsstring(runtime, text: str):
+    import ctypes
+
+    return _send(
+        runtime,
+        runtime.objc_getClass(b"NSString"),
+        "stringWithUTF8String:",
+        text.encode(),
+        types=(ctypes.c_char_p,),
+    )
+
+
+def enable_key_repeat() -> bool:
+    """押しっぱなしでキーが繰り返すようにする。
+
+    macOS は既定で、母音などを押し続けると**アクセント候補**を出す
+    （`ApplePressAndHoldEnabled`）。文章を書くアプリでは繰り返しのほうが要る。
+
+    **`registerDefaults:` を使う。** 保存されている設定には触れないので、
+    他のアプリにも次回以降の macOS の挙動にも影響しない。効くのはこの
+    プロセスの間だけ。
+
+    繰り返しの**速さ**は macOS のシステム設定（キーのリピート速度）で、
+    アプリからは変えない。
+    """
+    if sys.platform != "darwin":
+        return False
+    try:
+        import ctypes
+
+        runtime = _objc()
+        if runtime is None:
+            return False
+
+        defaults = _send(runtime, runtime.objc_getClass(b"NSUserDefaults"), "standardUserDefaults")
+        disabled = _send(
+            runtime,
+            runtime.objc_getClass(b"NSNumber"),
+            "numberWithBool:",
+            False,
+            types=(ctypes.c_bool,),
+        )
+        mapping = _send(
+            runtime,
+            runtime.objc_getClass(b"NSDictionary"),
+            "dictionaryWithObject:forKey:",
+            disabled,
+            _nsstring(runtime, PRESS_AND_HOLD_KEY),
+            types=(ctypes.c_void_p, ctypes.c_void_p),
+        )
+        _send(runtime, defaults, "registerDefaults:", mapping, types=(ctypes.c_void_p,))
+        return True
+    except Exception:
+        # 繰り返さないだけ。起動を止める理由にはならない
+        logger.debug("キーリピートを有効にできなかった", exc_info=True)
+        return False
+
+
+def key_repeat_enabled() -> bool:
+    """押しっぱなしで繰り返す設定が**入っているか**。
+
+    **`boolForKey:` だけでは足りない。** 未設定でも NO を返すため、
+    「まだ登録していない」と「無効に登録した」を区別できない。
+    macOS は未設定をアクセント候補ありとして扱うので、値の有無から見る。
+    """
+    if sys.platform != "darwin":
+        return False
+    try:
+        import ctypes
+
+        runtime = _objc()
+        if runtime is None:
+            return False
+
+        defaults = _send(runtime, runtime.objc_getClass(b"NSUserDefaults"), "standardUserDefaults")
+        key = _nsstring(runtime, PRESS_AND_HOLD_KEY)
+        if not _send(runtime, defaults, "objectForKey:", key, types=(ctypes.c_void_p,)):
+            return False  # 未設定 = macOS の既定（アクセント候補が出る）
+
+        held = _send(
+            runtime,
+            defaults,
+            "boolForKey:",
+            key,
+            types=(ctypes.c_void_p,),
+            returns=ctypes.c_bool,
+        )
+        return not held
+    except Exception:
+        logger.debug("キーリピートの設定を読めなかった", exc_info=True)
+        return False
 
 
 def set_macos_app_name(name: str = APP_NAME) -> bool:
@@ -157,6 +290,7 @@ def create_application(argv: list[str] | None = None) -> QApplication:
     """
     # QApplication より先に。Qt はメニューバーを作るときにバンドル名を読む
     set_macos_app_name(APP_NAME)
+    enable_key_repeat()
 
     existing = QApplication.instance()
     app = cast(QApplication, existing) if existing is not None else QApplication(argv or sys.argv)

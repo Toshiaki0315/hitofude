@@ -169,3 +169,40 @@ class TestSelection:
         editor.setTextCursor(cursor)
         qtbot.keyClick(editor, Qt.Key.Key_Return)
         assert editor.toPlainText() == "- \n"
+
+
+class TestKeyRepeat:
+    """押しっぱなしのキー（自動リピート）を捨てないこと（ユーザー要望）。"""
+
+    def test_自動リピートでも文字が入る(self, editor, qtbot) -> None:
+        from PySide6.QtGui import QKeyEvent
+        from PySide6.QtWidgets import QApplication
+
+        for _ in range(5):
+            event = QKeyEvent(
+                QKeyEvent.Type.KeyPress,
+                Qt.Key.Key_A,
+                Qt.KeyboardModifier.NoModifier,
+                "a",
+                True,  # autorep
+                1,
+            )
+            QApplication.sendEvent(editor, event)
+        assert editor.toPlainText() == "aaaaa"
+
+    def test_自動リピートのBackspaceも効く(self, editor, qtbot) -> None:
+        from PySide6.QtGui import QKeyEvent
+        from PySide6.QtWidgets import QApplication
+
+        put(editor, "abcde")
+        for _ in range(3):
+            event = QKeyEvent(
+                QKeyEvent.Type.KeyPress,
+                Qt.Key.Key_Backspace,
+                Qt.KeyboardModifier.NoModifier,
+                "",
+                True,
+                1,
+            )
+            QApplication.sendEvent(editor, event)
+        assert editor.toPlainText() == "ab"

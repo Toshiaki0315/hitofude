@@ -88,3 +88,91 @@ class TestMacOSAppName:
         monkeypatch.setattr(ctypes.util, "find_library", explode)
         assert set_macos_app_name("Hitofude") is False
         assert create_application() is not None
+
+
+class TestKeyRepeat:
+    """押しっぱなしで文字が繰り返されるようにする（ユーザー要望）。
+
+    macOS は既定で、母音などを押し続けるとアクセント候補を出す
+    （`ApplePressAndHoldEnabled`）。文章を書くアプリでは繰り返しのほうが
+    要る。**このプロセスにだけ**登録し、ユーザーの設定は書き換えない。
+    """
+
+    def test_登録できる(self) -> None:
+        from hitofude.app import enable_key_repeat, key_repeat_enabled
+
+        if sys.platform != "darwin":
+            pytest.skip("macOS 専用")
+        assert enable_key_repeat() is True
+        assert key_repeat_enabled() is True
+
+    def test_未登録なら有効と答えない(self) -> None:
+        """**`boolForKey:` は未設定でも NO を返す。** 値の有無まで見ないと、
+        「まだ登録していない」を「有効」と誤って報告する（実際に踏んだ）。"""
+        import subprocess
+
+        if sys.platform != "darwin":
+            pytest.skip("macOS 専用")
+        probe = (
+            "import sys; sys.path.insert(0, '.');"
+            "from hitofude.app import key_repeat_enabled; print(key_repeat_enabled())"
+        )
+        got = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, cwd=".")
+        assert got.stdout.strip() == "False"
+
+    def test_create_applicationで有効になる(self, qapp: QApplication) -> None:
+        from hitofude.app import create_application, key_repeat_enabled
+
+        if sys.platform != "darwin":
+            pytest.skip("macOS 専用")
+        create_application()
+        assert key_repeat_enabled() is True
+
+    def test_macOS以外では何もしない(self, monkeypatch) -> None:
+        from hitofude.app import enable_key_repeat, key_repeat_enabled
+
+        monkeypatch.setattr(sys, "platform", "linux")
+        assert enable_key_repeat() is False
+        assert key_repeat_enabled() is False
+
+    def test_objcが引けなくても落ちない(self, monkeypatch) -> None:
+        import ctypes.util
+
+        from hitofude.app import enable_key_repeat
+
+        monkeypatch.setattr(ctypes.util, "find_library", lambda name: None)
+        assert enable_key_repeat() is False
+
+    def test_例外が出ても起動を止めない(self, monkeypatch) -> None:
+        import ctypes.util
+
+        from hitofude.app import create_application, enable_key_repeat
+
+        def explode(name: str) -> str:
+            raise OSError("読めない")
+
+        monkeypatch.setattr(ctypes.util, "find_library", explode)
+        assert enable_key_repeat() is False
+        assert create_application() is not None
+
+    def test_ユーザーの設定を書き換えない(self) -> None:
+        """**登録するだけ。** 保存されている設定に触れると、他のアプリや
+        次回以降の macOS の挙動まで変えてしまう。"""
+        import subprocess
+
+        if sys.platform != "darwin":
+            pytest.skip("macOS 専用")
+        from hitofude.app import enable_key_repeat
+
+        before = subprocess.run(
+            ["defaults", "read", "-g", "ApplePressAndHoldEnabled"],
+            capture_output=True,
+            text=True,
+        )
+        enable_key_repeat()
+        after = subprocess.run(
+            ["defaults", "read", "-g", "ApplePressAndHoldEnabled"],
+            capture_output=True,
+            text=True,
+        )
+        assert (before.returncode, before.stdout) == (after.returncode, after.stdout)
