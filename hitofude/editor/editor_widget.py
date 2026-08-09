@@ -14,6 +14,7 @@ from PySide6.QtGui import (
     QFont,
     QInputMethodEvent,
     QKeyEvent,
+    QKeySequence,
     QPainter,
     QPaintEvent,
     QPalette,
@@ -316,6 +317,13 @@ class MarkdownEditor(QPlainTextEdit):
             super().keyPressEvent(event)
             return
 
+        if event.matches(QKeySequence.StandardKey.Cut):
+            # `QPlainTextEdit` は標準のキー割り当てを内部で処理し、仮想メソッドの
+            # `cut()` を通らない。守りのある経路へ寄せる
+            self.cut()
+            event.accept()
+            return
+
         if _modifies_text(event) and self._guard_front_matter(event):
             event.accept()
             return
@@ -523,6 +531,16 @@ class MarkdownEditor(QPlainTextEdit):
         繋がっていなければ画像を受け取らない（壊れたリンクを本文へ書かない）。
         """
         self._attachment_handler = handler
+
+    def cut(self) -> None:
+        """front matter ごと切り取らせない。
+
+        **`cut()` は `keyPressEvent` も `insertFromMimeData` も通らない。**
+        `Cmd+A` から `Cmd+X` で front matter が消えていた（ユーザー報告）。
+        入力の経路ごとに守りを足していたため、ここだけ抜けていた。
+        """
+        self._guard_front_matter()
+        super().cut()
 
     def canInsertFromMimeData(self, source) -> bool:
         if self._looks_like_attachment(source):

@@ -157,3 +157,102 @@ class TestUndo:
         qtbot.keyClicks(editor, "a")
         editor.undo()
         assert editor.toPlainText() == WITH_META
+
+
+class TestCut:
+    """切り取りは `keyPressEvent` も `insertFromMimeData` も通らない。
+
+    `Cmd+A` で全選択して `Cmd+X` を押すと front matter ごと消えていた
+    （ユーザー報告）。入力の経路ごとに守りを足していたため、ここだけ
+    抜けていた。
+    """
+
+    def test_全選択して切り取っても残る(self, editor) -> None:
+        editor.selectAll()
+        editor.cut()
+        assert meta_survives(editor)
+
+    def test_全選択して切り取ると本文だけ消える(self, editor) -> None:
+        editor.selectAll()
+        editor.cut()
+        assert frontmatter.split(editor.toPlainText()).body == ""
+
+    def test_切り取った中身に_front_matterを含めない(self, editor) -> None:
+        """クリップボードに `id` が乗ると、貼り付け先に漏れる。"""
+        from PySide6.QtWidgets import QApplication
+
+        editor.selectAll()
+        editor.cut()
+        assert "ABC123" not in QApplication.clipboard().text()
+
+    def test_ショートカットからでも残る(self, editor, qtbot) -> None:
+        editor.selectAll()
+        qtbot.keyClick(editor, Qt.Key.Key_X, Qt.KeyboardModifier.ControlModifier)
+        assert meta_survives(editor)
+
+    def test_front_matterの中だけ選んで切り取っても残る(self, editor) -> None:
+        cursor = editor.textCursor()
+        cursor.setPosition(4)
+        cursor.setPosition(10, QTextCursor.MoveMode.KeepAnchor)
+        editor.setTextCursor(cursor)
+        editor.cut()
+        assert meta_survives(editor)
+
+    def test_本文の中では今まで通り切り取れる(self, editor) -> None:
+        offset = frontmatter.body_offset(WITH_META)
+        cursor = editor.textCursor()
+        cursor.setPosition(offset)
+        cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
+        editor.setTextCursor(cursor)
+        editor.cut()
+
+        assert meta_survives(editor)
+        assert frontmatter.split(editor.toPlainText()).body == ""
+
+    def test_front_matterが無ければ全部切れる(self, qtbot) -> None:
+        widget = MarkdownEditor()
+        qtbot.addWidget(widget)
+        widget.setPlainText(WITHOUT_META)
+        widget.selectAll()
+        widget.cut()
+        assert widget.toPlainText() == ""
+
+
+class TestCutShortcut:
+    """`Cmd+X` の生のキーイベント。
+
+    `QPlainTextEdit` は標準のキー割り当てを内部で処理し、**仮想メソッドの
+    `cut()` を通らない**。実アプリでは編集メニューの項目が先に受けるので
+    `cut()` へ回るが、ウィジェット単体でも守れるようにしておく。
+    """
+
+    def send_cut(self, editor, text: str) -> None:
+        from PySide6.QtGui import QKeyEvent
+        from PySide6.QtWidgets import QApplication
+
+        QApplication.sendEvent(
+            editor,
+            QKeyEvent(
+                QKeyEvent.Type.KeyPress,
+                Qt.Key.Key_X,
+                Qt.KeyboardModifier.ControlModifier,
+                text,
+            ),
+        )
+
+    @pytest.mark.parametrize("text", ["", "\x18"])
+    def test_全選択して切り取っても残る(self, editor, text: str) -> None:
+        editor.selectAll()
+        self.send_cut(editor, text)
+        assert meta_survives(editor)
+
+    def test_本文は切り取れる(self, editor) -> None:
+        offset = frontmatter.body_offset(WITH_META)
+        cursor = editor.textCursor()
+        cursor.setPosition(offset)
+        cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
+        editor.setTextCursor(cursor)
+
+        self.send_cut(editor, "")
+        assert frontmatter.split(editor.toPlainText()).body == ""
+        assert meta_survives(editor)
