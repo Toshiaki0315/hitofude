@@ -279,6 +279,20 @@ def apply_theme(app: QApplication, theme: ThemeColors) -> None:
     palette.setColor(QPalette.ColorRole.Highlight, QColor(theme.selection_background))
     palette.setColor(QPalette.ColorRole.HighlightedText, foreground)
     palette.setColor(QPalette.ColorRole.Link, QColor(theme.accent))
+    # **ボタン系も忘れない。** ネイティブのポップアップボタン（環境設定の
+    # 「テーマ」欄など）はここで描かれる。既定のままだと明るい chrome に
+    # 明るい文字が乗って読めなくなる
+    palette.setColor(QPalette.ColorRole.Button, background)
+    palette.setColor(QPalette.ColorRole.ButtonText, foreground)
+
+    # 無効な項目。既定のままだと暗い背景に黒い文字が乗って消える
+    muted = QColor(theme.muted_foreground)
+    for role in (
+        QPalette.ColorRole.Text,
+        QPalette.ColorRole.WindowText,
+        QPalette.ColorRole.ButtonText,
+    ):
+        palette.setColor(QPalette.ColorGroup.Disabled, role, muted)
     app.setPalette(palette)
 
 

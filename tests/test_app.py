@@ -176,3 +176,66 @@ class TestKeyRepeat:
             text=True,
         )
         assert (before.returncode, before.stdout) == (after.returncode, after.stdout)
+
+
+class TestPaletteRoles:
+    """ボタン系の色も流し込む（ユーザー報告）。
+
+    ダークにすると環境設定の「テーマ」欄が読みにくかった。ネイティブの
+    ポップアップボタンは `Button` / `ButtonText` で描かれるのに、そこだけ
+    システムの明るい既定（`#ececec` / `#000000`）が残っていた。
+    """
+
+    @pytest.mark.parametrize("mode", [LIGHT, DARK])
+    def test_ボタンの色がテーマに合う(self, qapp: QApplication, mode) -> None:
+        from PySide6.QtGui import QPalette
+
+        apply_theme(qapp, mode)
+        palette = qapp.palette()
+        assert palette.color(QPalette.ColorRole.Button).name() == mode.background.lower()
+        assert palette.color(QPalette.ColorRole.ButtonText).name() == mode.foreground.lower()
+
+    def test_ダークでボタンの文字が背景と違う(self, qapp: QApplication) -> None:
+        """同じ色になると読めない。"""
+        from PySide6.QtGui import QPalette
+
+        apply_theme(qapp, DARK)
+        palette = qapp.palette()
+        assert palette.color(QPalette.ColorRole.ButtonText) != palette.color(
+            QPalette.ColorRole.Button
+        )
+
+    def test_無効な項目は控えめな色になる(self, qapp: QApplication) -> None:
+        """既定のままだと、暗い背景に黒い「無効」文字が乗って消える。"""
+        from PySide6.QtGui import QPalette
+
+        apply_theme(qapp, DARK)
+        palette = qapp.palette()
+        for role in (QPalette.ColorRole.Text, QPalette.ColorRole.ButtonText):
+            disabled = palette.color(QPalette.ColorGroup.Disabled, role)
+            assert disabled.name() == DARK.muted_foreground.lower()
+
+    @pytest.mark.parametrize("mode", [LIGHT, DARK])
+    def test_主要な役割が全部テーマ由来になる(self, qapp: QApplication, mode) -> None:
+        """1 つでもシステムの既定が残ると、そこだけ浮いて読めなくなる。"""
+        from PySide6.QtGui import QPalette
+
+        apply_theme(qapp, mode)
+        palette = qapp.palette()
+        allowed = {
+            mode.background.lower(),
+            mode.foreground.lower(),
+            mode.code_background.lower(),
+            mode.muted_foreground.lower(),
+            mode.selection_background.lower(),
+            mode.accent.lower(),
+        }
+        for role in (
+            QPalette.ColorRole.Window,
+            QPalette.ColorRole.Base,
+            QPalette.ColorRole.Button,
+            QPalette.ColorRole.Text,
+            QPalette.ColorRole.WindowText,
+            QPalette.ColorRole.ButtonText,
+        ):
+            assert palette.color(role).name() in allowed, f"{role} が浮いている"
