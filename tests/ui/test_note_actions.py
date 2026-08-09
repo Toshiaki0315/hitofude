@@ -477,3 +477,26 @@ class TestRename:
             for a in window.context_menu_for(trashed.relative_to(window.vault.root)).actions()
         ]
         assert "名前を変更…" not in labels
+
+
+class TestPlaceManual:
+    """ヘルプ →「使い方のノートを置き直す」。
+
+    説明が増えても既に置いたノートは古いまま残るので、最新版を出す道を
+    ひとつ用意する（`Vault.place_manual`）。
+    """
+
+    def test_置いて開く(self, window) -> None:
+        window.place_manual()
+        assert "使い方" in window.windowTitle()
+
+    def test_一覧に出る(self, window) -> None:
+        before = len(titles(window))
+        window.place_manual()
+        assert len(titles(window)) == before + 1
+
+    def test_何度でも置ける(self, window) -> None:
+        window.place_manual()
+        first = window.current_note.path
+        window.place_manual()
+        assert window.current_note.path != first

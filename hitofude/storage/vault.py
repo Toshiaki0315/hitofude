@@ -282,14 +282,31 @@ class Vault:
         if marker.exists() or not self.is_empty():
             return None
 
-        text = _read_resource(MANUAL_RESOURCE)
-        if text is None:
+        note = self.place_manual()
+        if note is None:
             return None
 
-        note = self.create(MANUAL_TITLE, text)
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(_now(), encoding="utf-8")
         return note
+
+    def place_manual(self) -> Note | None:
+        """使い方ノートを**今の内容で**置く。置いたノートを返す。
+
+        アプリが新しくなって説明が増えても、既に置いたノートは古いまま
+        残る（印があるので `seed_manual()` は二度と置かない）。ここを
+        ヘルプメニューから呼べるようにして、最新の説明を出せる道を残す。
+
+        **既にあるノートは消さない。** 書き足したメモごと消えては困るので、
+        別のファイルとして置く（`unique_path` が名前をずらす）。
+
+        **印は触らない。** 置き直しは初回扱いに戻すことではない。戻すと、
+        ユーザーが消したマニュアルが次の起動で勝手に復活する。
+        """
+        text = _read_resource(MANUAL_RESOURCE)
+        if text is None:
+            return None
+        return self.create(MANUAL_TITLE, text)
 
     def purge_trash(self, days: int = DEFAULT_TRASH_DAYS) -> list[Path]:
         """期限を過ぎたゴミ箱の中身を消す（spec §7.6）。起動時に呼ぶ。"""

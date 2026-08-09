@@ -984,6 +984,19 @@ class MainWindow(QMainWindow):
             base_path=self._vault.root,
         )
 
+    def place_manual(self) -> None:
+        """ヘルプ →「使い方のノートを置き直す」。
+
+        **既にあるノートは消さない。** 書き足したメモごと消えては困るので、
+        別のファイルとして置く（`Vault.place_manual`）。
+        """
+        note = self._vault.place_manual()
+        if note is None:
+            return
+        self._db.upsert_note(note, self._vault.root)
+        self.refresh()
+        self.open_note(note.path)
+
     def show_about(self) -> None:
         QMessageBox.about(
             self,

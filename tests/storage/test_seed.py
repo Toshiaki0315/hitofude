@@ -125,3 +125,78 @@ class TestManualContent:
             assert format_table(block) == block, f"{number} 行目の表が揃っていない"
             checked += 1
         assert checked >= 2, "表が足りない"
+
+
+class TestReplacing:
+    """「使い方のノートを置き直す」（ヘルプメニュー）。
+
+    アプリが新しくなって説明が増えても、**既に置いたノートは古いまま**に
+    なる（印があるので `seed_manual()` は二度と置かない）。手元の説明を
+    最新にする道をひとつ用意する。
+    """
+
+    def test_印があっても置ける(self, vault) -> None:
+        vault.seed_manual()
+        assert vault.place_manual() is not None
+
+    def test_空でなくても置ける(self, vault) -> None:
+        vault.create("べつのノート", "本文\n")
+        assert vault.place_manual() is not None
+
+    def test_既にあるノートを消さない(self, vault) -> None:
+        first = vault.seed_manual()
+        vault.write(first.path, "# 使い方\n\n書き足したメモ\n")
+        vault.place_manual()
+        assert "書き足したメモ" in first.path.read_text(encoding="utf-8")
+
+    def test_別のファイルになる(self, vault) -> None:
+        first = vault.seed_manual()
+        assert vault.place_manual().path != first.path
+
+    def test_中身は最新の説明(self, vault) -> None:
+        vault.seed_manual()
+        placed = vault.place_manual()
+        assert "書式ツールバー" in placed.path.read_text(encoding="utf-8")
+
+    def test_印は置き直しても消えない(self, vault) -> None:
+        """置き直しは**初回扱いに戻すことではない**。消したマニュアルが
+        次の起動で勝手に復活したら、消した意味が無くなる。"""
+        vault.seed_manual()
+        vault.place_manual()
+        assert (vault.managed_dir / SEED_MARKER).exists()
+        assert vault.seed_manual() is None
+
+
+class TestQiitaSample:
+    """B-3 で足した記法もサンプルに含める。
+
+    マニュアルは表示の見本を兼ねているので、**実際に囲みや脚注が描かれる**
+    ことがそのまま動作確認になる。
+    """
+
+    @pytest.fixture
+    def text(self, vault) -> str:
+        return Note.read(vault.seed_manual().path).text
+
+    def test_囲みを含む(self, text) -> None:
+        state = None
+        kinds = set()
+        from hitofude.core.block_parser import classify_line
+        from hitofude.core.models import BlockState
+
+        state = BlockState()
+        for number, line in enumerate(text.split("\n")):
+            info, state = classify_line(line, number, state)
+            if info.note_kind:
+                kinds.add(info.note_kind)
+        assert kinds == {"info", "warn", "alert"}
+
+    def test_脚注を含む(self, text) -> None:
+        from hitofude.core.inline_scanner import scan
+        from hitofude.core.models import SpanType
+
+        found = {span.type for line in text.split("\n") for span in scan(line)}
+        assert SpanType.FOOTNOTE in found
+
+    def test_ファイル名付きのコードを含む(self, text) -> None:
+        assert "```js:index.js" in text
