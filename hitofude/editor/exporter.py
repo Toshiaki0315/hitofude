@@ -60,7 +60,13 @@ def _embed_images(body: str, base_path: Path | None) -> str:
     return _IMG_SRC_RE.sub(swap, body)
 
 
-def _rendered_body(text: str, base_path: Path | None, *, math_as_source: bool = False) -> str:
+def _rendered_body(
+    text: str,
+    base_path: Path | None,
+    *,
+    math_as_source: bool = False,
+    dark: bool = False,
+) -> str:
     """本文の HTML。画像は `data:` URI に置き換える。
 
     **HTML も PDF もここを通す。** 経路を分けると、片方だけ画像が出る、
@@ -69,6 +75,9 @@ def _rendered_body(text: str, base_path: Path | None, *, math_as_source: bool = 
 
     唯一違うのが数式（`math_as_source`）。Qt のリッチテキストは MathML を
     解さず、**黙って間違った式**を出す（ADR-0009）。ここだけは分ける。
+
+    `dark` はコードの色分けを暗い配色にする（B-6）。テーマの明暗に合わせないと、
+    黒地に黒い字になる。
     """
     return _embed_images(markdown_html.render(text, math_as_source=math_as_source), base_path)
 
@@ -83,7 +92,7 @@ def _to_document(text: str, *, theme: ThemeColors, base_point_size: float, base_
     document = QTextDocument()
     document.setDefaultStyleSheet(_stylesheet(theme))
     # 数式は LaTeX のまま。MathML は Qt が解さない（ADR-0009）
-    document.setHtml(_rendered_body(text, base_path, math_as_source=True))
+    document.setHtml(_rendered_body(text, base_path, math_as_source=True, dark=theme.is_dark))
     document.setDefaultFont(_font(base_point_size))
     return document
 
@@ -92,7 +101,7 @@ def to_html(
     text: str, *, title: str = "", theme: ThemeColors = LIGHT, base_path: Path | None = None
 ) -> str:
     """完結した HTML 文字列にする。外部リソースを参照しない。"""
-    body = _rendered_body(text, base_path)
+    body = _rendered_body(text, base_path, dark=theme.is_dark)
     heading = f"<title>{_escape(title)}</title>" if title else ""
     return (
         "<!doctype html>\n"

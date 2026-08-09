@@ -7,6 +7,8 @@
 `core/` にあるので PySide6 に依存しない（R3）。ヘッドレスで全部見られる。
 """
 
+import re
+
 import pytest
 
 from hitofude.core.html import render
@@ -207,7 +209,9 @@ class TestCodeFilename:
         assert "language-js:index.js" not in html
 
     def test_中身はそのまま(self) -> None:
-        assert "x = 1" in render("```js:index.js\nx = 1\n```\n")
+        """色分け（B-6）で中身がタグに割られるので、タグを外して見る。"""
+        html = render("```js:index.js\nx = 1\n```\n")
+        assert "x = 1" in re.sub(r"<[^>]+>", "", html)
 
     def test_ファイル名だけでも書ける(self) -> None:
         """`` ```:設定 `` のように言語を省く書き方。"""
@@ -376,3 +380,58 @@ class TestMathForPdf:
     def test_数式以外は変わらない(self) -> None:
         source = "# 見出し\n\n- [ ] やること\n"
         assert render(source, math_as_source=True) == render(source)
+
+
+class TestCodeHighlight:
+    """コードの色分け（B-6）。
+
+    Pygments で**書き出す時点で色を焼き込む**。JavaScript は使わないので、
+    ブラウザでも PDF でも同じに出る（Qt のリッチテキストは
+    `<span style="color:...">` を解する。実測）。
+    """
+
+    def test_言語が分かれば色が付く(self) -> None:
+        assert "color:" in render("```python\ndef f():\n    pass\n```\n")
+
+    def test_予約語と文字列で色が違う(self) -> None:
+        html = render('```python\ndef f():\n    return "文字列"\n```\n')
+        colors = set(re.findall(r"color: ?(#[0-9A-Fa-f]{3,6})", html))
+        assert len(colors) >= 2, colors
+
+    def test_中身は変わらない(self) -> None:
+        html = render("```python\nx = 1 + 2\n```\n")
+        assert "x = 1 + 2" in re.sub(r"<[^>]+>", "", html)
+
+    def test_言語のクラスは残す(self) -> None:
+        """Mermaid（B-4）など、あとから拾う仕組みのために残す。"""
+        assert 'class="language-python"' in render("```python\nx = 1\n```\n")
+
+    def test_知らない言語は色を付けない(self) -> None:
+        html = render("```なにか\nx = 1\n```\n")
+        assert "color:" not in html
+        assert "x = 1" in html
+
+    def test_言語が無ければ色を付けない(self) -> None:
+        assert "color:" not in render("```\nx = 1\n```\n")
+
+    def test_ファイル名付きでも色が付く(self) -> None:
+        html = render("```python:main.py\ndef f():\n    pass\n```\n")
+        assert "color:" in html
+        assert "main.py" in html
+
+    def test_記号を壊さない(self) -> None:
+        """`<` や `&` がそのまま出ると HTML が壊れる。"""
+        html = render("```python\nif a < b & c:\n    pass\n```\n")
+        assert "<b &" not in html
+        assert "&lt;" in html or "&amp;" in html
+
+    def test_暗い配色も選べる(self) -> None:
+        """ダークテーマで書き出したときに、黒地に黒い字にならないこと。"""
+        light = render("```python\ndef f():\n    pass\n```\n")
+        dark = render("```python\ndef f():\n    pass\n```\n", dark=True)
+        assert light != dark
+
+    def test_数式と混ぜても壊れない(self) -> None:
+        html = render("```python\nx = 1\n```\n\n$E = mc^2$\n")
+        assert "color:" in html
+        assert "<math" in html

@@ -18,10 +18,13 @@ import re
 from latex2mathml.converter import convert as latex_to_mathml
 from markdown_it import MarkdownIt
 from markdown_it.common.utils import escapeHtml
-from markdown_it.renderer import RendererHTML
 from mdit_py_plugins.container import container_plugin
 from mdit_py_plugins.dollarmath import dollarmath_plugin
 from mdit_py_plugins.footnote import footnote_plugin
+from pygments import highlight as pygments_highlight
+from pygments.formatters import HtmlFormatter
+from pygments.lexers import get_lexer_by_name
+from pygments.util import ClassNotFound
 
 from hitofude.core import frontmatter
 from hitofude.core.models import DEFAULT_NOTE_KIND, NOTE_KINDS, UNKNOWN_NOTE_KIND
@@ -102,25 +105,56 @@ def _math(latex: str, *, block: bool, as_source: bool = False) -> str:
 
 
 def _render_fence(self, tokens, index, options, env) -> str:
-    """` ```js:index.js ` のファイル名を見出しとして出す。
+    """コードブロックを描く。
+
+    - ` ```js:index.js ` のファイル名を見出しとして出す（B-3）
+    - 言語が分かれば色を付ける（B-6）
 
     **言語のクラスは言語だけにする。** `language-js:index.js` のままだと
     色分けの仕組みが言語を見つけられない。
     """
     token = tokens[index]
     lang, separator, name = token.info.strip().partition(":")
-    if not separator:
-        return RendererHTML.fence(self, tokens, index, options, env)
 
-    token.info = lang
-    body = RendererHTML.fence(self, tokens, index, options, env)
+    body = _code_html(token.content, lang, dark=env.get(_DARK_CODE, False))
+    if not separator:
+        return body
+
     label = f'<div class="code-name">{escapeHtml(name)}</div>' if name else ""
     return f'<div class="code-block">{label}{body}</div>\n'
 
 
-# 数式（B-5）。**記号の内側の空白と、前後の数字を許さない。**
-# 許すと `価格は $100 と $200 です。` が数式になる（実測。日本語の文章として
-# 普通に出てくる形）。ここが緩いとふつうの文章が壊れる
+def _code_html(code: str, lang: str, *, dark: bool) -> str:
+    """`<pre><code>` を組み立てる。言語が分かれば色を焼き込む（B-6）。
+
+    **色は書き出す時点で決める。** スタイルシートも JavaScript も持たせない
+    ので、ブラウザでも PDF でも同じに出る（Qt のリッチテキストは
+    `<span style="color:...">` を解する。実測）。
+
+    知らない言語は色を付けない。**付けられないより、素で出るほうがよい。**
+    """
+    lexer = _lexer_for(lang)
+    css_class = f' class="language-{escapeHtml(lang)}"' if lang else ""
+    if lexer is None:
+        return f"<pre><code{css_class}>{escapeHtml(code)}</code></pre>\n"
+
+    formatter = HtmlFormatter(
+        noclasses=True, nowrap=True, style=DARK_CODE_STYLE if dark else LIGHT_CODE_STYLE
+    )
+    colored = pygments_highlight(code, lexer, formatter)
+    return f"<pre><code{css_class}>{colored}</code></pre>\n"
+
+
+def _lexer_for(lang: str):
+    """言語名から字句解析器を引く。知らない名前なら None。"""
+    if not lang:
+        return None
+    try:
+        return get_lexer_by_name(lang, stripnl=False)
+    except ClassNotFound:
+        return None
+
+
 _MD.use(dollarmath_plugin, allow_space=False, allow_digits=False)
 _MD.use(container_plugin, name="note", validate=_validate_note, render=_render_note)
 _MD.use(footnote_plugin)
@@ -137,12 +171,19 @@ _CHECKED, _UNCHECKED = "☑", "☐"
 
 # 数式を LaTeX のまま出すかを描画規則へ渡す鍵（`env` 経由。B-5）
 _MATH_AS_SOURCE = "hitofude_math_as_source"
+# 暗い配色でコードを色分けするかを渡す鍵（B-6）
+_DARK_CODE = "hitofude_dark_code"
+
+# Pygments の配色。**色を書き出す時点で焼き込む**ので、JavaScript も
+# スタイルシートの読み込みも要らない（ブラウザでも PDF でも同じに出る）
+LIGHT_CODE_STYLE = "friendly"
+DARK_CODE_STYLE = "github-dark"
 
 # かな・漢字。これを含むインライン数式は取り違え（`_render_math_inline`）
 _CJK_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿々〆、。]")
 
 
-def render(text: str, *, math_as_source: bool = False) -> str:
+def render(text: str, *, math_as_source: bool = False, dark: bool = False) -> str:
     """Markdown の本文を HTML にする。front matter は落とす。
 
     `id` や `modified` はこのアプリの管理情報で、読む人には意味がない。
@@ -151,10 +192,12 @@ def render(text: str, *, math_as_source: bool = False) -> str:
     **PDF 用**（Qt のリッチテキストは MathML を解さず、`$E = mc^2$` を
     `E=mc2` に、`\\frac{a}{b}` を `ab` にしてしまう。実測）。黙って
     間違った式を出すくらいなら、書いたままを見せるほうがよい（ADR-0009）。
+
+    `dark` はコードの色分けを暗い配色にする（B-6）。黒地に黒い字にしない。
     """
     # **`env` を解析と描画で共有する。** 脚注はここに定義を溜めるので、
     # 空の辞書を渡し直すと注釈の本文だけ消える（実際に踏んだ）
-    env: dict = {_MATH_AS_SOURCE: math_as_source}
+    env: dict = {_MATH_AS_SOURCE: math_as_source, _DARK_CODE: dark}
     tokens = _MD.parse(frontmatter.split(text).body, env)
     _mark_tasks(tokens)
     return _MD.renderer.render(tokens, _MD.options, env)
