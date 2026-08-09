@@ -231,3 +231,141 @@ class TestGridBounds:
         assert editor.toPlainText().startswith("| aaa |")
         vertical = [d for d in self._rules(editor) if d.rect.width() <= d.rect.height()]
         assert len(vertical) == 2  # 左端と右端
+
+
+class TestCellPadding:
+    """セルの余白（ユーザー要望）。
+
+    文字が罫線に接していて読みにくかった。**行の高さと横位置を作るのに
+    テキストは変えない**（R1）。`|` は罫線として描くので画面には出ない。
+    その透明な文字に大きさと字送りを持たせて余白にする。
+    """
+
+    TABLE = "| 記法 | 書き方 |\n| ---- | ------ |\n| 強調 | 太字   |\n"
+
+    def rows(self, editor):
+        document = editor.document()
+        layout = document.documentLayout()
+        return [
+            layout.blockBoundingRect(document.findBlockByNumber(n)).height()
+            for n in range(document.blockCount())
+        ]
+
+    def pipe_x(self, editor, line: int) -> list[float]:
+        # レイアウト前に `lineForTextPosition()` を叩くと落ちる。
+        # 描画側と同じヘルパを通し、組み終わるまで待つ
+        from PySide6.QtWidgets import QApplication
+
+        from hitofude.editor.painter_overlay import _column_x
+
+        QApplication.processEvents()
+        block = editor.document().findBlockByNumber(line)
+        return [_column_x(block, i) for i, char in enumerate(block.text()) if char == "|"]
+
+    def test_表の行は段落より高い(self, editor) -> None:
+        editor.setPlainText("ふつうの段落\n")
+        plain = self.rows(editor)[0]
+
+        editor.setPlainText(self.TABLE)
+        assert self.rows(editor)[0] > plain
+
+    def test_上下の余白は行の高さで作る(self) -> None:
+        """余白を 0 にしたときより高くなること。
+
+        **px を狙って逆算しない。** 行の高さは実際に並ぶ文字（和文か欧文か、
+        フォントがその字を持つか）で決まり、計算では当たらない（実測で確認）。
+        """
+        import hitofude.editor.highlighter as module
+
+        original = module.CELL_PADDING_POINTS
+        try:
+            module.CELL_PADDING_POINTS = 0.0
+            bare = self._table_height()
+            module.CELL_PADDING_POINTS = original
+            padded = self._table_height()
+        finally:
+            module.CELL_PADDING_POINTS = original
+        assert padded > bare + 5
+
+    def test_左右の余白は字送りで作る(self, editor) -> None:
+        """セルの幅が広がる＝中身が罫線から離れる。
+
+        **同じ行どうしで比べる。** フォントが違う行と比べても分からない。
+        """
+        import hitofude.editor.highlighter as module
+
+        original = module.CELL_PADDING
+        try:
+            module.CELL_PADDING = 0.0
+            editor._highlighter._cell_pad = None
+            editor.setPlainText(self.TABLE)
+            editor._highlighter.rehighlight()
+            bare = self.pipe_x(editor, 2)
+        finally:
+            module.CELL_PADDING = original
+            editor._highlighter._cell_pad = None
+
+        editor.setPlainText(self.TABLE)
+        editor._highlighter.rehighlight()
+        padded = self.pipe_x(editor, 2)
+        assert padded[1] - padded[0] > bare[1] - bare[0]
+
+    def test_本文は変わらない(self, editor) -> None:
+        """R1: 見た目を変えてもソースは触らない。"""
+        editor.setPlainText(self.TABLE)
+        assert editor.toPlainText() == self.TABLE
+
+    def test_Undoを消費しない(self, editor) -> None:
+        editor.setPlainText(self.TABLE)
+        editor.moveCursor(editor.textCursor().MoveOperation.End)
+        editor.textCursor().insertText("追記")
+        editor.undo()
+        assert "追記" not in editor.toPlainText()
+
+    def test_段落の高さは変えない(self, editor) -> None:
+        editor.setPlainText("ふつうの段落\n" + self.TABLE)
+        heights = self.rows(editor)
+        assert heights[0] < heights[1]
+
+    def test_本文の行どうしはずれない(self, editor) -> None:
+        """余白は全行へ同じだけ足す。
+
+        ヘッダ行だけは太字のぶん幅が違うが、それは**この変更の前からある**
+        別の話（実測で確認済み）。ここでは本文の行どうしを見る。
+        """
+        editor.setPlainText(self.TABLE + "| 斜体 | 細字   |\n")
+        assert self.pipe_x(editor, 2) == pytest.approx(self.pipe_x(editor, 3))
+
+    def test_文字サイズを変えても余白が残る(self, editor) -> None:
+        editor.setPlainText(self.TABLE)
+        small = self.rows(editor)[0]
+        editor.set_base_point_size(24.0)
+        editor.setPlainText(self.TABLE)
+        assert self.rows(editor)[0] > small
+
+    def test_カーソルを入れても高さが変わらない(self, editor) -> None:
+        """**余白は `|` ではなく隣の空白に持たせている。** パイプに持たせると、
+        カーソルを入れて `|` を表示したときに余白ごと消えて行が縮む。"""
+        editor.setPlainText(self.TABLE)
+        before = self.rows(editor)
+
+        block = editor.document().findBlockByNumber(2)
+        cursor = editor.textCursor()
+        cursor.setPosition(block.position() + 3)
+        editor.setTextCursor(cursor)
+        assert self.rows(editor) == before
+
+    def _table_height(self) -> float:
+        from PySide6.QtWidgets import QApplication
+
+        from hitofude.editor.editor_widget import MarkdownEditor
+
+        widget = MarkdownEditor()
+        widget.resize(500, 200)
+        widget.show()
+        widget.setPlainText(self.TABLE)
+        QApplication.processEvents()
+        document = widget.document()
+        height = document.documentLayout().blockBoundingRect(document.findBlockByNumber(2)).height()
+        widget.deleteLater()
+        return height

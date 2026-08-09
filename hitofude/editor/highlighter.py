@@ -83,6 +83,15 @@ MONO_FALLBACKS = ["Menlo", "Monaco", "Courier New"]
 # BIZ UDGothic は macOS 標準で、全角:半角 = 2:1 が成立する数少ないフォント。
 TABLE_FAMILIES = ["BIZ UDGothic", "Menlo", "Monaco", "Courier New"]
 
+# セルの余白。文字が罫線に接していると読みにくい。
+# **テキストは変えない**（R1）。`|` は罫線として描くので画面に出ないから、
+# その透明な文字に大きさ（上下）と字送り（左右）を持たせて余白にする。
+#
+# 上下は点数で足す。行の高さは実際に並ぶ文字（和文か欧文か、フォントが
+# その字を持つか）で決まり、px を狙って逆算しても当たらない（実測で確認）。
+CELL_PADDING_POINTS = 10.0
+CELL_PADDING = 5.0
+
 
 def mono_families(preferred: str) -> list[str]:
     """指定フォントに実在するフォールバックを足した並び。"""
@@ -164,6 +173,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._image_width = 0
         self._selection: tuple[int, int] | None = None
         self._source_mode = False
+        self._cell_pad: QTextCharFormat | None = None
         self._build_formats()
 
     # ------------------------------------------------------------------ 設定
@@ -245,6 +255,34 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self.setCurrentBlockUserData(BlockData(info, spans))
         self.setCurrentBlockState(next_state.encode())
 
+    def _pad_cells(self, text: str) -> None:
+        """セルの余白を作る。
+
+        **`|` の隣の空白に持たせる。** 空白は元から画面に出ないので、
+        大きくしても字送りを足しても見た目が変わらない。点サイズが行の
+        高さ（上下）、字送りが幅（左右）になる。
+
+        パイプ自体に持たせると、カーソルを入れて `|` を表示したときに
+        余白ごと消えて**行の高さが変わってしまう**（§2 の約束を破る）。
+
+        `format_table()` が `| A |` の形に整えるので、区切りの両隣には
+        空白がある。整っていない行は余白が付かないだけで壊れない。
+        """
+        pad = self._cell_pad
+        if pad is None:
+            pad = QTextCharFormat(self._mono)
+            pad.setFontPointSize(self._base_point_size + CELL_PADDING_POINTS)
+            pad.setFontLetterSpacingType(QFont.SpacingType.AbsoluteSpacing)
+            pad.setFontLetterSpacing(CELL_PADDING)
+            self._cell_pad = pad
+
+        for index, character in enumerate(text):
+            if character != "|":
+                continue
+            for side in (index - 1, index + 1):
+                if 0 <= side < len(text) and text[side] == " ":
+                    self.setFormat(side, 1, pad)
+
     def _image_state(self, text: str) -> bool | None:
         """画像行の扱いを決める。
 
@@ -312,6 +350,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
                 self.setFormat(0, len(text), self._quote)
             case _ if info.type in _MONO_TYPES:
                 self.setFormat(0, len(text), self._table_header if header else self._mono)
+                self._pad_cells(text)
             case _:
                 pass
 
@@ -373,6 +412,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
     # --------------------------------------------------------------- 書式定義
 
     def _build_formats(self) -> None:
+        self._cell_pad = None
         theme = self._theme
         base = self._base_point_size
 
