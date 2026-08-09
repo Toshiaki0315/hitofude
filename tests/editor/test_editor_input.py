@@ -206,3 +206,58 @@ class TestKeyRepeat:
             )
             QApplication.sendEvent(editor, event)
         assert editor.toPlainText() == "ab"
+
+
+class TestCodeAutoIndent:
+    """コードブロックの中の自動インデント（ユーザー要望）。実際の打鍵で見る。"""
+
+    def type_return(self, editor) -> None:
+        from PySide6.QtCore import QEvent
+        from PySide6.QtGui import QKeyEvent
+        from PySide6.QtWidgets import QApplication
+
+        event = QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier, "\r"
+        )
+        QApplication.sendEvent(editor, event)
+
+    def test_字下げが続く(self, editor) -> None:
+        editor.setPlainText("```python\n    x = 1\n```\n")
+        cursor = editor.textCursor()
+        cursor.setPosition(editor.document().findBlockByNumber(1).position() + len("    x = 1"))
+        editor.setTextCursor(cursor)
+        self.type_return(editor)
+        editor.textCursor().insertText("y = 2")
+        assert "    x = 1\n    y = 2" in editor.toPlainText()
+
+    def test_Undoは1手で戻る(self, editor) -> None:
+        editor.setPlainText("```python\n    x = 1\n```\n")
+        cursor = editor.textCursor()
+        cursor.setPosition(editor.document().findBlockByNumber(1).position() + len("    x = 1"))
+        editor.setTextCursor(cursor)
+        self.type_return(editor)
+        editor.undo()
+        assert editor.toPlainText() == "```python\n    x = 1\n```\n"
+
+    def test_変換中は字下げを足さない(self, editor) -> None:
+        """R6。**改行そのものは Qt / IME の仕事**なので止めない。
+        止めるのは補助（字下げの引き継ぎ）だけ。"""
+        editor.setPlainText("```python\n    x = 1\n```\n")
+        cursor = editor.textCursor()
+        cursor.setPosition(editor.document().findBlockByNumber(1).position() + len("    x = 1"))
+        editor.setTextCursor(cursor)
+        editor._composing = True
+        self.type_return(editor)
+        assert editor.toPlainText() == "```python\n    x = 1\n\n```\n"
+
+    def test_段落では続かない(self, editor) -> None:
+        """**行頭に空白のある段落**で見る。文書の先頭に 4 つ空白を置くと、
+        それは CommonMark では段落ではなく字下げコードになる（実際に踏んだ）。"""
+        editor.setPlainText("段落の 1 行目\n    2 行目は字下げ\n")
+        cursor = editor.textCursor()
+        block = editor.document().findBlockByNumber(1)
+        cursor.setPosition(block.position() + len("    2 行目は字下げ"))
+        editor.setTextCursor(cursor)
+        self.type_return(editor)
+        editor.textCursor().insertText("次")
+        assert editor.toPlainText() == "段落の 1 行目\n    2 行目は字下げ\n次\n"

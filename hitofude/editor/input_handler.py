@@ -4,8 +4,9 @@
 入力補助は条件分岐が多く、GUI 越しに検査すると組み合わせを網羅できないため。
 
 判定には `BlockData` に入っている `BlockInfo`（ハイライタが作った）を使う。
-行を再解析しないので、コードフェンスの中かどうかも自動的に正しく効く
-（フェンス内は `CODE_FENCE_BODY` になり、どの補助も発火しない）。
+行を再解析しないので、コードフェンスの中かどうかも自動的に正しく効く。
+フェンス内で効くのは**字下げの引き継ぎだけ**で、リストや引用の補助は
+発火しない。
 """
 
 import re
@@ -23,6 +24,11 @@ _LIST_TYPES = frozenset(
 _ORDERED_RE = re.compile(r"^(?P<indent>[ \t]*)(?P<number>\d{1,9})(?P<delim>[.)])(?P<space>[ \t]+)")
 _TASK_RE = re.compile(r"^(?P<prefix>[ \t]*[-*+][ \t]+)\[[ xX]\](?P<space>[ \t]+)")
 _QUOTE_LEVEL_RE = re.compile(r"^[ \t]*>[ \t]?")
+_LEADING_SPACE_RE = re.compile(r"^[ \t]+")
+
+# 前の行の字下げを引き継ぐブロック（ユーザー要望）。**段落は含めない。**
+# 本文の字下げは意味が違うので、勝手に続けない
+_AUTO_INDENT_TYPES = frozenset({BlockType.CODE_FENCE_BODY})
 
 
 class EnterKind(Enum):
@@ -54,6 +60,8 @@ def enter_action(line: str, column: int, info: BlockInfo | None) -> EnterAction:
     """
     if info is None:
         return _DEFAULT
+    if info.type in _AUTO_INDENT_TYPES:
+        return _code_indent(line, column)
     if info.type not in _LIST_TYPES and info.type is not BlockType.BLOCKQUOTE:
         return _DEFAULT
     if column < info.marker_len:
@@ -63,6 +71,22 @@ def enter_action(line: str, column: int, info: BlockInfo | None) -> EnterAction:
     if not line[info.marker_len :].strip():
         return EnterAction(EnterKind.RESET, _outdent(line, info))
     return EnterAction(EnterKind.CONTINUE, _continuation(line, info))
+
+
+def _code_indent(line: str, column: int) -> EnterAction:
+    """コードの中で前の行の字下げを引き継ぐ。
+
+    **コードは字下げが意味を持つ。** 毎回打ち直すのは手間で、打ち忘れると
+    動かないコードになる。4 スペースの字下げコードでは、字下げが消えると
+    そこでブロックが終わってしまう。
+
+    字下げの途中で改行したときは何もしない。空白の中で改行したのに下の行が
+    同じだけ下がるのは驚きが大きい。
+    """
+    found = _LEADING_SPACE_RE.match(line)
+    if found is None or column < found.end():
+        return _DEFAULT
+    return EnterAction(EnterKind.CONTINUE, found.group())
 
 
 def _continuation(line: str, info: BlockInfo) -> str:

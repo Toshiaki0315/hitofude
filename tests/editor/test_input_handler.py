@@ -170,3 +170,50 @@ class TestIndent:
 
     def test_情報が無ければ対象外(self) -> None:
         assert indent_action("- 項目", None, forward=True) is None
+
+
+class TestCodeAutoIndent:
+    """コードブロックの中の自動インデント（ユーザー要望）。
+
+    **段落と違って、コードは前の行の字下げが意味を持つ。** 毎回打ち直すのは
+    手間で、打ち忘れると Python なら動かないコードになる。
+
+    4 スペースの字下げコードでは、字下げが消えると**そこでブロックが終わる**
+    ので、引き継がないと書けない。
+    """
+
+    def code(self, **kwargs) -> BlockInfo:
+        return BlockInfo(line=0, type=BlockType.CODE_FENCE_BODY, **kwargs)
+
+    def test_前の行の字下げを引き継ぐ(self) -> None:
+        action = enter_action("    x = 1", len("    x = 1"), self.code())
+        assert action.kind is EnterKind.CONTINUE
+        assert action.text == "    "
+
+    def test_タブの字下げも引き継ぐ(self) -> None:
+        assert enter_action("\tx = 1", 6, self.code()).text == "\t"
+
+    def test_混ざっていてもそのまま引き継ぐ(self) -> None:
+        assert enter_action("\t  x = 1", 8, self.code()).text == "\t  "
+
+    def test_字下げが無ければ何もしない(self) -> None:
+        assert enter_action("x = 1", 5, self.code()).kind is EnterKind.DEFAULT
+
+    def test_空行では何もしない(self) -> None:
+        assert enter_action("", 0, self.code()).kind is EnterKind.DEFAULT
+
+    def test_字下げの途中では何もしない(self) -> None:
+        """空白の中で改行したのに、下の行が同じだけ下がるのは驚く。"""
+        assert enter_action("    x = 1", 2, self.code()).kind is EnterKind.DEFAULT
+
+    def test_空白だけの行は引き継ぐ(self) -> None:
+        assert enter_action("    ", 4, self.code()).text == "    "
+
+    def test_段落には効かない(self) -> None:
+        """本文の字下げは意味が違う。勝手に続けない。"""
+        info = BlockInfo(line=0, type=BlockType.PARAGRAPH)
+        assert enter_action("    ただの段落", 8, info).kind is EnterKind.DEFAULT
+
+    def test_リストの補助を邪魔しない(self) -> None:
+        info = BlockInfo(line=0, type=BlockType.BULLET_LIST_ITEM, marker_len=2)
+        assert enter_action("- 項目", 4, info).text == "- "
