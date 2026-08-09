@@ -26,11 +26,15 @@ from PySide6.QtWidgets import QPlainTextDocumentLayout
 from hitofude.core.block_parser import classify_line
 from hitofude.core.inline_scanner import image_only_line, scan
 from hitofude.core.models import BlockInfo, BlockState, BlockType, InlineSpan, SpanType
+from hitofude.editor.painter_overlay import CHECKBOX_GAP_RATIO, checkbox_size
 from hitofude.theme import LIGHT, ThemeColors
 
 # 0.5pt にすると 1 文字あたり残る幅は約 0.5px（spec §3.3 の実測）。
 # 0 は Qt が「未指定」と解釈するため使えない。
 HIDDEN_POINT_SIZE = 0.5
+
+# `[ ]` の 3 文字。ここに箱を置く幅を持たせる（`_hide_checkbox_slot`）
+CHECKBOX_SLOT_CHARS = 3
 
 # 画像行の余白（絵の上下）。詰まりすぎると本文と見分けが付かない
 IMAGE_PADDING = 8.0
@@ -177,6 +181,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._selection: tuple[int, int] | None = None
         self._source_mode = False
         self._cell_pad: QTextCharFormat | None = None
+        self._checkbox_pad: QTextCharFormat | None = None
         self._build_formats()
 
     # ------------------------------------------------------------------ 設定
@@ -385,10 +390,10 @@ class MarkdownHighlighter(QSyntaxHighlighter):
                 if character == "|":
                     self._hide(index, 1)
         elif info.type is BlockType.TASK_LIST_ITEM:
-            # `- ` は残し `[ ]` だけ潰す。記号は paintEvent が ☐ で描く（§6.4）
+            # `- ` は残し `[ ]` だけ潰す。箱は paintEvent が描く（§6.4）
             bracket = text.find("[", 0, info.marker_len)
             if bracket >= 0:
-                self._hide(bracket, 3)
+                self._hide_checkbox_slot(bracket)
 
     def _merge(self, start: int, length: int, extra: QTextCharFormat) -> None:
         """すでに載っている書式に重ねる。
@@ -403,6 +408,26 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         merged.merge(extra)
         self.setFormat(start, length, merged)
 
+    def _hide_checkbox_slot(self, start: int) -> None:
+        """`[ ]` を潰しつつ、**箱を置く幅だけ残す**。
+
+        潰しただけだと 3 文字の幅が 7.7px しか無く、そこへ箱を描くと本文に
+        食い込む（ユーザー報告。実測で 4.5px 重なっていた）。
+
+        幅は**字送り**で作る。表のセルの余白（`_pad_cells`）と同じ手で、
+        文字を足さないのでキャレット位置とソースのオフセットは 1:1 のまま
+        （R4）。`QTextBlockFormat` のインデントは使えない（R5）。
+        """
+        pad = self._checkbox_pad
+        if pad is None:
+            reserve = checkbox_size(self.document().defaultFont()) * (1 + CHECKBOX_GAP_RATIO)
+            pad = QTextCharFormat()
+            pad.setFontPointSize(HIDDEN_POINT_SIZE)
+            pad.setFontLetterSpacingType(QFont.SpacingType.AbsoluteSpacing)
+            pad.setFontLetterSpacing(reserve / CHECKBOX_SLOT_CHARS)
+            self._checkbox_pad = pad
+        self.setFormat(start, CHECKBOX_SLOT_CHARS, pad)
+
     def _hide(self, start: int, length: int) -> None:
         if length <= 0:
             return
@@ -416,6 +441,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
     def _build_formats(self) -> None:
         self._cell_pad = None
+        self._checkbox_pad = None
         theme = self._theme
         base = self._base_point_size
 

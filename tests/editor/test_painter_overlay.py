@@ -9,9 +9,15 @@
 """
 
 import pytest
+from PySide6.QtGui import QTextCursor
 
 from hitofude.editor.editor_widget import MarkdownEditor
-from hitofude.editor.painter_overlay import DecorationKind, visible_decorations
+from hitofude.editor.painter_overlay import (
+    CHECKED,
+    UNCHECKED,
+    DecorationKind,
+    visible_decorations,
+)
 
 pytestmark = pytest.mark.gui
 
@@ -31,6 +37,18 @@ def kinds(editor: MarkdownEditor) -> list[DecorationKind]:
 
 def of_kind(editor: MarkdownEditor, kind: DecorationKind) -> list:
     return [d for d in visible_decorations(editor) if d.kind is kind]
+
+
+def away(editor: MarkdownEditor, text: str) -> None:
+    """本文を入れて、カーソルを最後へ逃がす。
+
+    **カーソルのある行はリビールされる**ので、置いた直後の 1 行目を見ると
+    「記号が出ている状態」を測ってしまう。
+    """
+    # 末尾に行を足してからそこへ逃がす。**1 行しか無いとカーソルが
+    # その行に残り、リビールされた状態を測ってしまう**（実際に踏んだ）
+    editor.setPlainText(text + "\n\n末尾")
+    editor.moveCursor(QTextCursor.MoveOperation.End)
 
 
 class TestQuote:
@@ -86,16 +104,74 @@ class TestHorizontalRule:
         assert rule.rect.height() <= 2
 
 
+def text_start_x(editor, block_number: int, column: int) -> float:
+    """その行の `column` 文字目が始まる x（本文が実際に出る位置）。
+
+    **ブロックとレイアウトを変数で持つ。** 式の途中で捨てると、返ってきた
+    `QTextLine` が解放済みの領域を指して SIGSEGV になる（実際に落ちた）。
+    """
+    document = editor.document()
+    block = document.findBlockByNumber(block_number)
+    # 組まれるのは描くときなので、先に組ませる。書式を変えた直後は
+    # 行が 0 本のことがある
+    document.documentLayout().blockBoundingRect(block)
+    layout = block.layout()
+    assert layout.lineCount() > 0, f"{block_number} 行目がまだ組まれていない"
+    line = layout.lineAt(0)
+    return line.cursorToX(column)[0]
+
+
 class TestCheckbox:
     @pytest.mark.parametrize(
-        ("source", "glyph"),
-        [("- [ ] やること", "☐"), ("- [x] 済み", "☑"), ("- [X] 済み", "☑")],
+        ("source", "checked"),
+        [("- [ ] やること", False), ("- [x] 済み", True), ("- [X] 済み", True)],
     )
-    def test_チェックボックスを記号で描く(self, editor, source: str, glyph: str) -> None:
+    def test_チェックの状態を持つ(self, editor, source: str, checked: bool) -> None:
         editor.setPlainText(source)
         boxes = of_kind(editor, DecorationKind.CHECKBOX)
         assert len(boxes) == 1
-        assert boxes[0].text == glyph
+        assert boxes[0].text == (CHECKED if checked else UNCHECKED)
+
+    def test_状態で大きさが変わらない(self, editor) -> None:
+        """ユーザー報告。**フォントの記号（☐ / ☑）は別々の書体から拾われる。**
+        実測で ☐ が 17.8x17.2px、☑ が 10.1x10.5px と揃わなかったので、
+        記号ではなく枠を自分で描く。"""
+        away(editor, "- [ ] まだ\n- [x] 済み")
+        boxes = of_kind(editor, DecorationKind.CHECKBOX)
+        assert boxes[0].rect.size() == boxes[1].rect.size()
+
+    def test_本文に重ならない(self, editor) -> None:
+        """ユーザー報告。潰した `[ ]` の幅は 7.7px しか無いのに、記号は
+        17.8px 描かれていて本文に食い込んでいた（実測）。"""
+        away(editor, "- [ ] まだ終わっていない項目")
+        box = of_kind(editor, DecorationKind.CHECKBOX)[0]
+        assert box.rect.right() <= text_start_x(editor, 0, len("- [ ] "))
+
+    def test_本文との間に隙間がある(self, editor) -> None:
+        """接していると読みにくい。1 文字分は空ける。"""
+        away(editor, "- [x] 終わった項目")
+        box = of_kind(editor, DecorationKind.CHECKBOX)[0]
+        gap = text_start_x(editor, 0, len("- [x] ")) - box.rect.right()
+        assert gap >= 3, f"隙間が {gap:.1f}px しかない"
+
+    def test_行の高さに収まる(self, editor) -> None:
+        away(editor, "- [ ] やること")
+        box = of_kind(editor, DecorationKind.CHECKBOX)[0]
+        block = (
+            editor.document()
+            .documentLayout()
+            .blockBoundingRect(editor.document().findBlockByNumber(0))
+        )
+        assert box.rect.height() <= block.height()
+
+    def test_カーソルを入れると記号が戻る(self, editor) -> None:
+        """潰した `[ ]` を広げているので、戻したときに幅が残ると間延びする。"""
+        away(editor, "- [ ] やること")
+        hidden = text_start_x(editor, 0, len("- [ ] "))
+        editor.moveCursor(QTextCursor.MoveOperation.Start)
+        editor.moveCursor(QTextCursor.MoveOperation.Right)
+        revealed = text_start_x(editor, 0, len("- [ ] "))
+        assert revealed != hidden
 
     def test_普通の箇条書きには描かない(self, editor) -> None:
         editor.setPlainText("- ただの項目")

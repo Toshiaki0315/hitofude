@@ -16,8 +16,8 @@
 from dataclasses import dataclass
 from enum import Enum, auto
 
-from PySide6.QtCore import QRectF
-from PySide6.QtGui import QColor, QFont, QPainter, QTextBlock
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen, QTextBlock
 
 from hitofude.core.inline_scanner import image_only_line
 from hitofude.core.models import BlockType
@@ -32,8 +32,22 @@ CODE_ACCENT_WIDTH = 4
 RULE_HEIGHT = 1
 LEFT_INSET = 2
 
-UNCHECKED_GLYPH = "☐"
-CHECKED_GLYPH = "☑"
+# チェックボックスの状態（`Decoration.text` に載せる）。
+#
+# **フォントの記号（☐ / ☑）は使わない。** 実測で ☐ が 17.8x17.2px、
+# ☑ が 10.1x10.5px と、別々の書体から拾われて大きさが揃わなかった
+# （ユーザー報告）。枠は自分で描く。
+CHECKED = "checked"
+UNCHECKED = "unchecked"
+
+# 箱の一辺と、箱と本文のあいだ。どちらも**文字の高さに対する比**。
+# ハイライタは同じ比から「潰した `[ ]` に持たせる幅」を決めるので、
+# ここを変えると本文の開始位置も一緒に動く（`highlighter._hide_checkbox_slot`）
+CHECKBOX_SIZE_RATIO = 0.70
+# 箱と本文のあいだ。`[ ]` の後ろの空白 1 つ（4px 前後）も間に入るので、
+# ここは小さくてよい。0.30 だと合計 11px 空いて離れすぎだった（実測）
+CHECKBOX_GAP_RATIO = 0.10
+CHECKBOX_STROKE = 1.4
 
 _CODE_TYPES = frozenset(
     {BlockType.CODE_FENCE_OPEN, BlockType.CODE_FENCE_BODY, BlockType.CODE_FENCE_CLOSE}
@@ -274,15 +288,26 @@ def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decora
     return result
 
 
+def checkbox_size(font: QFont) -> float:
+    """箱の一辺。
+
+    **行の高さではなく文字の高さから決める。** ハイライタは幅を確保する時点で
+    行の高さを知らない（まだ組まれていない）。両方が同じ font metrics を見れば、
+    確保した幅と描く箱が必ず揃う。
+    """
+    return QFontMetricsF(font).height() * CHECKBOX_SIZE_RATIO
+
+
 def _checkbox(editor, block: QTextBlock, info, geometry: QRectF) -> Decoration:
-    """潰した `[ ]` の位置に記号を重ねる（§6.4）。"""
+    """潰した `[ ]` の位置に箱を描く（§6.4）。"""
     column = block.text().find("[", 0, info.marker_len)
     x = geometry.left() + _column_x(block, max(column, 0))
-    glyph = CHECKED_GLYPH if info.checked else UNCHECKED_GLYPH
+    size = min(checkbox_size(editor.font()), geometry.height())
+    top = geometry.top() + (geometry.height() - size) / 2
     return Decoration(
         DecorationKind.CHECKBOX,
-        QRectF(x, geometry.top(), geometry.height(), geometry.height()),
-        glyph,
+        QRectF(x, top, size, size),
+        CHECKED if info.checked else UNCHECKED,
     )
 
 
@@ -355,8 +380,37 @@ def paint_foreground(
     if not boxes:
         return
     painter.save()
-    painter.setFont(font)
-    painter.setPen(QColor(theme.foreground))
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     for decoration in boxes:
-        painter.drawText(decoration.rect, 0, decoration.text)
+        _paint_checkbox(painter, decoration, theme)
     painter.restore()
+
+
+def _paint_checkbox(painter: QPainter, decoration: Decoration, theme: ThemeColors) -> None:
+    """枠と、チェック済みならその中のレ点を描く。
+
+    **状態で外形を変えない。** 変えると行ごとに箱の大きさが違って見える
+    （フォントの記号で描いていたときの不具合そのもの）。
+    """
+    box = decoration.rect
+    pen = QPen(QColor(theme.muted_foreground))
+    pen.setWidthF(CHECKBOX_STROKE)
+    painter.setPen(pen)
+    painter.setBrush(QColor("transparent"))
+    radius = box.width() * 0.2
+    painter.drawRoundedRect(box.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
+
+    if decoration.text != CHECKED:
+        return
+    mark = QPen(QColor(theme.accent))
+    mark.setWidthF(CHECKBOX_STROKE + 0.4)
+    mark.setCapStyle(Qt.PenCapStyle.RoundCap)
+    mark.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    painter.setPen(mark)
+    painter.drawPolyline(
+        [
+            QPointF(box.left() + box.width() * 0.24, box.top() + box.height() * 0.52),
+            QPointF(box.left() + box.width() * 0.43, box.top() + box.height() * 0.72),
+            QPointF(box.left() + box.width() * 0.77, box.top() + box.height() * 0.28),
+        ]
+    )
