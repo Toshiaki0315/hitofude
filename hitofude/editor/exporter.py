@@ -201,6 +201,9 @@ def _stylesheet(theme: ThemeColors) -> str:
         f".note-info {{ border-left-color: {theme.note_info}; }}"
         f".note-warn {{ border-left-color: {theme.note_warn}; }}"
         f".note-alert {{ border-left-color: {theme.note_alert}; }}"
+        # 綴り違い（`:::note warm`）。`.note` の灰色のまま出す。**info の青に
+        # しない**（間違えたことに気づく手掛かりが消える。ユーザー報告）
+        f".note-unknown {{ border-left-color: {theme.muted_foreground}; }}"
         f".code-name {{ color: {theme.muted_foreground}; font-size: 0.85em; "
         "font-family: 'Menlo', monospace; padding: 2px 4px; }"
         # 区切り線は脚注プラグインが `<hr class="footnotes-sep">` を出すので引かない

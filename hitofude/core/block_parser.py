@@ -17,6 +17,7 @@ from hitofude.core import frontmatter
 from hitofude.core.models import (
     DEFAULT_NOTE_KIND,
     NOTE_KINDS,
+    UNKNOWN_NOTE_KIND,
     BlockInfo,
     BlockState,
     BlockType,
@@ -344,8 +345,9 @@ def _classify_note_delimiter(
 
     kind = opened.group("kind") or DEFAULT_NOTE_KIND
     if kind not in NOTE_KINDS:
-        # 綴り違いで囲みごと消えるより、既定の見た目で出るほうがよい
-        kind = DEFAULT_NOTE_KIND
+        # 綴り違い。囲みにはするが**別扱いにして見て分かるようにする**
+        # （`info` に寄せると青い線が出るだけで気づけない。ユーザー報告）
+        kind = UNKNOWN_NOTE_KIND
     block = BlockInfo(line=line, type=BlockType.NOTE_DELIMITER, note_kind=kind)
     return block, BlockState(note_kind=kind)
 

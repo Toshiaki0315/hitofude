@@ -244,3 +244,31 @@ class TestFootnote:
 
     def test_定義が無ければただの文字(self) -> None:
         assert "[^1]" in render("本文[^1]\n")
+
+
+class TestUnknownNoteKind:
+    """`:::note warm` のような綴り違い（ユーザー報告）。
+
+    画面と同じ扱いにする。**片方だけ `info` に寄せると、画面では灰色なのに
+    書き出しは青、という食い違いが起きる**（B-2 で作らないと決めたもの）。
+    """
+
+    def test_infoにはしない(self) -> None:
+        assert "note-info" not in render(":::note warm\n本文\n:::\n")
+
+    def test_別のクラスになる(self) -> None:
+        assert "note-unknown" in render(":::note warm\n本文\n:::\n")
+
+    def test_本文は残る(self) -> None:
+        assert "本文" in render(":::note warm\n本文\n:::\n")
+
+    def test_省略は情報扱いのまま(self) -> None:
+        assert "note-info" in render(":::note\n本文\n:::\n")
+
+    @pytest.mark.parametrize("line", [":::note warn extra", ":::note info さらに何か"])
+    def test_語が2つ以上並んだら囲みにしない(self, line: str) -> None:
+        """**画面側に揃える。** ここが食い違っていた（画面は囲みにせず、
+        書き出しは先頭の語だけ見て warn にしていた）。"""
+        html = render(f"{line}\n本文\n:::\n")
+        assert "<div" not in html
+        assert ":::note" in html

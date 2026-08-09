@@ -12,10 +12,21 @@ from enum import Enum, auto
 MIN_HEADING_LEVEL = 1
 MAX_HEADING_LEVEL = 6
 
-# `:::note` の種類（B-3 / Qiita 記法）。**知らない綴りは先頭に寄せる。**
-# 囲みごと消えるより、既定の見た目で出るほうがよい（`core/html.py` と揃える）
+# `:::note` の種類（B-3 / Qiita 記法）
 NOTE_KINDS = ("info", "warn", "alert")
 DEFAULT_NOTE_KIND = NOTE_KINDS[0]
+"""種類を省いた（`:::note` だけの）ときの扱い。省略は書き忘れではない。"""
+
+UNKNOWN_NOTE_KIND = "unknown"
+"""知らない綴り（`:::note warm` など）。
+
+**`info` には寄せない。** 寄せると青い線が出るだけで、間違えたことに
+気づく手掛かりが無くなる（ユーザー報告）。囲みとしては成立させて本文は
+残しつつ、灰色の線にして区切り行も隠さない。
+"""
+
+# 状態に詰めるときの並び。0 は「囲みの外」なので番号は 1 始まり
+_STATE_NOTE_KINDS = (*NOTE_KINDS, UNKNOWN_NOTE_KIND)
 
 
 class BlockType(Enum):
@@ -122,7 +133,8 @@ class BlockState:
     # 囲みの種類。0 は「囲みの外」。既定が 0 でなければならないので
     # 種類の番号は 1 始まりで持つ（B-3）
     _NOTE_SHIFT = 16
-    _NOTE_MASK = 0b11
+    # 4 種類 +「囲みの外」で 5 通り。2 ビットでは足りない
+    _NOTE_MASK = 0b111
 
     MAX_QUOTE_DEPTH = _QUOTE_MASK
     MAX_FENCE_LEN = _FENCE_LEN_MASK
@@ -157,8 +169,8 @@ class BlockState:
             value |= self._IN_LIST
         if self.in_indented_code:
             value |= self._INDENTED_CODE
-        if self.note_kind in NOTE_KINDS:
-            value |= (NOTE_KINDS.index(self.note_kind) + 1) << self._NOTE_SHIFT
+        if self.note_kind in _STATE_NOTE_KINDS:
+            value |= (_STATE_NOTE_KINDS.index(self.note_kind) + 1) << self._NOTE_SHIFT
         return value
 
     @classmethod
@@ -186,7 +198,7 @@ class BlockState:
     @classmethod
     def _decode_note(cls, value: int) -> str:
         index = (value >> cls._NOTE_SHIFT) & cls._NOTE_MASK
-        return NOTE_KINDS[index - 1] if index else ""
+        return _STATE_NOTE_KINDS[index - 1] if index else ""
 
 
 class SpanType(Enum):

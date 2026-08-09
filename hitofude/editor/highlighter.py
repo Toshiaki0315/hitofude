@@ -25,7 +25,14 @@ from PySide6.QtWidgets import QPlainTextDocumentLayout
 
 from hitofude.core.block_parser import classify_line
 from hitofude.core.inline_scanner import image_only_line, scan
-from hitofude.core.models import BlockInfo, BlockState, BlockType, InlineSpan, SpanType
+from hitofude.core.models import (
+    UNKNOWN_NOTE_KIND,
+    BlockInfo,
+    BlockState,
+    BlockType,
+    InlineSpan,
+    SpanType,
+)
 from hitofude.editor.painter_overlay import CHECKBOX_GAP_RATIO, checkbox_size
 from hitofude.theme import LIGHT, ThemeColors
 
@@ -119,11 +126,12 @@ _FULLY_HIDDEN_TYPES = frozenset(
         BlockType.FRONT_MATTER,
         # 区切り行（`|---|---|`）は罫線として描くので文字は見せない
         BlockType.TABLE_DELIMITER,
-        # `:::note info` と閉じの `:::`（B-3）。囲みは縦線で表すので記号は要らない。
-        # カーソルを入れれば他の潰した行と同じように出てくる
-        BlockType.NOTE_DELIMITER,
     }
 )
+
+# `:::note info` と閉じの `:::`（B-3）。囲みは縦線で表すので記号は要らない。
+# **ただし種類の綴りが違うときは隠さない**（`_hide_block_markers`）。
+# 隠すと灰色の線が出るだけで、何を間違えたかが画面から消える（ユーザー報告）
 
 # 行頭マーカーを潰すブロック。リストは「記号自体が意味を持つ」ので含めない（§6.4）
 _HIDDEN_MARKER_TYPES = frozenset({BlockType.HEADING, BlockType.BLOCKQUOTE})
@@ -379,7 +387,10 @@ class MarkdownHighlighter(QSyntaxHighlighter):
     def _hide_block_markers(self, text: str, info: BlockInfo, reveal: _Reveal) -> None:
         if reveal.block_marker or not text:
             return
-        if info.type in _FULLY_HIDDEN_TYPES:
+        if info.type is BlockType.NOTE_DELIMITER:
+            if info.note_kind != UNKNOWN_NOTE_KIND:
+                self._hide(0, len(text))
+        elif info.type in _FULLY_HIDDEN_TYPES:
             self._hide(0, len(text))
         elif info.type in _HIDDEN_MARKER_TYPES:
             self._hide(0, info.marker_len)

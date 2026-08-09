@@ -326,11 +326,13 @@ def _column_x(block: QTextBlock, column: int) -> float:
 
 def _note_color(kind: str, theme: ThemeColors) -> str:
     """`:::note` の種類から色を引く（B-3）。"""
+    # 知らない綴りは**灰色**。`info` の青にすると、間違えたことに
+    # 気づく手掛かりが無くなる（ユーザー報告）
     return {
         "info": theme.note_info,
         "warn": theme.note_warn,
         "alert": theme.note_alert,
-    }.get(kind, theme.note_info)
+    }.get(kind, theme.muted_foreground)
 
 
 def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) -> None:

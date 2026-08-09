@@ -347,3 +347,31 @@ class TestMonoFallback:
         metrics = QFontMetricsF(font)
         half = metrics.horizontalAdvance("A")
         assert metrics.horizontalAdvance("あ") == pytest.approx(half * 2, abs=0.5)
+
+
+class TestUnknownNoteKind:
+    """`:::note warm` のような綴り違い（ユーザー報告）。
+
+    **区切り行を隠さない。** 隠すと、灰色の縦線が出るだけで「何を間違えたか」
+    が画面から消える。打った文字が見えていれば自分で直せる。
+    """
+
+    def test_知らない綴りの行は隠さない(self, document, highlighter) -> None:
+        set_text(document, ":::note warm\n本文\n:::\n\n末尾")
+        assert not is_hidden(document, 0, 0)
+
+    def test_閉じの行も隠さない(self, document, highlighter) -> None:
+        """開きだけ見えて閉じが消えると、囲みが壊れているのか正常なのか
+        分からない。まとめて見せる。"""
+        set_text(document, ":::note warm\n本文\n:::\n\n末尾")
+        assert not is_hidden(document, 2, 0)
+
+    @pytest.mark.parametrize("kind", ["info", "warn", "alert"])
+    def test_正しい綴りなら今まで通り隠す(self, document, highlighter, kind: str) -> None:
+        set_text(document, f":::note {kind}\n本文\n:::\n\n末尾")
+        assert is_hidden(document, 0, 0)
+        assert is_hidden(document, 2, 0)
+
+    def test_種類の省略も隠す(self, document, highlighter) -> None:
+        set_text(document, ":::note\n本文\n:::\n\n末尾")
+        assert is_hidden(document, 0, 0)

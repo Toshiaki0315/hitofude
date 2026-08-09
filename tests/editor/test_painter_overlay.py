@@ -281,3 +281,22 @@ class TestQiitaNote:
             ("alert", LIGHT.note_alert),
         ):
             assert QColor(color).rgb() in colors(kind), f"{kind} の色が出ていない"
+
+    def test_知らない綴りは灰色(self, editor) -> None:
+        """`info` の青と同じでは、間違えたことに気づけない（ユーザー報告）。"""
+        from PySide6.QtGui import QColor, QImage
+
+        from hitofude.theme import LIGHT
+
+        away(editor, ":::note warm\n本文\n:::")
+        image = QImage(editor.size(), QImage.Format.Format_ARGB32)
+        image.fill(QColor("white"))
+        editor.render(image)
+        # 本文には左余白があるので、縦線は x=0 ではなくその内側に来る
+        found = {
+            image.pixel(x, y)
+            for x in range(min(60, image.width()))
+            for y in range(min(60, image.height()))
+        }
+        assert QColor(LIGHT.muted_foreground).rgb() in found
+        assert QColor(LIGHT.note_info).rgb() not in found

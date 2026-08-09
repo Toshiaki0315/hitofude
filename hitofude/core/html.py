@@ -21,6 +21,7 @@ from mdit_py_plugins.container import container_plugin
 from mdit_py_plugins.footnote import footnote_plugin
 
 from hitofude.core import frontmatter
+from hitofude.core.models import DEFAULT_NOTE_KIND, NOTE_KINDS, UNKNOWN_NOTE_KIND
 
 # エディタ（`core/block_parser.py`）と同じ設定にする。**片方だけ機能を足さない。**
 # 画面で表として解釈されたものが書き出しでは段落、のような食い違いを作らない
@@ -33,18 +34,25 @@ _MD = MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"
 
 # --------------------------------------------------------- Qiita 記法（B-3）
 
-NOTE_KINDS = ("info", "warn", "alert")
-DEFAULT_NOTE_KIND = "info"
+# 種類の定義は `core/models.py` にある。**画面と同じものを使う。**
+# 片方だけ寄せ方を変えると、画面は灰色なのに書き出しは青、という
+# 食い違いが起きる（B-2 で作らないと決めたもの）
+_NOTE_TOKENS = 2
+"""`note` と種類で 2 語まで。`:::note warn extra` は囲みにしない。"""
+
+
+def _validate_note(params: str, markup: str) -> bool:
+    """`:::note` の行として受けるか。`markup` は使わないがプラグインが渡す。"""
+    parts = params.strip().split()
+    return bool(parts) and parts[0] == "note" and len(parts) <= _NOTE_TOKENS
 
 
 def _note_kind(info: str) -> str:
-    """`:::note warn` の `warn`。知らない語と省略は `info` に寄せる。
-
-    間違った綴りで**囲みごと消える**より、既定の見た目で出るほうがよい。
-    """
+    """`:::note warn` の `warn`。省略は `info`、知らない綴りは別扱い。"""
     parts = info.strip().split()
-    kind = parts[1] if len(parts) > 1 else DEFAULT_NOTE_KIND
-    return kind if kind in NOTE_KINDS else DEFAULT_NOTE_KIND
+    if len(parts) <= 1:
+        return DEFAULT_NOTE_KIND
+    return parts[1] if parts[1] in NOTE_KINDS else UNKNOWN_NOTE_KIND
 
 
 def _render_note(self, tokens, index, options, env) -> str:
@@ -71,7 +79,7 @@ def _render_fence(self, tokens, index, options, env) -> str:
     return f'<div class="code-block">{label}{body}</div>\n'
 
 
-_MD.use(container_plugin, name="note", render=_render_note)
+_MD.use(container_plugin, name="note", validate=_validate_note, render=_render_note)
 _MD.use(footnote_plugin)
 # `renderer.rules` に直接入れると `self` が渡らない（実測）。
 # `add_render_rule` はメソッドとして束ねるので、既定の描画を呼び直せる

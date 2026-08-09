@@ -7,7 +7,7 @@
 import pytest
 
 from hitofude.core.block_parser import classify_line, parse
-from hitofude.core.models import BlockInfo, BlockState, BlockType
+from hitofude.core.models import UNKNOWN_NOTE_KIND, BlockInfo, BlockState, BlockType
 
 
 def types(text: str) -> list[BlockType]:
@@ -331,9 +331,10 @@ class TestQiitaNote:
     def test_種類を省くと情報扱い(self) -> None:
         assert _classified(":::note\n本文\n:::\n")[0].note_kind == "info"
 
-    def test_知らない種類は情報扱い(self) -> None:
-        """綴りを間違えても囲みごと消えない（書き出しと同じ扱い）。"""
-        assert _classified(":::note なにか\n本文\n:::\n")[0].note_kind == "info"
+    def test_知らない種類は別扱い(self) -> None:
+        """綴りを間違えても囲みごと消えないが、`info` にも寄せない
+        （`TestUnknownNoteKind` が理由を持っている）。"""
+        assert _classified(":::note なにか\n本文\n:::\n")[0].note_kind == UNKNOWN_NOTE_KIND
 
     def test_中の行にも種類が付く(self) -> None:
         """縦線を引くのに要る。行ごとに描くので行ごとに知る必要がある。"""
@@ -367,3 +368,33 @@ class TestQiitaNote:
     def test_引用の中の区切りは囲みにしない(self) -> None:
         """`> :::note` は引用の本文。行頭から始まるものだけを見る。"""
         assert _classified("> :::note info\n")[0].type is BlockType.BLOCKQUOTE
+
+
+class TestUnknownNoteKind:
+    """`:::note warm` のような綴り違い（ユーザー報告）。
+
+    元は `info` に寄せていたが、**青い線が出るだけで間違いに気づけない**。
+    「消えるより出るほうがよい」は正しくても、間違いを正しいものに
+    見せてしまうのはやり過ぎだった。別扱いにして、見て分かるようにする。
+    """
+
+    @pytest.mark.parametrize("kind", ["warm", "infoo", "注意", "INFO"])
+    def test_知らない綴りは別扱い(self, kind: str) -> None:
+        assert _classified(f":::note {kind}\n本文\n:::\n")[0].note_kind == UNKNOWN_NOTE_KIND
+
+    def test_中の行にも付く(self) -> None:
+        assert _classified(":::note warm\n本文\n:::\n")[1].note_kind == UNKNOWN_NOTE_KIND
+
+    def test_囲みとしては成立する(self) -> None:
+        """本文を失わない。書いた内容は残す。"""
+        assert _classified(":::note warm\n本文\n:::\n")[0].type is BlockType.NOTE_DELIMITER
+
+    def test_省略は今まで通り情報扱い(self) -> None:
+        """`:::note` だけなら書き忘れではなく省略。綴り違いとは区別する。"""
+        assert _classified(":::note\n本文\n:::\n")[0].note_kind == "info"
+
+    @pytest.mark.parametrize("line", [":::note warn extra", ":::note info さらに何か"])
+    def test_語が2つ以上並んだら囲みにしない(self, line: str) -> None:
+        """書き出し側と食い違っていた（画面は囲みにせず、書き出しは warn に
+        していた）。画面側に揃える。"""
+        assert _classified(f"{line}\n本文\n:::\n")[0].note_kind is None
