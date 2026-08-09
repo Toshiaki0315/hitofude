@@ -5,19 +5,20 @@
 線で描けば色を渡すだけで済み、`scripts/make_icon.py`（アプリアイコン）と
 同じやり方に揃う。
 
-描くのは輪郭だけで塗り潰さない。文字と同じ太さに見えるほうが、
-一覧として落ち着く。
+既定は輪郭だけで塗り潰さない。文字と同じ太さに見えるほうが、一覧として
+落ち着く。小さく出す印（一覧のピン留め）だけ `filled=True` で中まで塗る。
+輪郭だけでは形が読めないため。
 """
 
 from enum import Enum, auto
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 
 # 描画は倍率をかけた大きさで行い、表示側で縮小する。線が滑らかになる
 CANVAS = 64
 STROKE = 5.0
-_CACHE: dict[tuple["Glyph", str], QIcon] = {}
+_CACHE: dict[tuple["Glyph", str, bool], QIcon] = {}
 
 
 class Glyph(Enum):
@@ -34,9 +35,13 @@ class Glyph(Enum):
     """タグ。"""
 
 
-def glyph_icon(glyph: Glyph, color: str) -> QIcon:
-    """線で描いたアイコン。同じ指定なら描き直さない。"""
-    key = (glyph, color)
+def glyph_icon(glyph: Glyph, color: str, *, filled: bool = False) -> QIcon:
+    """線で描いたアイコン。同じ指定なら描き直さない。
+
+    `filled` は中まで塗る。小さく出すときは輪郭だけだと形が読めない
+    （一覧のピン留めの印がそれ）。
+    """
+    key = (glyph, color, filled)
     found = _CACHE.get(key)
     if found is not None:
         return found
@@ -51,7 +56,7 @@ def glyph_icon(glyph: Glyph, color: str) -> QIcon:
     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     painter.setPen(pen)
-    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setBrush(QBrush(QColor(color)) if filled else Qt.BrushStyle.NoBrush)
 
     _DRAW[glyph](painter)
     painter.end()

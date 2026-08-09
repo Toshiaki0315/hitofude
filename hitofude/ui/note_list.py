@@ -18,8 +18,11 @@ from PySide6.QtWidgets import QListView, QStyle, QStyledItemDelegate, QStyleOpti
 
 from hitofude.storage.index_db import NoteRow
 from hitofude.theme import LIGHT, ThemeColors
+from hitofude.ui.icons import Glyph, glyph_icon
 
-PIN_MARK = "●"
+# ピン留めの印。星は小さく出すので塗り潰す（輪郭だけだと形が読めない）
+PIN_SIZE = 12
+PIN_GAP = 5
 
 
 class NoteRole(IntEnum):
@@ -145,11 +148,13 @@ class NoteItemDelegate(QStyledItemDelegate):
 
         painter.setPen(QColor(self._theme.foreground))
         if index.data(NoteRole.PINNED):
-            mark_width = QFontMetrics(title_font).horizontalAdvance(PIN_MARK + " ")
-            painter.setPen(QColor(self._theme.accent))
-            painter.drawText(title_rect, Qt.AlignmentFlag.AlignVCenter, PIN_MARK)
-            title_rect = title_rect.adjusted(mark_width, 0, 0, 0)
-            painter.setPen(QColor(self._theme.foreground))
+            star = glyph_icon(Glyph.PINNED, self._theme.pin_mark, filled=True)
+            top = title_rect.top() + (line_height - PIN_SIZE) // 2
+            painter.drawPixmap(
+                QRect(title_rect.left(), top, PIN_SIZE, PIN_SIZE),
+                star.pixmap(QSize(PIN_SIZE, PIN_SIZE)),
+            )
+            title_rect = title_rect.adjusted(PIN_SIZE + PIN_GAP, 0, 0, 0)
 
         painter.drawText(
             title_rect,

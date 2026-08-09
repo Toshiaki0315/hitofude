@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QRect, Qt
 
 from hitofude.storage.index_db import NoteRow
 from hitofude.ui.note_list import NoteListModel, NoteListView, NoteRole, format_date
@@ -165,3 +165,72 @@ class TestNoteListView:
         view.set_rows([row("会議メモ")])
         height = view.sizeHintForRow(0)
         assert height >= 60
+
+
+class TestPinMark:
+    """ピン留めの印（ユーザー要望で赤丸から黄色い星に変えた）。
+
+    描いた絵を見て確かめる。色や形の指定はテキストでは追えない。
+    """
+
+    def painted(self, theme, *, pinned: bool):
+        from PySide6.QtGui import QColor, QImage, QPainter
+        from PySide6.QtWidgets import QStyleOptionViewItem
+
+        from hitofude.ui.note_list import NoteItemDelegate, NoteListModel
+
+        model = NoteListModel()
+        model.set_rows([row("会議メモ", pinned=pinned)])
+        delegate = NoteItemDelegate(theme)
+
+        option = QStyleOptionViewItem()
+        option.rect = QRect(0, 0, 280, 70)
+        image = QImage(280, 70, QImage.Format.Format_ARGB32)
+        image.fill(QColor(theme.background))
+        painter = QPainter(image)
+        delegate.paint(painter, option, model.index(0))
+        painter.end()
+        return image
+
+    def colors_in(self, image) -> set[str]:
+        from PySide6.QtGui import QColor
+
+        return {
+            QColor(image.pixelColor(x, y)).name()
+            for y in range(image.height())
+            for x in range(image.width())
+        }
+
+    def test_ピン留めなら印の色が出る(self) -> None:
+        from hitofude.theme import LIGHT
+
+        assert LIGHT.pin_mark.lower() in self.colors_in(self.painted(LIGHT, pinned=True))
+
+    def test_ピン留めでなければ出ない(self) -> None:
+        from hitofude.theme import LIGHT
+
+        assert LIGHT.pin_mark.lower() not in self.colors_in(self.painted(LIGHT, pinned=False))
+
+    def test_ダークでも見える色になる(self) -> None:
+        from hitofude.theme import DARK
+
+        assert DARK.pin_mark.lower() in self.colors_in(self.painted(DARK, pinned=True))
+
+    def test_明暗で色を変えている(self) -> None:
+        from hitofude.theme import DARK, LIGHT
+
+        assert LIGHT.pin_mark != DARK.pin_mark
+
+    def test_強調色とは別の色にする(self) -> None:
+        """以前は強調色の丸だった。星は星と分かる色にする。"""
+        from hitofude.theme import LIGHT
+
+        assert LIGHT.pin_mark != LIGHT.accent
+
+    def test_タイトルに重ならない(self) -> None:
+        """印のぶんだけ字下げされること。"""
+        from hitofude.theme import LIGHT
+
+        pinned = self.painted(LIGHT, pinned=True)
+        plain = self.painted(LIGHT, pinned=False)
+        assert bytes(pinned.constBits()) != bytes(plain.constBits())

@@ -35,6 +35,7 @@ class ThemeColors:
     tag_foreground: str
     rule: str
     search_highlight: str
+    pin_mark: str
 
 
 LIGHT = ThemeColors(
@@ -54,6 +55,8 @@ LIGHT = ThemeColors(
     rule="#E0E0E4",
     # 検索の下敷き。`::ハイライト::` と見分けが付く色にする
     search_highlight="#FFD79B",
+    # ピン留めの印。強調色とは別にする（星と分かる金色）
+    pin_mark="#E0A100",
 )
 
 DARK = ThemeColors(
@@ -72,6 +75,7 @@ DARK = ThemeColors(
     tag_foreground="#C9C9D1",
     rule="#3C3C42",
     search_highlight="#7A5A28",
+    pin_mark="#FFCC33",
 )
 
 

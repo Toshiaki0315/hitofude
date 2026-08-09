@@ -67,3 +67,29 @@ class TestDrawing:
 
     def test_色が違えば別のものを返す(self, qapp) -> None:
         assert glyph_icon(Glyph.TAG, "#1d1d1f") is not glyph_icon(Glyph.TAG, "#e8e8ea")
+
+
+class TestFilled:
+    """塗り潰しの星（一覧のピン留めの印に使う）。
+
+    小さく出すので、輪郭だけだと何の形か分からない。
+    """
+
+    def test_塗り潰せる(self, qapp) -> None:
+        assert not glyph_icon(Glyph.PINNED, "#e0a100", filled=True).isNull()
+
+    def test_輪郭だけのものとは違う(self, qapp) -> None:
+        outline = rendered(glyph_icon(Glyph.PINNED, "#e0a100"))
+        solid = rendered(glyph_icon(Glyph.PINNED, "#e0a100", filled=True))
+        assert bytes(outline.constBits()) != bytes(solid.constBits())
+
+    def test_中まで色が乗る(self, qapp) -> None:
+        image = rendered(glyph_icon(Glyph.PINNED, "#e0a100", filled=True), 32)
+        center = image.pixelColor(16, 18)
+        assert center.alpha() > 128
+        assert center.name() == "#e0a100"
+
+    def test_塗り潰しも別に覚える(self, qapp) -> None:
+        assert glyph_icon(Glyph.PINNED, "#e0a100") is not glyph_icon(
+            Glyph.PINNED, "#e0a100", filled=True
+        )
