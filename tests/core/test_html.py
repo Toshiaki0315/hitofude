@@ -272,3 +272,107 @@ class TestUnknownNoteKind:
         html = render(f"{line}\n本文\n:::\n")
         assert "<div" not in html
         assert ":::note" in html
+
+
+class TestMath:
+    """数式 `$...$` / `$$...$$`（B-5）。
+
+    **MathML にする。** JavaScript（KaTeX / MathJax）を同梱すると
+    書き出した 1 ファイルごとに 1MB 以上増え、開くたびに走る。MathML なら
+    今のブラウザがそのまま組んでくれて、`to_html` の「外部リソースを
+    参照しない」も保てる（`latex2mathml` は 352KB・純 Python）。
+    """
+
+    def test_インラインの式が組まれる(self) -> None:
+        assert "<math" in render("インライン $E = mc^2$ です\n")
+
+    def test_独立した式が組まれる(self) -> None:
+        assert "<math" in render("$$\n\\frac{a}{b}\n$$\n")
+
+    def test_インラインと独立で表示が違う(self) -> None:
+        """独立した式は中央に大きく出る。同じ扱いでは意味が変わる。"""
+        assert 'display="inline"' in render("$E = mc^2$\n")
+        assert 'display="block"' in render("$$\nE = mc^2\n$$\n")
+
+    def test_記号は残さない(self) -> None:
+        assert "$" not in render("$E = mc^2$\n")
+
+    def test_構造になる(self) -> None:
+        """`mc^2` の `2` が上付きとして組まれること。"""
+        assert "<msup>" in render("$E = mc^2$\n")
+
+
+class TestMathFalsePositives:
+    """**数式でないものを数式にしない。** ここが緩いと、ふつうの文章が壊れる。"""
+
+    def test_値段は数式にしない(self) -> None:
+        """`$100 と $200` は日本語の文章として普通に出てくる。"""
+        assert "<math" not in render("価格は $100 と $200 です。\n")
+
+    def test_通貨記号が前後にあるだけなら数式にしない(self) -> None:
+        assert "<math" not in render("定価 100$ から $200 まで\n")
+
+    def test_記号の内側の空白は数式にしない(self) -> None:
+        assert "<math" not in render("$ x $ 空白あり\n")
+
+    def test_コードの中は数式にしない(self) -> None:
+        assert "<math" not in render("`$x$` はコード\n")
+
+    def test_コードブロックの中は数式にしない(self) -> None:
+        assert "<math" not in render("```\n$x = 1$\n```\n")
+
+    def test_数字を含む式は数式にする(self) -> None:
+        """厳しくしすぎて本物を落とさないこと。"""
+        assert "<math" in render("$1 + 1 = 2$\n")
+
+    def test_値段が2つ並んでも数式にしない(self) -> None:
+        """**ブラウザで見て見つけた取りこぼし。** 1 つ目の閉じ `$` と 2 つ目の
+        開き `$` が組になり、**間の日本語ごと**数式になっていた
+        （`200です。定価100` が式として組まれた）。"""
+        assert "<math" not in render("価格は $100 と $200 です。定価 100$ から $200 まで。\n")
+
+    def test_日本語を含む式は数式にしない(self) -> None:
+        """数式に かな・漢字 は出てこない。入っていたら取り違えている。"""
+        assert "<math" not in render("これは $日本語の文$ です\n")
+
+    def test_日本語の文中の式は数式にする(self) -> None:
+        """周りが日本語でも、式そのものに日本語が無ければ数式。"""
+        assert "<math" in render("速度は $v = at$ で求まります\n")
+
+
+class TestBrokenMath:
+    """壊れた式で本文を失わない。"""
+
+    def test_解釈できない式は文字として残す(self) -> None:
+        html = render("$\\unknowncommand{x}$\n")
+        assert "unknowncommand" in html
+
+    def test_閉じ忘れは素のまま(self) -> None:
+        assert "$E = mc^2" in render("$E = mc^2\n")
+
+
+class TestMathForPdf:
+    """PDF 向けの出し方（B-5）。
+
+    **Qt のリッチテキストは MathML を解さない。** タグを捨てて中身の文字を
+    つなぐだけなので、`$E = mc^2$` が `E=mc2` に、`\\frac{a}{b}` が `ab` に
+    なる（実測）。**黙って間違った式**を出すくらいなら、書いたままの LaTeX を
+    見せるほうがよい。
+    """
+
+    def test_元の記法のまま出す(self) -> None:
+        html = render("$E = mc^2$\n", math_as_source=True)
+        assert "$E = mc^2$" in html
+        assert "<math" not in html
+
+    def test_独立した式も記法のまま(self) -> None:
+        html = render("$$\n\\frac{a}{b}\n$$\n", math_as_source=True)
+        assert "\\frac{a}{b}" in html
+        assert "<math" not in html
+
+    def test_既定はMathML(self) -> None:
+        assert "<math" in render("$E = mc^2$\n")
+
+    def test_数式以外は変わらない(self) -> None:
+        source = "# 見出し\n\n- [ ] やること\n"
+        assert render(source, math_as_source=True) == render(source)

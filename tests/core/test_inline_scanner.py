@@ -322,3 +322,41 @@ class TestFootnote:
 
     def test_キャレット無しの角括弧は拾わない(self) -> None:
         assert scan("[1] ただの括弧") == []
+
+
+class TestMath:
+    """インライン数式 `$...$`（B-5）。
+
+    画面で組版まではしない（LaTeX を絵にするには matplotlib が要り、
+    実測 74MB。数式ひとつのために積む重さではない）。**数式として
+    書いたことが分かる**ところまでを担う。
+    """
+
+    def test_数式を拾う(self) -> None:
+        assert [s.type for s in scan("速度は $v = at$ です")] == [SpanType.MATH]
+
+    def test_範囲は記号ごと(self) -> None:
+        span = scan("A $x$ B")[0]
+        assert (span.open_start, span.close_end) == (2, 5)
+
+    def test_中身を覚える(self) -> None:
+        assert scan("$E = mc^2$")[0].payload == "E = mc^2"
+
+    def test_値段は拾わない(self) -> None:
+        assert scan("価格は $100 と $200 です。") == []
+
+    def test_日本語を含むものは拾わない(self) -> None:
+        """`$` は文章にも出てくる。数式に かな・漢字 は出てこない。"""
+        assert scan("これは $日本語の文$ です") == []
+
+    def test_記号の内側の空白は拾わない(self) -> None:
+        assert scan("$ x $ 空白") == []
+
+    def test_コードの中は拾わない(self) -> None:
+        assert [s.type for s in scan("`$x$`")] == [SpanType.CODE]
+
+    def test_閉じ忘れは拾わない(self) -> None:
+        assert scan("$E = mc^2 のまま") == []
+
+    def test_複数あっても拾う(self) -> None:
+        assert len(scan("$a$ と $b$")) == 2

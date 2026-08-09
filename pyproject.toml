@@ -11,6 +11,7 @@ dependencies = [
     "PyYAML>=6.0,<7",
     "watchdog>=4.0,<7",
     "mdit-py-plugins>=0.6.1",
+    "latex2mathml>=3.81.0",
 ]
 
 [project.scripts]

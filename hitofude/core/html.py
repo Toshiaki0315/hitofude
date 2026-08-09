@@ -12,16 +12,21 @@
 Qt が要るので `editor/exporter.py` の側に残す。
 """
 
+import logging
 import re
 
+from latex2mathml.converter import convert as latex_to_mathml
 from markdown_it import MarkdownIt
 from markdown_it.common.utils import escapeHtml
 from markdown_it.renderer import RendererHTML
 from mdit_py_plugins.container import container_plugin
+from mdit_py_plugins.dollarmath import dollarmath_plugin
 from mdit_py_plugins.footnote import footnote_plugin
 
 from hitofude.core import frontmatter
 from hitofude.core.models import DEFAULT_NOTE_KIND, NOTE_KINDS, UNKNOWN_NOTE_KIND
+
+logger = logging.getLogger(__name__)
 
 # エディタ（`core/block_parser.py`）と同じ設定にする。**片方だけ機能を足さない。**
 # 画面で表として解釈されたものが書き出しでは段落、のような食い違いを作らない
@@ -62,6 +67,40 @@ def _render_note(self, tokens, index, options, env) -> str:
     return f'<div class="note note-{_note_kind(token.info)}">\n'
 
 
+def _render_math_inline(self, tokens, index, options, env) -> str:
+    content = tokens[index].content
+    # **かな・漢字が入っていたら数式ではない。** `$` は日本語の文章にも出てくる
+    # （値段）ので、`価格は $100 と $200 です。定価 100$ から $200 まで。` の
+    # ように 2 つ目の開きと 1 つ目の閉じが組になり、間の日本語ごと式になる
+    # （実際にブラウザで見て見つけた）。数式に日本語は出てこない
+    as_source = env.get(_MATH_AS_SOURCE, False) or bool(_CJK_RE.search(content))
+    return _math(content, block=False, as_source=as_source)
+
+
+def _render_math_block(self, tokens, index, options, env) -> str:
+    return _math(tokens[index].content, block=True, as_source=env.get(_MATH_AS_SOURCE, False))
+
+
+def _math(latex: str, *, block: bool, as_source: bool = False) -> str:
+    """LaTeX を MathML にする（B-5）。
+
+    **JavaScript は同梱しない。** KaTeX / MathJax を入れると書き出した
+    1 ファイルごとに 1MB 以上増え、開くたびに走る。MathML なら今のブラウザが
+    そのまま組んでくれて、「外部リソースを参照しない」という `to_html` の
+    約束も保てる。
+
+    解釈できない式は**文字のまま返す**。式ひとつのために本文を失わない。
+    """
+    marker = "$$" if block else "$"
+    if as_source:
+        return escapeHtml(f"{marker}{latex.strip()}{marker}")
+    try:
+        return latex_to_mathml(latex.strip(), display="block" if block else "inline")
+    except Exception:  # latex2mathml は独自の例外を投げる
+        logger.warning("数式を解釈できなかった: %r", latex)
+        return escapeHtml(f"{marker}{latex}{marker}")
+
+
 def _render_fence(self, tokens, index, options, env) -> str:
     """` ```js:index.js ` のファイル名を見出しとして出す。
 
@@ -79,26 +118,43 @@ def _render_fence(self, tokens, index, options, env) -> str:
     return f'<div class="code-block">{label}{body}</div>\n'
 
 
+# 数式（B-5）。**記号の内側の空白と、前後の数字を許さない。**
+# 許すと `価格は $100 と $200 です。` が数式になる（実測。日本語の文章として
+# 普通に出てくる形）。ここが緩いとふつうの文章が壊れる
+_MD.use(dollarmath_plugin, allow_space=False, allow_digits=False)
 _MD.use(container_plugin, name="note", validate=_validate_note, render=_render_note)
 _MD.use(footnote_plugin)
 # `renderer.rules` に直接入れると `self` が渡らない（実測）。
 # `add_render_rule` はメソッドとして束ねるので、既定の描画を呼び直せる
 _MD.add_render_rule("fence", _render_fence)
+_MD.add_render_rule("math_inline", _render_math_inline)
+_MD.add_render_rule("math_block", _render_math_block)
 
 # `- [ ] やること` の頭。`setMarkdown()` は `<li class="unchecked">` にして
 # **記号を消していた**ので、スタイルを当てない限り印が出なかった（実測）
 _TASK_RE = re.compile(r"^\[(?P<state>[ xX])\][ \t]+")
 _CHECKED, _UNCHECKED = "☑", "☐"
 
+# 数式を LaTeX のまま出すかを描画規則へ渡す鍵（`env` 経由。B-5）
+_MATH_AS_SOURCE = "hitofude_math_as_source"
 
-def render(text: str) -> str:
+# かな・漢字。これを含むインライン数式は取り違え（`_render_math_inline`）
+_CJK_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿々〆、。]")
+
+
+def render(text: str, *, math_as_source: bool = False) -> str:
     """Markdown の本文を HTML にする。front matter は落とす。
 
     `id` や `modified` はこのアプリの管理情報で、読む人には意味がない。
+
+    `math_as_source` は数式を MathML にせず、書いたままの LaTeX で出す。
+    **PDF 用**（Qt のリッチテキストは MathML を解さず、`$E = mc^2$` を
+    `E=mc2` に、`\\frac{a}{b}` を `ab` にしてしまう。実測）。黙って
+    間違った式を出すくらいなら、書いたままを見せるほうがよい（ADR-0009）。
     """
     # **`env` を解析と描画で共有する。** 脚注はここに定義を溜めるので、
     # 空の辞書を渡し直すと注釈の本文だけ消える（実際に踏んだ）
-    env: dict = {}
+    env: dict = {_MATH_AS_SOURCE: math_as_source}
     tokens = _MD.parse(frontmatter.split(text).body, env)
     _mark_tasks(tokens)
     return _MD.renderer.render(tokens, _MD.options, env)

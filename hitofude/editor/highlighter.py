@@ -551,6 +551,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             # 脚注の参照（B-3）。リンクと同じ扱いにする。飛び先を持つ印という
             # 意味では同じもので、色を分けても覚えることが増えるだけ
             SpanType.FOOTNOTE: link,
+            # 数式（B-5）。画面では組版しないので、**等幅にして式だと分かる**
+            # ようにする。絵にするには matplotlib（実測 74MB）が要る
+            SpanType.MATH: code,
         }
 
         # 未使用だが、リンクのクリック判定（Phase 6）で色を引くために保持する

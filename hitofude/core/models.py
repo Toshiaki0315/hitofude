@@ -225,6 +225,9 @@ class SpanType(Enum):
     FOOTNOTE = auto()
     """脚注の参照 `[^1]` と定義の頭（B-3 / Qiita 記法）。"""
 
+    MATH = auto()
+    """インライン数式 `$...$`（B-5）。"""
+
 
 @dataclass(frozen=True, slots=True)
 class InlineSpan:

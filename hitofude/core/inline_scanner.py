@@ -32,6 +32,12 @@ _LINK_RE = re.compile(r"(?<!!)\[(?P<text>[^\[\]]*)\]\((?P<url>[^()\s]*)\)")
 # 脚注の参照 `[^1]` と定義の頭 `[^1]:`（B-3 / Qiita 記法）。
 # `[1]` は拾わない。ただの角括弧と見分けが付かなくなる
 _FOOTNOTE_RE = re.compile(r"\[\^(?P<label>[^\[\]\s]+)\]")
+# インライン数式 `$...$`（B-5）。書き出し側（`core/html.py`）と同じ厳しさにする。
+# **記号の内側に空白を許さず、前後に数字があるものも採らない。**
+# 許すと `価格は $100 と $200 です。` が数式になる
+_MATH_RE = re.compile(r"(?<![\d$])\$(?P<body>[^\s$][^$]*?[^\s$]|[^\s$])\$(?![\d$])")
+# かな・漢字を含むものは取り違え。数式に日本語は出てこない
+_MATH_CJK_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿々〆、。]")
 _AUTOLINK_RE = re.compile(r"<(?P<url>[A-Za-z][A-Za-z0-9+.\-]*:[^<>\s]+|[^@<>\s]+@[^@<>\s]+)>")
 _BARE_URL_RE = re.compile(r"(?<![\w/])(?P<url>https?://[^\s<>()\[\]\"'、。]+)")
 
@@ -238,6 +244,25 @@ def _scan_autolinks(text: str, mask: bytearray, spans: list[InlineSpan]) -> None
         _mark(mask, start, end)
 
 
+def _scan_math(text: str, mask: bytearray, spans: list[InlineSpan]) -> None:
+    for match in _MATH_RE.finditer(text):
+        start, end = match.span()
+        body = match.group("body")
+        if _MATH_CJK_RE.search(body) or not _is_free(mask, start, end):
+            continue
+        spans.append(
+            InlineSpan(
+                type=SpanType.MATH,
+                open_start=start,
+                open_end=start + 1,
+                close_start=end - 1,
+                close_end=end,
+                payload=body,
+            )
+        )
+        _mark(mask, start, end)
+
+
 def _scan_footnotes(text: str, mask: bytearray, spans: list[InlineSpan]) -> None:
     for match in _FOOTNOTE_RE.finditer(text):
         start, end = match.span()
@@ -289,6 +314,7 @@ def scan(text: str) -> list[InlineSpan]:
     # **リンクより先に見る。** `[^1]` はリンクの形に噛まないが、順を後ろに
     # すると `[^1]: 注釈` の定義行で取り合いになる
     _scan_footnotes(text, mask, spans)
+    _scan_math(text, mask, spans)
     _scan_links(text, mask, spans)
     _scan_autolinks(text, mask, spans)
     _scan_delimited(text, mask, spans)

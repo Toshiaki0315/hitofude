@@ -60,14 +60,17 @@ def _embed_images(body: str, base_path: Path | None) -> str:
     return _IMG_SRC_RE.sub(swap, body)
 
 
-def _rendered_body(text: str, base_path: Path | None) -> str:
+def _rendered_body(text: str, base_path: Path | None, *, math_as_source: bool = False) -> str:
     """本文の HTML。画像は `data:` URI に置き換える。
 
-    **HTML も PDF も同じ文字列を使う。** 経路を分けると、片方だけ画像が出る、
+    **HTML も PDF もここを通す。** 経路を分けると、片方だけ画像が出る、
     片方だけ vault の外を読む、といった食い違いが起きる。埋め込みに揃えたので
     PDF にも「保管フォルダの外は読まない」が効くようになった。
+
+    唯一違うのが数式（`math_as_source`）。Qt のリッチテキストは MathML を
+    解さず、**黙って間違った式**を出す（ADR-0009）。ここだけは分ける。
     """
-    return _embed_images(markdown_html.render(text), base_path)
+    return _embed_images(markdown_html.render(text, math_as_source=math_as_source), base_path)
 
 
 def _to_document(text: str, *, theme: ThemeColors, base_point_size: float, base_path: Path | None):
@@ -79,7 +82,8 @@ def _to_document(text: str, *, theme: ThemeColors, base_point_size: float, base_
     """
     document = QTextDocument()
     document.setDefaultStyleSheet(_stylesheet(theme))
-    document.setHtml(_rendered_body(text, base_path))
+    # 数式は LaTeX のまま。MathML は Qt が解さない（ADR-0009）
+    document.setHtml(_rendered_body(text, base_path, math_as_source=True))
     document.setDefaultFont(_font(base_point_size))
     return document
 

@@ -323,3 +323,34 @@ class TestRendererSwap:
         outside = write_pdf(tmp_path / "a.pdf", "![](../秘密.png)\n", base_path=tmp_path)
         plain = write_pdf(tmp_path / "b.pdf", "\n", base_path=tmp_path)
         assert outside.stat().st_size < plain.stat().st_size + 2000
+
+
+class TestMath:
+    """数式（B-5 / ADR-0009）。"""
+
+    def test_HTMLは組まれた式になる(self, qapp) -> None:
+        assert "<math" in to_html("$E = mc^2$\n")
+
+    def test_HTMLは外部を参照しない(self, qapp) -> None:
+        """MathML なので JavaScript を同梱しない。"""
+        html = to_html("$E = mc^2$\n")
+        assert "<script" not in html
+        assert "cdn" not in html.lower()
+
+    def test_PDFは記法のまま出す(self, qapp, tmp_path: Path) -> None:
+        """**Qt は MathML を解さない。** そのまま渡すと `E=mc2` になる（実測）。"""
+        from hitofude.editor.exporter import _to_document
+        from hitofude.theme import LIGHT
+
+        document = _to_document("$E = mc^2$\n", theme=LIGHT, base_point_size=11.0, base_path=None)
+        assert "$E = mc^2$" in document.toPlainText()
+
+    def test_PDFで分数が潰れない(self, qapp) -> None:
+        """`\\frac{a}{b}` が `ab` になっていた（実測）。"""
+        from hitofude.editor.exporter import _to_document
+        from hitofude.theme import LIGHT
+
+        document = _to_document(
+            "$$\n\\frac{a}{b}\n$$\n", theme=LIGHT, base_point_size=11.0, base_path=None
+        )
+        assert "\\frac{a}{b}" in document.toPlainText()
