@@ -273,3 +273,57 @@ class TestFrontMatterSurvives:
         window.open_note(path)
 
         assert window.editor.textCursor().position() == 0
+
+
+class TestStatusMargin:
+    """右端の余白（ユーザー報告）。
+
+    ウィンドウの角が丸いので、右端ぴったりに置くと最後の文字が欠ける。
+    """
+
+    def test_右に余白がある(self, window) -> None:
+        """**ラベルの幅ではなく文字の位置で測る。** 余白は widget の内側に
+        入るので、widget の右端はウィンドウの端に接したままになる。
+        """
+        from PySide6.QtGui import QColor, QImage
+        from PySide6.QtWidgets import QApplication
+
+        from hitofude.ui.main_window import STATUS_RIGHT_MARGIN
+
+        window.open_note(note(window, "メモ", "日本語の文章です。" * 40))
+        window.resize(900, 300)
+        QApplication.processEvents()
+
+        label = window._stats_label
+        image = QImage(label.size(), QImage.Format.Format_ARGB32)
+        image.fill(QColor("white"))
+        label.render(image)
+        drawn = [
+            x
+            for y in range(image.height())
+            for x in range(image.width())
+            if QColor(image.pixelColor(x, y)).lightness() < 200
+        ]
+        assert drawn, "文字が描かれていない"
+        assert label.width() - max(drawn) >= STATUS_RIGHT_MARGIN
+
+    def test_余白は角丸より広い(self) -> None:
+        """macOS の角丸は 10px 前後。それより内側へ寄せる。"""
+        from hitofude.ui.main_window import STATUS_RIGHT_MARGIN
+
+        assert STATUS_RIGHT_MARGIN >= 10
+
+    def test_文字は途中で切れない(self, window) -> None:
+        from hitofude.ui.main_window import STATUS_RIGHT_MARGIN
+
+        window.open_note(note(window, "メモ", "日本語の文章です。" * 40))
+        window.resize(900, 300)
+        label = window._stats_label
+        needed = label.fontMetrics().horizontalAdvance(label.text()) + STATUS_RIGHT_MARGIN
+        assert label.width() >= needed
+
+    def test_何の数字か説明がある(self, window) -> None:
+        """「文字」「語」だけでは何を数えたか分からない。"""
+        tip = window._stats_label.toolTip()
+        assert "装飾" in tip or "マーカー" in tip
+        assert "語" in tip

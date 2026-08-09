@@ -77,6 +77,14 @@ STASH_INTERVAL_SECONDS = 2.0
 # 1 打ごとには数えられない
 STATS_DELAY_MS = 400
 DIRTY_MARK = "•"
+# ステータスバー右端の余白。ウィンドウの角が丸いので、右端ぴったりに置くと
+# 最後の文字が欠ける（実際に欠けた）
+STATUS_RIGHT_MARGIN = 14
+STATS_TOOLTIP = (
+    "文字数と単語数。\n"
+    "装飾の記号（`**` など）と front matter は数えません。\n"
+    "日本語には語の区切りが無いので、漢字・かなは 1 文字を 1 語として数えます。"
+)
 
 NEW_NOTE_TITLE = "無題"
 PINNED_NOTICE = "ピン留めしているノートは削除できません。先にピン留めを外してください。"
@@ -170,6 +178,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self._splitter)
 
         self._stats_label = QLabel("", self)
+        self._stats_label.setToolTip(STATS_TOOLTIP)
+        self._stats_label.setContentsMargins(0, 0, STATUS_RIGHT_MARGIN, 0)
         self.statusBar().addPermanentWidget(self._stats_label)
         self.statusBar().setSizeGripEnabled(False)
 
