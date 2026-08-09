@@ -33,7 +33,11 @@ from hitofude.core.models import (
     InlineSpan,
     SpanType,
 )
-from hitofude.editor.painter_overlay import CHECKBOX_GAP_RATIO, checkbox_size
+from hitofude.editor.painter_overlay import (
+    CHECKBOX_GAP_RATIO,
+    CODE_NAME_SCALE,
+    checkbox_size,
+)
 from hitofude.theme import LIGHT, ThemeColors
 
 # 0.5pt にすると 1 文字あたり残る幅は約 0.5px（spec §3.3 の実測）。
@@ -190,6 +194,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._source_mode = False
         self._cell_pad: QTextCharFormat | None = None
         self._checkbox_pad: QTextCharFormat | None = None
+        self._code_name_pad: QTextCharFormat | None = None
         self._build_formats()
 
     # ------------------------------------------------------------------ 設定
@@ -387,7 +392,13 @@ class MarkdownHighlighter(QSyntaxHighlighter):
     def _hide_block_markers(self, text: str, info: BlockInfo, reveal: _Reveal) -> None:
         if reveal.block_marker or not text:
             return
-        if info.type is BlockType.NOTE_DELIMITER:
+        if info.type is BlockType.CODE_FENCE_OPEN and info.code_name:
+            # 記号は隠すが、**ファイル名を書く高さだけ残す**（ユーザー要望）。
+            # 文字は透明にする。0.5pt にすると 1px 未満になって書いても
+            # 見えず、素の大きさだとバッククォートが出てしまう
+            self._hide(0, len(text))
+            self.setFormat(0, 1, self._code_name_slot())
+        elif info.type is BlockType.NOTE_DELIMITER:
             if info.note_kind != UNKNOWN_NOTE_KIND:
                 self._hide(0, len(text))
         elif info.type in _FULLY_HIDDEN_TYPES:
@@ -418,6 +429,20 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         merged = QTextCharFormat(self.format(start))
         merged.merge(extra)
         self.setFormat(start, length, merged)
+
+    def _code_name_slot(self) -> QTextCharFormat:
+        """ファイル名を描く高さを作る書式（`painter_overlay` が上に文字を描く）。
+
+        高さは R4 と同じ「文字の大きさ」で作る。`QTextBlockFormat` は
+        使えない（R5）。ADR-0004 が画像の行高で使ったのと同じ手。
+        """
+        slot = self._code_name_pad
+        if slot is None:
+            slot = QTextCharFormat()
+            slot.setFontPointSize(max(self._base_point_size * CODE_NAME_SCALE, 1.0))
+            slot.setForeground(QColor("transparent"))
+            self._code_name_pad = slot
+        return slot
 
     def _hide_checkbox_slot(self, start: int) -> None:
         """`[ ]` を潰しつつ、**箱を置く幅だけ残す**。
@@ -453,6 +478,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
     def _build_formats(self) -> None:
         self._cell_pad = None
         self._checkbox_pad = None
+        self._code_name_pad = None
         theme = self._theme
         base = self._base_point_size
 

@@ -77,16 +77,12 @@ class TestCodeBlock:
         editor.setPlainText(self.SOURCE)
         assert kinds(editor).count(DecorationKind.CODE_BACKGROUND) == 3
 
-    def test_左にアクセントバーを描く(self, editor) -> None:
+    def test_左のアクセントバーは描かない(self, editor) -> None:
+        """ユーザー要望で外した。背景だけでコードブロックだと分かるので、
+        線があると引用の縦バーや `:::note` の線と紛らわしい（spec §5.2 を
+        覆す。ADR-0008）。"""
         editor.setPlainText(self.SOURCE)
-        assert kinds(editor).count(DecorationKind.CODE_ACCENT) == 3
-
-    def test_アクセントバーは背景より左(self, editor) -> None:
-        editor.setPlainText(self.SOURCE)
-        accent = of_kind(editor, DecorationKind.CODE_ACCENT)[0]
-        background = of_kind(editor, DecorationKind.CODE_BACKGROUND)[0]
-        assert accent.rect.left() <= background.rect.left()
-        assert accent.rect.width() < background.rect.width()
+        assert not [d for d in visible_decorations(editor) if d.kind.name.startswith("CODE_ACCENT")]
 
     def test_コードでない行には描かない(self, editor) -> None:
         editor.setPlainText("ただの段落")
@@ -300,3 +296,35 @@ class TestQiitaNote:
         }
         assert QColor(LIGHT.muted_foreground).rgb() in found
         assert QColor(LIGHT.note_info).rgb() not in found
+
+
+class TestCodeName:
+    """` ```python:aaa.py ` のファイル名（ユーザー要望）。
+
+    書き出しでは見出しとして出るのに、画面では**どこにも出ていなかった**
+    （フェンスの行ごと潰していたため）。行の高さを作って、そこへ描く。
+    """
+
+    def test_ファイル名を描く(self, editor) -> None:
+        away(editor, "```python:aaa.py\nprint(1)\n```")
+        names = of_kind(editor, DecorationKind.CODE_NAME)
+        assert [d.text for d in names] == ["aaa.py"]
+
+    def test_ファイル名が無ければ描かない(self, editor) -> None:
+        away(editor, "```python\nprint(1)\n```")
+        assert DecorationKind.CODE_NAME not in kinds(editor)
+
+    def test_言語が無くても描く(self, editor) -> None:
+        away(editor, "```:メモ\nx\n```")
+        assert [d.text for d in of_kind(editor, DecorationKind.CODE_NAME)] == ["メモ"]
+
+    def test_コードの上に置く(self, editor) -> None:
+        away(editor, "```python:aaa.py\nprint(1)\n```")
+        name = of_kind(editor, DecorationKind.CODE_NAME)[0]
+        body = of_kind(editor, DecorationKind.CODE_BACKGROUND)[1]
+        assert name.rect.top() < body.rect.top()
+
+    def test_描く場所の高さがある(self, editor) -> None:
+        """潰したままだと 1px 未満で、書いても見えない。"""
+        away(editor, "```python:aaa.py\nprint(1)\n```")
+        assert of_kind(editor, DecorationKind.CODE_NAME)[0].rect.height() > 8

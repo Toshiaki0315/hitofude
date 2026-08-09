@@ -28,7 +28,11 @@ QUOTE_BAR_WIDTH = 3
 QUOTE_BAR_STEP = 10
 # `:::note` の縦線（B-3）。引用より太くして、引用と区別が付くようにする
 NOTE_BAR_WIDTH = 4
-CODE_ACCENT_WIDTH = 4
+# ファイル名を書き出す位置（`paintEvent` で描く）。左端に寄せすぎると
+# 背景の角に食い込む
+CODE_NAME_INSET = 8.0
+# ファイル名の大きさ（本文に対する比）。見出しとして読めて、かつ主張しない
+CODE_NAME_SCALE = 0.85
 RULE_HEIGHT = 1
 LEFT_INSET = 2
 
@@ -66,7 +70,9 @@ class DecorationKind(Enum):
     TABLE_HEADER = auto()
     TABLE_RULE = auto()
     CODE_BACKGROUND = auto()
-    CODE_ACCENT = auto()
+    CODE_NAME = auto()
+    """` ```python:aaa.py ` のファイル名（B-3）。"""
+
     QUOTE_BAR = auto()
     NOTE_BAR = auto()
     """`:::note` の囲み（B-3）。種類は `Decoration.text` に入れる。"""
@@ -241,10 +247,13 @@ def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decora
 
     if info.type in _CODE_TYPES:
         result.append(Decoration(DecorationKind.CODE_BACKGROUND, QRectF(geometry)))
+
+    if info.type is BlockType.CODE_FENCE_OPEN and info.code_name:
         result.append(
             Decoration(
-                DecorationKind.CODE_ACCENT,
-                QRectF(geometry.left(), geometry.top(), CODE_ACCENT_WIDTH, geometry.height()),
+                DecorationKind.CODE_NAME,
+                QRectF(geometry).adjusted(CODE_NAME_INSET, 0, 0, 0),
+                info.code_name,
             )
         )
 
@@ -349,8 +358,6 @@ def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) 
                 painter.fillRect(decoration.rect, QColor(theme.rule))
             case DecorationKind.TABLE_BACKGROUND:
                 painter.fillRect(decoration.rect, QColor(theme.code_background))
-            case DecorationKind.CODE_ACCENT:
-                painter.fillRect(decoration.rect, QColor(theme.accent))
             case DecorationKind.QUOTE_BAR:
                 painter.fillRect(decoration.rect, QColor(theme.quote_bar))
             case DecorationKind.NOTE_BAR:
@@ -377,6 +384,21 @@ def paint_foreground(
     for decoration in decorations:
         if decoration.kind is DecorationKind.FOCUS_DIM:
             painter.fillRect(decoration.rect, dim)
+
+    names = [d for d in decorations if d.kind is DecorationKind.CODE_NAME]
+    if names:
+        painter.save()
+        label = QFont(font)
+        label.setPointSizeF(max(font.pointSizeF() * CODE_NAME_SCALE, 1.0))
+        painter.setFont(label)
+        painter.setPen(QColor(theme.muted_foreground))
+        for decoration in names:
+            painter.drawText(
+                decoration.rect,
+                int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+                decoration.text,
+            )
+        painter.restore()
 
     boxes = [d for d in decorations if d.kind is DecorationKind.CHECKBOX]
     if not boxes:

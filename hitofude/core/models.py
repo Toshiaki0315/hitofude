@@ -67,7 +67,14 @@ class BlockInfo:
     """`TASK_LIST_ITEM` のときのみ意味を持つ。"""
 
     lang: str | None = None
-    """コードフェンスの言語。`` ```python `` なら `"python"`。"""
+    """コードフェンスの言語。`` ```python `` なら `"python"`。
+
+    `` ```python:aaa.py `` のように書いたときも**言語だけ**が入る。
+    ファイル名は `code_name`（B-3 / Qiita 記法）。
+    """
+
+    code_name: str | None = None
+    """コードフェンスのファイル名。`` ```python:aaa.py `` なら `"aaa.py"`。"""
 
     quote_depth: int = 0
 

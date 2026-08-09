@@ -53,6 +53,20 @@ _TABLE_DELIM_LINE_RE = re.compile(r"^(?=[^\n]*\|)(?=[^\n]*-)[ \t|:\-]+$")
 _INDENT_PER_LEVEL = 2
 
 
+def _fence_info(info: str) -> tuple[str | None, str | None]:
+    """フェンスの情報文字列を「言語」と「ファイル名」に分ける（B-3 / Qiita 記法）。
+
+    `` ```python:aaa.py `` → `("python", "aaa.py")`、`` ```:メモ `` → `(None, "メモ")`。
+    **言語に `python:aaa.py` を入れない。** 色分けの仕組みが言語を
+    見つけられなくなる（`core/html.py` の描画規則と同じ理由）。
+    """
+    head = info.split()[0] if info else ""
+    if not head:
+        return None, None
+    lang, separator, name = head.partition(":")
+    return (lang or None), (name or None if separator else None)
+
+
 def _normalize(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
@@ -269,8 +283,8 @@ def _apply_fence(
     閉じフェンスの有無で最終行の扱いが変わる。入力途中は必ず未閉じになるので、
     ここで落ちると打っている最中に装飾が壊れる。
     """
-    lang = info.split()[0] if info else None
-    drafts[start] = BlockInfo(line=start, type=BlockType.CODE_FENCE_OPEN, lang=lang)
+    lang, name = _fence_info(info)
+    drafts[start] = BlockInfo(line=start, type=BlockType.CODE_FENCE_OPEN, lang=lang, code_name=name)
 
     last = end - 1
     closed = last > start and lines[last].strip().startswith(markup[0] * 3)
@@ -313,10 +327,12 @@ def classify_line(text: str, line: int, state: BlockState) -> tuple[BlockInfo, B
     if fence is not None:
         info = fence.group("info").strip()
         marker = fence.group("fence")
+        lang, name = _fence_info(info)
         block = BlockInfo(
             line=line,
             type=BlockType.CODE_FENCE_OPEN,
-            lang=info.split()[0] if info else None,
+            lang=lang,
+            code_name=name,
         )
         return _in_note(
             (
