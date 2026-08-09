@@ -147,3 +147,100 @@ class TestSourceUntouched:
     )
     def test_同じ入力からは同じ結果(self, text: str) -> None:
         assert render(text) == render(text)
+
+
+class TestQiitaNote:
+    """`:::note info` の囲み（B-3 / Qiita 記法）。
+
+    **CommonMark ではない。** 他のエディタでは素のテキストに見えるが、
+    ソースが真実（R1）なので何も失わない。Qiita へ貼る用途がある以上、
+    向こうで正しく出ることのほうが価値が大きい。
+    """
+
+    def test_囲みになる(self) -> None:
+        html = render(":::note info\nお知らせ\n:::\n")
+        assert "<div" in html
+        assert "お知らせ" in html
+
+    def test_記号は出さない(self) -> None:
+        assert ":::" not in render(":::note info\nお知らせ\n:::\n")
+
+    @pytest.mark.parametrize("kind", ["info", "warn", "alert"])
+    def test_種類がクラスに出る(self, kind: str) -> None:
+        assert kind in render(f":::note {kind}\n本文\n:::\n")
+
+    def test_種類を省くと情報扱い(self) -> None:
+        assert "info" in render(":::note\n本文\n:::\n")
+
+    def test_中の記法も効く(self) -> None:
+        """段落として潰れない。`setMarkdown()` はここで改行ごと潰していた。"""
+        html = render(":::note info\n**強調**と`コード`\n:::\n")
+        assert "<strong>強調</strong>" in html
+        assert "<code>コード</code>" in html
+
+    def test_複数行が別の段落になる(self) -> None:
+        html = render(":::note info\n一段落目\n\n二段落目\n:::\n")
+        assert html.count("<p>") >= 2
+
+    def test_閉じ忘れても本文は残る(self) -> None:
+        """書きかけで書き出しても内容を失わない。"""
+        assert "お知らせ" in render(":::note info\nお知らせ\n")
+
+    def test_コードブロックの中は触らない(self) -> None:
+        assert ":::note info" in render("```\n:::note info\n```\n")
+
+
+class TestCodeFilename:
+    """` ```js:index.js `（B-3 / Qiita 記法）。
+
+    `setMarkdown()` は情報文字列ごと落としていて、言語もファイル名も
+    残らなかった（ADR-0007）。
+    """
+
+    def test_ファイル名が出る(self) -> None:
+        assert "index.js" in render("```js:index.js\nx = 1\n```\n")
+
+    def test_言語のクラスは言語だけ(self) -> None:
+        """`language-js:index.js` では色分けが効かない。"""
+        html = render("```js:index.js\nx = 1\n```\n")
+        assert 'class="language-js"' in html
+        assert "language-js:index.js" not in html
+
+    def test_中身はそのまま(self) -> None:
+        assert "x = 1" in render("```js:index.js\nx = 1\n```\n")
+
+    def test_ファイル名だけでも書ける(self) -> None:
+        """`` ```:設定 `` のように言語を省く書き方。"""
+        assert "設定" in render("```:設定\nx\n```\n")
+
+    def test_ファイル名が無ければ今まで通り(self) -> None:
+        html = render("```python\nx = 1\n```\n")
+        assert 'class="language-python"' in html
+
+    def test_ファイル名はエスケープする(self) -> None:
+        assert "<script>" not in render("```js:<script>\nx\n```\n")
+
+    def test_言語が無いフェンスも壊れない(self) -> None:
+        assert "<pre><code>" in render("```\nx = 1\n```\n")
+
+
+class TestFootnote:
+    """脚注 `[^1]`（B-3 / Qiita 記法）。
+
+    `setMarkdown()` は `<a href="注釈">` に化けさせていた（ADR-0007）。
+    """
+
+    def test_参照がリンクになる(self) -> None:
+        html = render("本文[^1]\n\n[^1]: 注釈\n")
+        assert "<a" in html
+        assert "href=" in html
+
+    def test_注釈の本文が出る(self) -> None:
+        assert "注釈" in render("本文[^1]\n\n[^1]: 注釈\n")
+
+    def test_行き先が文書内(self) -> None:
+        """外部を指さない。`href="注釈"` のような誤変換をしない。"""
+        assert 'href="注釈"' not in render("本文[^1]\n\n[^1]: 注釈\n")
+
+    def test_定義が無ければただの文字(self) -> None:
+        assert "[^1]" in render("本文[^1]\n")

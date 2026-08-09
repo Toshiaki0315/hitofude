@@ -194,6 +194,17 @@ def _stylesheet(theme: ThemeColors) -> str:
         f"th {{ background: {theme.code_background}; }}"
         "img { max-width: 100%; }"
         f"hr {{ border: none; border-top: 1px solid {theme.rule}; }}"
+        # ---- Qiita 記法（B-3）
+        # 囲みは**左の縦線で表す**。全面の背景は Qt では箱にならず
+        # （`background` はブロックを塗らない）、色だけ変わって理由が読めない
+        f".note {{ border-left: 4px solid {theme.rule}; padding: 2px 12px; margin: 12px 0; }}"
+        f".note-info {{ border-left-color: {theme.note_info}; }}"
+        f".note-warn {{ border-left-color: {theme.note_warn}; }}"
+        f".note-alert {{ border-left-color: {theme.note_alert}; }}"
+        f".code-name {{ color: {theme.muted_foreground}; font-size: 0.85em; "
+        "font-family: 'Menlo', monospace; padding: 2px 4px; }"
+        # 区切り線は脚注プラグインが `<hr class="footnotes-sep">` を出すので引かない
+        f".footnotes {{ color: {theme.muted_foreground}; font-size: 0.9em; }}"
     )
 
 

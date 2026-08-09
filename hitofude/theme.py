@@ -36,6 +36,14 @@ class ThemeColors:
     rule: str
     search_highlight: str
     pin_mark: str
+    note_info: str
+    """`:::note info` の色（B-3）。**accent は使わない**（alert と見分けが付かない）。"""
+
+    note_warn: str
+    """`:::note warn` の色（B-3）。"""
+
+    note_alert: str
+    """`:::note alert` の色（B-3）。"""
 
 
 LIGHT = ThemeColors(
@@ -57,6 +65,10 @@ LIGHT = ThemeColors(
     search_highlight="#FFD79B",
     # ピン留めの印。強調色とは別にする（星と分かる金色）
     pin_mark="#E0A100",
+    # `:::note` の囲み。3 つが**並んだときに見分けられる**こと（実際に並べて調整した）
+    note_info="#3B7DD8",
+    note_warn="#B26B00",
+    note_alert="#C0392B",
 )
 
 DARK = ThemeColors(
@@ -76,6 +88,9 @@ DARK = ThemeColors(
     rule="#3C3C42",
     search_highlight="#7A5A28",
     pin_mark="#FFCC33",
+    note_info="#6BA6F5",
+    note_warn="#E0A100",
+    note_alert="#FF6B5E",
 )
 
 
