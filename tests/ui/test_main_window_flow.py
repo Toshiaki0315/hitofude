@@ -48,7 +48,9 @@ class TestLayout:
     def test_並びはサイドバーリストエディタ(self, window) -> None:
         splitter = window.centralWidget()
         assert splitter.widget(0) is window.sidebar
-        assert splitter.widget(1) is window.note_list
+        # 一覧は「新規」ボタンごとペインに包まれている
+        assert splitter.widget(1) is window.note_list_pane
+        assert window.note_list_pane.note_list is window.note_list
         assert splitter.widget(2) is window.editor_pane
         assert window.editor_pane.editor is window.editor
 

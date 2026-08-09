@@ -56,8 +56,8 @@ from hitofude.ui.editor_pane import EditorPane
 from hitofude.ui.index_sync import IndexSyncTask, SyncReporter
 from hitofude.ui.menus import build_menus
 from hitofude.ui.note_list import NoteListView, NoteRole
+from hitofude.ui.note_list_pane import NoteListPane
 from hitofude.ui.panes import (
-    NOTE_LIST_MIN_WIDTH,
     SIDEBAR_MIN_WIDTH,
     PaneSplitter,
 )
@@ -144,7 +144,8 @@ class MainWindow(QMainWindow):
         theme = self._theme_watcher.colors
 
         self._sidebar = Sidebar()
-        self._note_list = NoteListView(theme=theme)
+        self._list_pane = NoteListPane(theme=theme)
+        self._note_list = self._list_pane.note_list
         self._pane = EditorPane(
             theme=theme,
             font_family=self._config.font_family,
@@ -153,11 +154,10 @@ class MainWindow(QMainWindow):
         self._editor = self._pane.editor
 
         self._sidebar.setMinimumWidth(SIDEBAR_MIN_WIDTH)
-        self._note_list.setMinimumWidth(NOTE_LIST_MIN_WIDTH)
 
         self._splitter = PaneSplitter(theme.rule)
         self._splitter.addWidget(self._sidebar)
-        self._splitter.addWidget(self._note_list)
+        self._splitter.addWidget(self._list_pane)
         self._splitter.addWidget(self._pane)
         self._splitter.setStretchFactor(2, 1)
         self._splitter.setChildrenCollapsible(False)
@@ -168,6 +168,7 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self._stats_label)
         self.statusBar().setSizeGripEnabled(False)
 
+        self._list_pane.new_note_requested.connect(self.new_note)
         self._note_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._note_list.customContextMenuRequested.connect(self._show_context_menu)
 
@@ -199,7 +200,7 @@ class MainWindow(QMainWindow):
         # **表示状態を先に決める。** 隠れているウィジェットは幅 0 になるので、
         # 順序が逆だと割り当てた幅がその場で捨てられる
         self._sidebar.setVisible(self._config.sidebar_visible)
-        self._note_list.setVisible(self._config.note_list_visible)
+        self._list_pane.setVisible(self._config.note_list_visible)
         self._splitter.restore_sizes(self._config.splitter_sizes)
 
     # ------------------------------------------------------------------ 参照
@@ -215,6 +216,10 @@ class MainWindow(QMainWindow):
     @property
     def note_list(self) -> NoteListView:
         return self._note_list
+
+    @property
+    def note_list_pane(self) -> NoteListPane:
+        return self._list_pane
 
     @property
     def sidebar(self) -> Sidebar:
@@ -1007,7 +1012,7 @@ class MainWindow(QMainWindow):
 
     def _on_theme_changed(self, colors: ThemeColors) -> None:
         self._pane.set_theme(colors)
-        self._note_list.set_theme(colors)
+        self._list_pane.set_theme(colors)
         self._splitter.set_rule_color(colors.rule)
 
     # ------------------------------------------------------------------ 終了
@@ -1022,7 +1027,7 @@ class MainWindow(QMainWindow):
         # 「隠す」で保存され、次の起動が真っ白な窓になる（実際に踏んだ）
         self._config.splitter_sizes = self._splitter.sizes_to_keep()
         self._config.sidebar_visible = not self._sidebar.isHidden()
-        self._config.note_list_visible = not self._note_list.isHidden()
+        self._config.note_list_visible = not self._list_pane.isHidden()
         self._config.window_geometry = self.saveGeometry()
         self._config.sync()
 

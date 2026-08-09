@@ -60,15 +60,17 @@ class TestMinimumWidth:
         assert window.sidebar.minimumWidth() > 0
 
     def test_一覧に最小幅がある(self, qtbot, config) -> None:
+        # 守る対象は splitter に入っているペイン（一覧は「新規」ボタンごと
+        # `NoteListPane` に包まれている）
         window = open_window(qtbot, config)
-        assert window.note_list.minimumWidth() > window.sidebar.minimumWidth()
+        assert window.note_list_pane.minimumWidth() > window.sidebar.minimumWidth()
 
     def test_手で狭めても最小幅より細くならない(self, qtbot, config) -> None:
         window = open_window(qtbot, config)
         window.centralWidget().setSizes([1, 1, WIDTH - 2])
         sizes = window.centralWidget().sizes()
         assert sizes[0] >= window.sidebar.minimumWidth()
-        assert sizes[1] >= window.note_list.minimumWidth()
+        assert sizes[1] >= window.note_list_pane.minimumWidth()
 
 
 class TestRestoreFromCrushed:
@@ -116,7 +118,7 @@ class TestToggle:
         window = open_window(qtbot, config)
         window.toggle_note_list()
         window.toggle_note_list()
-        assert window.centralWidget().sizes()[1] >= window.note_list.minimumWidth()
+        assert window.centralWidget().sizes()[1] >= window.note_list_pane.minimumWidth()
 
     def test_戻したあとエディタも残る(self, qtbot, config) -> None:
         """借りる先はエディタだが、潰してはいけない。"""
