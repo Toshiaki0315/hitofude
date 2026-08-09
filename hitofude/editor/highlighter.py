@@ -16,6 +16,7 @@ from PySide6.QtGui import (
     QColor,
     QFont,
     QSyntaxHighlighter,
+    QTextBlock,
     QTextBlockUserData,
     QTextCharFormat,
     QTextCursor,
@@ -24,6 +25,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QPlainTextDocumentLayout
 
 from hitofude.core.block_parser import classify_line
+from hitofude.core.code_tokens import tokenize
 from hitofude.core.inline_scanner import image_only_line, scan
 from hitofude.core.models import (
     UNKNOWN_NOTE_KIND,
@@ -46,6 +48,15 @@ HIDDEN_POINT_SIZE = 0.5
 
 # `[ ]` の 3 文字。ここに箱を置く幅を持たせる（`_hide_checkbox_slot`）
 CHECKBOX_SLOT_CHARS = 3
+
+# 色を付けるコードブロックの上限（B-6）。打鍵のたびにブロック全体を解析し直す
+# ので、長いほど遅くなる。**ウィジェットで実測した打鍵 p95**:
+#
+#     150 行  9.2ms / 200 行 11.6ms / 250 行 14.3ms / 300 行 17.5ms / 400 行 22.0ms
+#
+# §6.6 の基準は 16ms。250 行でも 14.3ms と余裕が無いので 200 行で打ち切る。
+# **超えたら色を付けないだけ**で、コードはそのまま読める
+MAX_HIGHLIGHT_LINES = 200
 
 # 画像行の余白（絵の上下）。詰まりすぎると本文と見分けが付かない
 IMAGE_PADDING = 8.0
@@ -278,6 +289,8 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
         is_header = info.type is BlockType.TABLE_ROW and not state.in_table
         self._apply_block_format(text, info, header=is_header)
+        if info.type is BlockType.CODE_FENCE_BODY:
+            self._apply_code_colors(block, text)
         if not in_code:
             self._apply_spans(text, spans, reveal)
         self._hide_block_markers(text, info, reveal)
@@ -444,6 +457,65 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         merged = QTextCharFormat(self.format(start))
         merged.merge(extra)
         self.setFormat(start, length, merged)
+
+    def _apply_code_colors(self, block: QTextBlock, text: str) -> None:
+        """コードブロックの中に色を付ける（B-6）。
+
+        **1 行だけを見て解析してはいけない。** 複数行の文字列やコメントは
+        行をまたぐので、その中の `def` が予約語に見えてしまう。ブロック全体を
+        1 回解析して、この行の分だけを取り出す（解析結果は `core/code_tokens`
+        が覚えているので、打っていない間は解析し直さない）。
+        """
+        found = self._fence_body(block)
+        if found is None:
+            return
+        lang, body, index = found
+        if body.count("\n") >= MAX_HIGHLIGHT_LINES:
+            return  # 長すぎるものは色を付けない。打鍵が重くなるほうが困る
+
+        lines = tokenize(body, lang, dark=self._theme.is_dark)
+        if index >= len(lines):
+            return
+        for span in lines[index]:
+            if span.start + span.length > len(text):
+                continue
+            colored = QTextCharFormat(self._code_block)
+            colored.setForeground(QColor(span.color))
+            colored.setFontWeight(QFont.Weight.Bold if span.bold else QFont.Weight.Normal)
+            colored.setFontItalic(span.italic)
+            self.setFormat(span.start, span.length, colored)
+
+    def _fence_body(self, block: QTextBlock) -> tuple[str, str, int] | None:
+        """この行が属するコードブロックの `(言語, 中身, 何行目か)`。
+
+        言語が分からなければ None。**上へ辿って開始行を探し、下へ辿って
+        終了行までを集める。** 行単位のハイライタからブロック全体を見るには
+        こうするしかない。
+        """
+        start = block.previous()
+        offset = 0
+        while start.isValid():
+            data = start.userData()
+            if data is None or data.info.type is not BlockType.CODE_FENCE_BODY:
+                break
+            start = start.previous()
+            offset += 1
+
+        opening = start.userData() if start.isValid() else None
+        if opening is None or opening.info.type is not BlockType.CODE_FENCE_OPEN:
+            return None
+        if not opening.info.lang:
+            return None  # 言語の指定が無ければ色を付けない
+
+        lines = []
+        probe = start.next()
+        while probe.isValid():
+            data = probe.userData()
+            if data is not None and data.info.type is not BlockType.CODE_FENCE_BODY:
+                break
+            lines.append(probe.text())
+            probe = probe.next()
+        return opening.info.lang, "\n".join(lines), offset
 
     def _code_name_slot(self) -> QTextCharFormat:
         """ファイル名を描く高さを作る書式（`painter_overlay` が上に文字を描く）。

@@ -393,3 +393,51 @@ class TestMathBlock:
         set_text(document, "$$\nx = 1\n$$\n\n末尾")
         assert is_hidden(document, 0, 0)
         assert is_hidden(document, 2, 0)
+
+
+class TestCodeColors:
+    """コードブロックの色分け（B-6）。
+
+    書き出し（`tests/core/test_html.py`）と画面で**同じ配色**を使う。
+    どちらが本当か分からなくならないように。
+    """
+
+    def color_at(self, document, line: int, column: int) -> str:
+        return char_format(document, line, column).foreground().color().name()
+
+    def test_予約語に色が付く(self, document, highlighter) -> None:
+        set_text(document, "```python\ndef f():\n    pass\n```\n\n末尾")
+        assert self.color_at(document, 1, 0) != self.color_at(document, 1, 4)
+
+    def test_言語が無ければ色を付けない(self, document, highlighter) -> None:
+        set_text(document, "```\ndef f():\n    pass\n```\n\n末尾")
+        assert self.color_at(document, 1, 0) == self.color_at(document, 1, 4)
+
+    def test_知らない言語は色を付けない(self, document, highlighter) -> None:
+        set_text(document, "```そんな言語\ndef f():\n```\n\n末尾")
+        assert self.color_at(document, 1, 0) == self.color_at(document, 1, 4)
+
+    def test_ファイル名付きでも色が付く(self, document, highlighter) -> None:
+        set_text(document, "```python:main.py\ndef f():\n    pass\n```\n\n末尾")
+        assert self.color_at(document, 1, 0) != self.color_at(document, 1, 4)
+
+    def test_複数行の文字列の中は予約語にしない(self, document, highlighter) -> None:
+        """**行単位で解析していたら間違える場所。**"""
+        set_text(document, '```python\nx = """\ndef f():\n"""\n```\n\n末尾')
+        keyword = None
+        set_text(document, "```python\ndef f():\n```\n\n末尾")
+        keyword = self.color_at(document, 1, 0)
+        set_text(document, '```python\nx = """\ndef f():\n"""\n```\n\n末尾')
+        assert self.color_at(document, 2, 0) != keyword
+
+    def test_コードの外には効かない(self, document, highlighter) -> None:
+        set_text(document, "```python\ndef f():\n```\n\ndef 段落\n\n末尾")
+        assert self.color_at(document, 4, 0) == self.color_at(document, 4, 4)
+
+    def test_長すぎるブロックは色を付けない(self, document, highlighter) -> None:
+        """打鍵のたびに解析し直すので、長いと重くなる（§6.6）。"""
+        from hitofude.editor.highlighter import MAX_HIGHLIGHT_LINES
+
+        body = "\n".join(["def f(): pass"] * (MAX_HIGHLIGHT_LINES + 5))
+        set_text(document, f"```python\n{body}\n```\n\n末尾")
+        assert self.color_at(document, 1, 0) == self.color_at(document, 1, 4)

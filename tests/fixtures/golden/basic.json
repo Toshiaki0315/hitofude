@@ -519,7 +519,42 @@
     "ranges": [
       [
         0,
-        19,
+        3,
+        "bold+mono+bg:#f0f0f2+fg:#007020"
+      ],
+      [
+        3,
+        1,
+        "mono+bg:#f0f0f2+fg:#bbbbbb"
+      ],
+      [
+        4,
+        5,
+        "mono+bg:#f0f0f2+fg:#06287e"
+      ],
+      [
+        9,
+        3,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ],
+      [
+        12,
+        2,
+        "mono+bg:#f0f0f2+fg:#666666"
+      ],
+      [
+        14,
+        1,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ],
+      [
+        15,
+        3,
+        "mono+bg:#f0f0f2+fg:#007020"
+      ],
+      [
+        18,
+        1,
         "mono+bg:#f0f0f2+fg:#3a3a3c"
       ]
     ]
@@ -531,8 +566,23 @@
     "ranges": [
       [
         0,
-        18,
+        4,
         "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ],
+      [
+        4,
+        6,
+        "bold+mono+bg:#f0f0f2+fg:#007020"
+      ],
+      [
+        10,
+        1,
+        "mono+bg:#f0f0f2+fg:#3a3a3c"
+      ],
+      [
+        11,
+        7,
+        "mono+bg:#f0f0f2+fg:#4070a0"
       ]
     ]
   },
