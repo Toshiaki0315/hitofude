@@ -950,7 +950,7 @@ DMG 自体も署名 + 公証すること。
 
 - [ ] ソースモード（`Cmd+/`）、フォーカスモード、タイプライタモード
 - [ ] `Cmd+Shift+C`（プレーンテキストコピー）
-- [ ] HTML / PDF エクスポート（**ここでのみ `QTextDocument.setMarkdown()` を使ってよい**。`QPrinter` で PDF 出力）
+- [x] HTML / PDF エクスポート（~~ここでのみ `QTextDocument.setMarkdown()` を使ってよい~~ → **ADR-0007 で markdown-it-py へ移行**。`QPrinter` で PDF 出力）
 - [ ] アプリアイコン（`.icns`）、About ダイアログ
 - [ ] `setup.py`（py2app）でビルド → 署名 → 公証 → DMG
 - [ ] クラッシュ時のリカバリ（未保存バッファを `~/Library/Application Support/Hitofude/recovery/` に退避）

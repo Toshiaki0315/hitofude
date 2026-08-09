@@ -274,3 +274,52 @@ class TestImageSafety:
     def test_起点が無ければ埋め込まない(self, qapp, tmp_path: Path) -> None:
         written = write_html(tmp_path / "out.html", "![](a.png)\n").read_text(encoding="utf-8")
         assert "base64" not in written
+
+
+class TestRendererSwap:
+    """B-2: `setMarkdown()` から markdown-it-py へ移したことで通るようになったもの。
+
+    変換そのものは `tests/core/test_html.py` が見る。ここは**書き出した
+    ファイルまで届いているか**を見る。途中で落ちても気づけるようにする。
+    """
+
+    def test_コードフェンスの言語が書き出しに残る(self, qapp) -> None:
+        """B-4（Mermaid）と色分けはこの class を見る。"""
+        assert 'class="language-python"' in to_html("```python\nx = 1\n```\n")
+
+    def test_チェックボックスが印になる(self, qapp) -> None:
+        html = to_html("- [ ] やること\n- [x] 済み\n")
+        assert "☐ やること" in html
+        assert "☑ 済み" in html
+
+    def test_表に罫線のスタイルが付く(self, qapp) -> None:
+        """罫線が無い表は読めない。Qt でも効く書き方にしてある。"""
+        html = to_html("| 左 | 右 |\n| --- | --- |\n| a | b |\n")
+        assert "<table>" in html
+        assert "border" in html
+
+    def test_本文の生HTMLは実行できる形にしない(self, qapp) -> None:
+        """書き出した HTML は他人に渡る。"""
+        assert "<script>" not in to_html("<script>alert(1)</script>\n")
+
+    def test_余計な属性で膨らまない(self, qapp) -> None:
+        """`setMarkdown()` 経由は 1 行ごとに `style="..."` が付いていた。
+
+        意味づけされた HTML なら後から手を入れられる。
+        """
+        html = to_html("# 見出し\n\n段落\n")
+        assert "<h1>見出し</h1>" in html
+        assert "-qt-block-indent" not in html
+
+    def test_PDFも保管フォルダの外は読まない(self, qapp, tmp_path: Path) -> None:
+        """**B-2 で得た安全側の変化。**
+
+        以前の PDF は `setBaseUrl()` で相対パスをその場で解決していたので、
+        `../` を書けば vault の外の画像も入っていた。HTML と同じ埋め込み経路に
+        揃えたため、同じ判定（`core/paths.py`）が PDF にも効くようになった。
+        """
+        secret = tmp_path.parent / "秘密.png"
+        secret.write_bytes(b"\x89PNG" + b"x" * 4000)
+        outside = write_pdf(tmp_path / "a.pdf", "![](../秘密.png)\n", base_path=tmp_path)
+        plain = write_pdf(tmp_path / "b.pdf", "\n", base_path=tmp_path)
+        assert outside.stat().st_size < plain.stat().st_size + 2000

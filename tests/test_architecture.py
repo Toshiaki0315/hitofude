@@ -56,20 +56,19 @@ def test_coreとstorageはPySide6に依存しない(package: str) -> None:
 MARKDOWN_ROUNDTRIP_API = frozenset({"setMarkdown", "toMarkdown"})
 
 
-def test_編集モデルにsetMarkdownを使っていない() -> None:
+def test_setMarkdownをどこでも使っていない() -> None:
     """CLAUDE.md R2 / spec §3.3: 往復変換でデータが壊れることを実機検証済み。
 
-    HTML/PDF エクスポート（Phase 6）だけが例外なので、そこは明示的に除外する。
+    **例外はもう無い。** かつては HTML/PDF の書き出しだけが許されていたが、
+    B-2 で書き出しを markdown-it-py に移した（ADR-0007）。理由は R2 の趣旨
+    （往復変換）ではなく、`setMarkdown()` がコードフェンスの言語・生 HTML・
+    脚注を落とすため。除外を消せたので、ここも全ファイルを見る。
 
     判定は AST の属性アクセスで行う。文字列一致にすると「なぜこの API を
     使わないのか」を説明したコメント自体が違反として検出されてしまう。
     """
-    # R2 の唯一の例外。エクスポートは一方通行なので往復変換の事故が起きない
-    export_allowed = {HITOFUDE / "editor" / "exporter.py"}
     offenders: list[str] = []
     for path in HITOFUDE.rglob("*.py"):
-        if path in export_allowed:
-            continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         offenders.extend(
             f"{path.relative_to(PROJECT_ROOT)}:{node.attr}"

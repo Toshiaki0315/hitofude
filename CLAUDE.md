@@ -106,7 +106,11 @@ uv sync --dry-run
 ### R2. `QTextDocument.setMarkdown()` / `toMarkdown()` を編集モデルに使わない（§3.3）
 
 実機検証でコードフェンス消失・表崩壊・`#tag` のエスケープが確認済み。
-**使ってよいのは HTML/PDF エクスポート（Phase 6）だけ。**
+
+**例外は無い（ADR-0007）。** かつては HTML/PDF の書き出しだけ許していたが、
+`setMarkdown()` はフェンスの言語・生 HTML・脚注・空 alt の画像も落とすため、
+書き出しも markdown-it-py（`core/html.py`）に移した。
+`tests/test_architecture.py` が全ファイルを見ている。
 
 ### R3. `core/` と `storage/` は PySide6 に依存しない（§6.1）
 

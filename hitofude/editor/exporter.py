@@ -1,12 +1,13 @@
-"""HTML / PDF へのエクスポート（spec §9 Phase 6, R2）。
+"""HTML / PDF へのエクスポート（spec §9 Phase 6 / ADR-0007）。
 
-**`QTextDocument.setMarkdown()` を使ってよいのはここだけ。**
+**`QTextDocument.setMarkdown()` は使わない。** 変換は `core/html.py` が
+markdown-it-py で行い、ここはその HTML を「ページに組む」「画像を埋める」
+「PDF に流す」だけを受け持つ。
 
-編集モデルに使ってはいけない理由（§3.3）は往復変換でソースが壊れることだが、
-エクスポートは一方通行で、変換結果をファイルへ書き戻さない。壊れようがない。
-逆に言えば、**この結果を編集中の文書へ戻してはいけない**。
-
-`tests/test_architecture.py` はこのファイルだけを例外として許可している。
+以前はここが R2 の唯一の例外だった。今は**アプリのどこからも
+`setMarkdown()` を呼ばない**（`tests/test_architecture.py` が見ている）。
+理由は R2 の趣旨（往復変換の禁止）ではなく、あちらが記法を落とすため。
+実測は ADR-0007。
 """
 
 import base64
@@ -15,11 +16,11 @@ import mimetypes
 import re
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
 from PySide6.QtGui import QPageSize, QTextDocument
 from PySide6.QtPrintSupport import QPrinter
 
 from hitofude.core import frontmatter
+from hitofude.core import html as markdown_html
 from hitofude.core.paths import resolve_reference
 from hitofude.theme import LIGHT, ThemeColors
 
@@ -29,22 +30,6 @@ logger = logging.getLogger(__name__)
 
 # HTML の `<img src="...">`。書き出し先から解決できない相対パスを埋め込みに置き換える
 _IMG_SRC_RE = re.compile(r'(<img\b[^>]*?\bsrc=")([^"]+)(")', re.IGNORECASE)
-# 代替テキストが空の画像。`setMarkdown()` は `<img>` ごと落とす（実測）
-_EMPTY_ALT_RE = re.compile(r"!\[\]\(")
-
-
-def _fill_empty_alt(body: str) -> str:
-    """`![](...)` の代替テキストを空白 1 つで埋める。
-
-    **`setMarkdown()` は代替テキストが空の画像を `<img>` ごと落とす**（実測）。
-    貼り付けた画像は `![](attachments/...)` の形なので、そのままでは
-    書き出した PDF / HTML から画像だけ黙って消える。
-
-    書き換えるのは**書き出す文字列だけ**で、ソースには戻さない（R1・R2）。
-    コードブロックの中の `![](...)` も一緒に変わるが、そこまで見分ける価値は
-    無いと判断した。失うのは表示上の空白 1 つで、消えるのは画像そのもの。
-    """
-    return _EMPTY_ALT_RE.sub("![ ](", body)
 
 
 def _as_data_uri(path: Path) -> str | None:
@@ -58,7 +43,7 @@ def _as_data_uri(path: Path) -> str | None:
     return f"data:{kind};base64,{payload}"
 
 
-def _embed_images(html: str, base_path: Path | None) -> str:
+def _embed_images(body: str, base_path: Path | None) -> str:
     """`<img src>` を `data:` URI へ置き換える。
 
     `to_html()` は「外部リソースを参照しない」ことを約束している。
@@ -72,30 +57,29 @@ def _embed_images(html: str, base_path: Path | None) -> str:
         uri = _as_data_uri(resolved)
         return match.group(0) if uri is None else f"{match.group(1)}{uri}{match.group(3)}"
 
-    return _IMG_SRC_RE.sub(swap, html)
+    return _IMG_SRC_RE.sub(swap, body)
 
 
-def to_document(
-    text: str,
-    *,
-    theme: ThemeColors = LIGHT,
-    base_point_size: float = 15.0,
-    base_path: Path | None = None,
-):
-    """Markdown を描画済みの `QTextDocument` にする。
+def _rendered_body(text: str, base_path: Path | None) -> str:
+    """本文の HTML。画像は `data:` URI に置き換える。
 
-    front matter は本文ではないので落とす。`id` や `modified` が
-    書き出した PDF の先頭に出ても意味がない。
+    **HTML も PDF も同じ文字列を使う。** 経路を分けると、片方だけ画像が出る、
+    片方だけ vault の外を読む、といった食い違いが起きる。埋め込みに揃えたので
+    PDF にも「保管フォルダの外は読まない」が効くようになった。
+    """
+    return _embed_images(markdown_html.render(text), base_path)
 
-    `base_path` を渡すと、本文の相対パスの画像を解決できるようになる
-    （貼り付けた画像は vault からの相対パスで書かれている）。
+
+def _to_document(text: str, *, theme: ThemeColors, base_point_size: float, base_path: Path | None):
+    """描画済みの `QTextDocument`（PDF 用）。
+
+    Qt のリッチテキストは HTML/CSS の一部しか解さない。表の罫線と余白、
+    等幅、打ち消しは効く（実測）。`border-collapse` や `max-width` は
+    無視されるが、無視されるだけで壊れない。
     """
     document = QTextDocument()
     document.setDefaultStyleSheet(_stylesheet(theme))
-    if base_path is not None:
-        # 末尾の `/` が要る。無いと最後の要素がファイル名として捨てられる
-        document.setBaseUrl(QUrl.fromLocalFile(f"{base_path}/"))
-    document.setMarkdown(_fill_empty_alt(frontmatter.split(text).body))  # ← R2 の唯一の例外
+    document.setHtml(_rendered_body(text, base_path))
     document.setDefaultFont(_font(base_point_size))
     return document
 
@@ -104,7 +88,7 @@ def to_html(
     text: str, *, title: str = "", theme: ThemeColors = LIGHT, base_path: Path | None = None
 ) -> str:
     """完結した HTML 文字列にする。外部リソースを参照しない。"""
-    body = _embed_images(to_document(text, theme=theme, base_path=base_path).toHtml(), base_path)
+    body = _rendered_body(text, base_path)
     heading = f"<title>{_escape(title)}</title>" if title else ""
     return (
         "<!doctype html>\n"
@@ -164,7 +148,7 @@ def write_pdf(
     printer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
     printer.setPageMargins(_margins(), printer.pageLayout().units())
 
-    document = to_document(text, theme=theme, base_point_size=base_point_size, base_path=base_path)
+    document = _to_document(text, theme=theme, base_point_size=base_point_size, base_path=base_path)
     document.print_(printer)
     return path
 
@@ -184,17 +168,38 @@ def _font(point_size: float):
 
 
 def _stylesheet(theme: ThemeColors) -> str:
+    """HTML ページと PDF の両方に使う 1 枚。
+
+    **Qt のリッチテキストは CSS の一部しか解さない。** 効くのは色・背景・
+    余白・罫線・フォント（実測）。`max-width` や `border-collapse` や
+    `border-radius` は無視されるが、**無視されるだけで壊れない**ので、
+    ブラウザ向けと分けずに 1 枚で通す。2 枚に分けると片方だけ直す事故が起きる。
+    """
     return (
         f"body {{ color: {theme.foreground}; background: {theme.background}; "
-        "line-height: 1.7; }"
-        f"code, pre {{ background: {theme.code_background}; color: {theme.code_foreground}; }}"
+        "font-family: 'Hiragino Sans', sans-serif; line-height: 1.7; "
+        "max-width: 42em; margin: 0 auto; padding: 24px; }"
+        "h1, h2, h3, h4, h5, h6 { line-height: 1.4; }"
+        f"code, pre {{ background: {theme.code_background}; color: {theme.code_foreground}; "
+        "font-family: 'Menlo', monospace; }"
+        "code { padding: 1px 4px; border-radius: 3px; }"
+        "pre { padding: 10px 12px; border-radius: 5px; }"
+        "pre code { padding: 0; background: none; }"
         f"blockquote {{ color: {theme.quote_foreground}; "
-        f"border-left: 3px solid {theme.quote_bar}; padding-left: 12px; }}"
+        f"border-left: 3px solid {theme.quote_bar}; padding-left: 12px; margin-left: 0; }}"
         f"a {{ color: {theme.accent}; }}"
+        "table { border-collapse: collapse; }"
+        # 罫線と余白は **Qt でも効く**。表が線なしで出ると読めない
+        f"th, td {{ border: 1px solid {theme.rule}; padding: 5px 9px; }}"
+        f"th {{ background: {theme.code_background}; }}"
+        "img { max-width: 100%; }"
+        f"hr {{ border: none; border-top: 1px solid {theme.rule}; }}"
     )
 
 
 def _escape(text: str) -> str:
+    # 標準ライブラリの `html`。`core.html` は `markdown_html` として import して
+    # あるので衝突しないが、紛らわしいので取り違えないこと
     from html import escape
 
     return escape(text)
