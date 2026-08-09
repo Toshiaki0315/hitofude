@@ -360,3 +360,24 @@ class TestMath:
 
     def test_複数あっても拾う(self) -> None:
         assert len(scan("$a$ と $b$")) == 2
+
+    def test_二重の記号も拾う(self) -> None:
+        """`$$x^2$$` を 1 行に書く形。**書き出しでは数式になるのに画面では
+        印が付かなかった**（ユーザー報告）。"""
+        assert [s.type for s in scan("$$\\frac{a}{b}$$")] == [SpanType.MATH]
+
+    def test_二重の記号は記号ごと覆う(self) -> None:
+        span = scan("$$x^2$$")[0]
+        assert (span.open_start, span.close_end) == (0, 7)
+        assert span.payload == "x^2"
+
+    def test_文中の二重の記号も拾う(self) -> None:
+        assert [s.type for s in scan("文中に $$x^2$$ と書く")] == [SpanType.MATH]
+
+    def test_二重の記号の中の空白は許す(self) -> None:
+        """独立した式は `$$ x = 1 $$` と書かれることがある。"""
+        assert [s.type for s in scan("$$ x = 1 $$")] == [SpanType.MATH]
+
+    def test_二重を単独の記号に割らない(self) -> None:
+        """`$$a$$` を `$` 2 つ + `$a$` と読むと範囲がずれる。"""
+        assert len(scan("$$a$$")) == 1

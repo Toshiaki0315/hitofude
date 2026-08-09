@@ -375,3 +375,21 @@ class TestUnknownNoteKind:
     def test_種類の省略も隠す(self, document, highlighter) -> None:
         set_text(document, ":::note\n本文\n:::\n\n末尾")
         assert is_hidden(document, 0, 0)
+
+
+class TestMathBlock:
+    """複数行の `$$` ブロック（B-5）。コードブロックと同じ見せ方に揃える。"""
+
+    def test_中身は等幅になる(self, document, highlighter) -> None:
+        set_text(document, "$$\nx = 1\n$$\n\n末尾")
+        assert char_format(document, 1, 0).fontFamilies()
+
+    def test_中では装飾が効かない(self, document, highlighter) -> None:
+        """数式の `_` や `*` は装飾ではない。"""
+        set_text(document, "$$\na_1 *b*\n$$\n\n末尾")
+        assert not block_data(document, 1).spans
+
+    def test_区切りの行は潰す(self, document, highlighter) -> None:
+        set_text(document, "$$\nx = 1\n$$\n\n末尾")
+        assert is_hidden(document, 0, 0)
+        assert is_hidden(document, 2, 0)

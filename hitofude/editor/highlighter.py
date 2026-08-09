@@ -118,7 +118,14 @@ HEADING_SCALE = {1: 1.8, 2: 1.5, 3: 1.25, 4: 1.1, 5: 1.0, 6: 0.95}
 
 # 装飾を一切適用しないブロック（§6.4「コードブロックの中では装飾が効かない」）
 _CODE_BLOCK_TYPES = frozenset(
-    {BlockType.CODE_FENCE_BODY, BlockType.CODE_FENCE_OPEN, BlockType.CODE_FENCE_CLOSE}
+    {
+        BlockType.CODE_FENCE_BODY,
+        BlockType.CODE_FENCE_OPEN,
+        BlockType.CODE_FENCE_CLOSE,
+        # 数式の中の `_` や `*` は装飾ではない（B-5）
+        BlockType.MATH_BODY,
+        BlockType.MATH_DELIMITER,
+    }
 )
 
 # 行全体を潰すブロック。記号ではなく描画（背景・線）で表現する（§5.2）
@@ -130,6 +137,8 @@ _FULLY_HIDDEN_TYPES = frozenset(
         BlockType.FRONT_MATTER,
         # 区切り行（`|---|---|`）は罫線として描くので文字は見せない
         BlockType.TABLE_DELIMITER,
+        # 複数行の数式の `$$` の行（B-5）。中身は背景で表すので記号は要らない
+        BlockType.MATH_DELIMITER,
     }
 )
 
@@ -365,7 +374,13 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         match info.type:
             case BlockType.HEADING:
                 self.setFormat(0, len(text), self._heading[info.level])
-            case BlockType.CODE_FENCE_BODY | BlockType.CODE_FENCE_OPEN | BlockType.CODE_FENCE_CLOSE:
+            case (
+                BlockType.CODE_FENCE_BODY
+                | BlockType.CODE_FENCE_OPEN
+                | BlockType.CODE_FENCE_CLOSE
+                | BlockType.MATH_BODY
+                | BlockType.MATH_DELIMITER
+            ):
                 self.setFormat(0, len(text), self._code_block)
             case BlockType.BLOCKQUOTE:
                 self.setFormat(0, len(text), self._quote)

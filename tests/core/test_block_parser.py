@@ -398,3 +398,42 @@ class TestUnknownNoteKind:
         """書き出し側と食い違っていた（画面は囲みにせず、書き出しは warn に
         していた）。画面側に揃える。"""
         assert _classified(f"{line}\n本文\n:::\n")[0].note_kind is None
+
+
+class TestMathBlock:
+    """複数行の `$$` ブロック（B-5）。
+
+    書き出しでは中央に組まれるのに、画面では**ただの段落**に見えていた。
+    1 行に書いた `$$x$$` は印が付くのに、複数行だと付かないのは食い違い。
+    """
+
+    def test_開始行を区切りとして分類する(self) -> None:
+        assert _classified("$$\nx = 1\n$$\n")[0].type is BlockType.MATH_DELIMITER
+
+    def test_終了行も区切り(self) -> None:
+        assert _classified("$$\nx = 1\n$$\n")[2].type is BlockType.MATH_DELIMITER
+
+    def test_中身は数式の本体(self) -> None:
+        assert _classified("$$\nx = 1\n$$\n")[1].type is BlockType.MATH_BODY
+
+    def test_複数行の中身すべてが本体(self) -> None:
+        blocks = _classified("$$\na = 1\nb = 2\n$$\n")
+        assert [b.type for b in blocks[1:3]] == [BlockType.MATH_BODY] * 2
+
+    def test_閉じたら元に戻る(self) -> None:
+        assert _classified("$$\nx\n$$\n段落\n")[3].type is BlockType.PARAGRAPH
+
+    def test_中では他の記法が効かない(self) -> None:
+        """数式の `#` や `_` は装飾ではない。コードブロックと同じ扱い。"""
+        assert _classified("$$\n# not heading\n$$\n")[1].type is BlockType.MATH_BODY
+
+    def test_コードフェンスの中の記号は数式にしない(self) -> None:
+        assert _classified("```\n$$\nx\n```\n")[1].type is BlockType.CODE_FENCE_BODY
+
+    def test_1行に書いたものは区切りにしない(self) -> None:
+        """`$$x$$` は行内の数式（`inline_scanner` が拾う）。"""
+        assert _classified("$$x = 1$$\n")[0].type is BlockType.PARAGRAPH
+
+    def test_閉じ忘れても後続は壊れない(self) -> None:
+        blocks = _classified("$$\nx = 1\n")
+        assert blocks[1].type is BlockType.MATH_BODY

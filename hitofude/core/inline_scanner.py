@@ -35,6 +35,9 @@ _FOOTNOTE_RE = re.compile(r"\[\^(?P<label>[^\[\]\s]+)\]")
 # インライン数式 `$...$`（B-5）。書き出し側（`core/html.py`）と同じ厳しさにする。
 # **記号の内側に空白を許さず、前後に数字があるものも採らない。**
 # 許すと `価格は $100 と $200 です。` が数式になる
+# `$$...$$` を先に見る。あとにすると `$$a$$` が `$` + `$a$` に割れて範囲がずれる。
+# 二重のほうは中の空白を許す（独立した式は `$$ x = 1 $$` とも書かれる）
+_MATH_BLOCK_RE = re.compile(r"(?<!\$)\$\$(?P<body>[^$]+?)\$\$(?!\$)")
 _MATH_RE = re.compile(r"(?<![\d$])\$(?P<body>[^\s$][^$]*?[^\s$]|[^\s$])\$(?![\d$])")
 # かな・漢字を含むものは取り違え。数式に日本語は出てこない
 _MATH_CJK_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿々〆、。]")
@@ -245,22 +248,23 @@ def _scan_autolinks(text: str, mask: bytearray, spans: list[InlineSpan]) -> None
 
 
 def _scan_math(text: str, mask: bytearray, spans: list[InlineSpan]) -> None:
-    for match in _MATH_RE.finditer(text):
-        start, end = match.span()
-        body = match.group("body")
-        if _MATH_CJK_RE.search(body) or not _is_free(mask, start, end):
-            continue
-        spans.append(
-            InlineSpan(
-                type=SpanType.MATH,
-                open_start=start,
-                open_end=start + 1,
-                close_start=end - 1,
-                close_end=end,
-                payload=body,
+    for pattern, marker_len in ((_MATH_BLOCK_RE, 2), (_MATH_RE, 1)):
+        for match in pattern.finditer(text):
+            start, end = match.span()
+            body = match.group("body")
+            if _MATH_CJK_RE.search(body) or not _is_free(mask, start, end):
+                continue
+            spans.append(
+                InlineSpan(
+                    type=SpanType.MATH,
+                    open_start=start,
+                    open_end=start + marker_len,
+                    close_start=end - marker_len,
+                    close_end=end,
+                    payload=body.strip(),
+                )
             )
-        )
-        _mark(mask, start, end)
+            _mark(mask, start, end)
 
 
 def _scan_footnotes(text: str, mask: bytearray, spans: list[InlineSpan]) -> None:

@@ -48,6 +48,12 @@ class BlockType(Enum):
     NOTE_DELIMITER = auto()
     """`:::note info` と閉じの `:::`（B-3 / Qiita 記法）。"""
 
+    MATH_DELIMITER = auto()
+    """複数行の数式の `$$` の行（B-5）。"""
+
+    MATH_BODY = auto()
+    """複数行の数式の中身（B-5）。中では装飾が効かない。"""
+
     BLANK = auto()
 
 
@@ -119,6 +125,9 @@ class BlockState:
     """リストの中か。中では字下げが入れ子を意味するのでコードにしない（§6.4）。"""
 
     in_indented_code: bool = False
+    in_math: bool = False
+    """複数行の `$$` の中か（B-5）。"""
+
     note_kind: str = ""
     """`:::note` の中に居るか。空文字なら囲みの外（B-3）。"""
 
@@ -142,6 +151,7 @@ class BlockState:
     _NOTE_SHIFT = 16
     # 4 種類 +「囲みの外」で 5 通り。2 ビットでは足りない
     _NOTE_MASK = 0b111
+    _MATH = 1 << 19
 
     MAX_QUOTE_DEPTH = _QUOTE_MASK
     MAX_FENCE_LEN = _FENCE_LEN_MASK
@@ -176,6 +186,8 @@ class BlockState:
             value |= self._IN_LIST
         if self.in_indented_code:
             value |= self._INDENTED_CODE
+        if self.in_math:
+            value |= self._MATH
         if self.note_kind in _STATE_NOTE_KINDS:
             value |= (_STATE_NOTE_KINDS.index(self.note_kind) + 1) << self._NOTE_SHIFT
         return value
@@ -199,6 +211,7 @@ class BlockState:
             after_blank=not (value & cls._NOT_AFTER_BLANK),
             in_list=bool(value & cls._IN_LIST),
             in_indented_code=bool(value & cls._INDENTED_CODE),
+            in_math=bool(value & cls._MATH),
             note_kind=cls._decode_note(value),
         )
 

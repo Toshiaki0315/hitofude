@@ -54,7 +54,14 @@ CHECKBOX_GAP_RATIO = 0.10
 CHECKBOX_STROKE = 1.4
 
 _CODE_TYPES = frozenset(
-    {BlockType.CODE_FENCE_OPEN, BlockType.CODE_FENCE_BODY, BlockType.CODE_FENCE_CLOSE}
+    {
+        BlockType.CODE_FENCE_OPEN,
+        BlockType.CODE_FENCE_BODY,
+        BlockType.CODE_FENCE_CLOSE,
+        # 数式も同じ背景で表す（B-5）。中身が LaTeX なのは同じ性質
+        BlockType.MATH_BODY,
+        BlockType.MATH_DELIMITER,
+    }
 )
 
 _TABLE_TYPES = frozenset({BlockType.TABLE_ROW, BlockType.TABLE_DELIMITER})

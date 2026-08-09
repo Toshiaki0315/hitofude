@@ -45,6 +45,9 @@ _FRONT_MATTER_DELIM_RE = re.compile(r"^---[ \t]*$")
 # `> :::note` は引用の本文であって囲みではない
 _NOTE_OPEN_RE = re.compile(r"^:::[ \t]*note(?:[ \t]+(?P<kind>\S+))?[ \t]*$")
 _NOTE_CLOSE_RE = re.compile(r"^:::[ \t]*$")
+# 複数行の数式（B-5）。`$$` だけの行。1 行に書いた `$$x$$` は行内の数式で、
+# `inline_scanner` が拾う
+_MATH_FENCE_RE = re.compile(r"^\$\$[ \t]*$")
 _RULE_LINE_RE = re.compile(r"^ {0,3}(?P<char>[-*_])(?:[ \t]*(?P=char)){2,}[ \t]*$")
 # 表の区切り行は `|` を必ず含み、`-` を必ず含み、それ以外は揃え指定と空白だけ。
 _TABLE_DELIM_LINE_RE = re.compile(r"^(?=[^\n]*\|)(?=[^\n]*-)[ \t|:\-]+$")
@@ -318,6 +321,18 @@ def classify_line(text: str, line: int, state: BlockState) -> tuple[BlockInfo, B
 
     if state.in_code:
         return _in_note(_classify_inside_fence(text, line, state), state.note_kind)
+
+    if state.in_math:
+        if _MATH_FENCE_RE.match(text):
+            block = BlockInfo(line=line, type=BlockType.MATH_DELIMITER)
+            return _in_note((block, BlockState(note_kind=state.note_kind)), state.note_kind)
+        block = BlockInfo(line=line, type=BlockType.MATH_BODY)
+        return _in_note((block, state), state.note_kind)
+
+    if _MATH_FENCE_RE.match(text):
+        block = BlockInfo(line=line, type=BlockType.MATH_DELIMITER)
+        opened = BlockState(in_math=True, note_kind=state.note_kind)
+        return _in_note((block, opened), state.note_kind)
 
     note = _classify_note_delimiter(text, line, state)
     if note is not None:
