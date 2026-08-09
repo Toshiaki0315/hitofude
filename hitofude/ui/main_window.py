@@ -13,6 +13,7 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import (
@@ -31,7 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from hitofude import APP_NAME, __version__
-from hitofude.app import ThemeWatcher
+from hitofude.app import ThemeWatcher, apply_theme
 from hitofude.config import Config
 from hitofude.core import frontmatter
 from hitofude.core.document import Note, with_title
@@ -142,6 +143,10 @@ class MainWindow(QMainWindow):
 
         self._theme_watcher = ThemeWatcher(self._config.theme_mode, parent=self)
         theme = self._theme_watcher.colors
+        # **起動時にも当てる。** `create_application()` は「システムのテーマ」で
+        # パレットを当てるが、ここで使うのは「保存された設定」。食い違っていると
+        # 切り替えの通知も飛ばないまま明るいまま残る
+        self._apply_palette(theme)
 
         self._sidebar = Sidebar()
         self._list_pane = NoteListPane(theme=theme)
@@ -1010,7 +1015,19 @@ class MainWindow(QMainWindow):
         """ペインの境界に 1px の線を引く。"""
         self._splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {theme.rule}; }}")
 
+    def _apply_palette(self, colors: ThemeColors) -> None:
+        """配色を `QPalette` へ流し込む（spec §5.3）。
+
+        ここを忘れると、自前で色を持っているエディタだけが変わり、
+        サイドバーと一覧は明るいまま残る。ダークではノートのタイトルが
+        白地に薄い灰色になり、ほぼ読めない。
+        """
+        application = QApplication.instance()
+        if application is not None:
+            apply_theme(cast(QApplication, application), colors)
+
     def _on_theme_changed(self, colors: ThemeColors) -> None:
+        self._apply_palette(colors)
         self._pane.set_theme(colors)
         self._list_pane.set_theme(colors)
         self._splitter.set_rule_color(colors.rule)

@@ -282,3 +282,127 @@ class TestShortcutRegistration:
         lines = window.editor.toPlainText().split("\n")[:3]
         assert len({display_width(line) for line in lines}) == 1, lines
         assert "りんご" in window.editor.toPlainText()
+
+
+class TestThemeReachesEveryPane:
+    """テーマは `QPalette` に流し込む（spec §5.3）。
+
+    切り替えてもエディタしか色が変わらず、サイドバーと一覧が明るいままだった
+    （ユーザー報告）。ダークにするとノートのタイトルが白地に薄い灰色になり、
+    ほぼ読めない。`create_application()` で 1 回当てたきり、変更時に
+    当て直していなかった。
+    """
+
+    def dark(self, window):
+        """ダークへ切り替えて、パレットの伝播まで済ませる。
+
+        `QApplication.setPalette()` は既にあるウィジェットへ**イベント経由で**
+        届く。処理を回さないと `widget.palette()` が古いままになる
+        （実アプリでは常にイベントループが回っているので起きない）。
+        """
+        from PySide6.QtWidgets import QApplication
+
+        from hitofude.theme import ThemeMode
+
+        window.theme_watcher.set_mode(ThemeMode.DARK)
+        QApplication.processEvents()
+
+    def test_アプリのパレットが暗くなる(self, window) -> None:
+        from PySide6.QtGui import QPalette
+        from PySide6.QtWidgets import QApplication
+
+        from hitofude.theme import DARK
+
+        self.dark(window)
+        palette = QApplication.instance().palette()
+        assert palette.color(QPalette.ColorRole.Base).name() == DARK.background.lower()
+        assert palette.color(QPalette.ColorRole.Window).name() == DARK.background.lower()
+
+    def test_文字色も変わる(self, window) -> None:
+        from PySide6.QtGui import QPalette
+        from PySide6.QtWidgets import QApplication
+
+        from hitofude.theme import DARK
+
+        self.dark(window)
+        palette = QApplication.instance().palette()
+        assert palette.color(QPalette.ColorRole.Text).name() == DARK.foreground.lower()
+
+    @pytest.mark.parametrize("pane", ["sidebar", "note_list_pane", "note_list", "editor_pane"])
+    def test_各ペインに届く(self, window, pane: str) -> None:
+        from PySide6.QtGui import QPalette
+
+        from hitofude.theme import DARK
+
+        self.dark(window)
+        widget = getattr(window, pane)
+        assert widget.palette().color(QPalette.ColorRole.Base).name() == DARK.background.lower()
+
+    def test_ライトへ戻せる(self, window) -> None:
+        from PySide6.QtGui import QPalette
+        from PySide6.QtWidgets import QApplication
+
+        from hitofude.theme import LIGHT, ThemeMode
+
+        self.dark(window)
+        window.theme_watcher.set_mode(ThemeMode.LIGHT)
+        QApplication.processEvents()
+        palette = QApplication.instance().palette()
+        assert palette.color(QPalette.ColorRole.Base).name() == LIGHT.background.lower()
+
+    def test_描いたときサイドバーも暗い(self, window) -> None:
+        """パレットだけでなく、実際に描かれる色まで見る。"""
+        from PySide6.QtGui import QColor, QImage
+
+        from hitofude.theme import DARK
+
+        window.resize(1000, 400)
+        self.dark(window)
+        image = QImage(window.size(), QImage.Format.Format_ARGB32)
+        image.fill(QColor("magenta"))
+        window.render(image)
+
+        drawn = QColor(image.pixel(60, 250)).name()
+        assert drawn == DARK.background.lower(), f"サイドバーが {drawn}"
+
+    def test_描いたとき一覧も暗い(self, window) -> None:
+        from PySide6.QtGui import QColor, QImage
+
+        from hitofude.theme import DARK
+
+        window.resize(1000, 400)
+        self.dark(window)
+        image = QImage(window.size(), QImage.Format.Format_ARGB32)
+        image.fill(QColor("magenta"))
+        window.render(image)
+
+        drawn = QColor(image.pixel(300, 250)).name()
+        assert drawn == DARK.background.lower(), f"一覧が {drawn}"
+
+    def test_起動時から設定どおりの色になる(self, qtbot, tmp_path) -> None:
+        """**起動時にも当てる。** アプリのパレットは「システムのテーマ」で
+        当てられる一方、ウィンドウは「保存された設定」を使う。両者が
+        食い違っていると、切り替えの通知も飛ばないまま明るいまま残る
+        （実際にそうなっていた）。
+        """
+        from PySide6.QtCore import QSettings
+        from PySide6.QtGui import QPalette
+        from PySide6.QtWidgets import QApplication
+
+        from hitofude.config import Config
+        from hitofude.theme import DARK, ThemeMode
+        from hitofude.ui.main_window import MainWindow
+
+        settings = QSettings(str(tmp_path / "dark.ini"), QSettings.Format.IniFormat)
+        config = Config(settings)
+        config.vault_path = tmp_path / "DarkVault"
+        config.theme_mode = ThemeMode.DARK
+
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+        QApplication.processEvents()
+        try:
+            palette = QApplication.instance().palette()
+            assert palette.color(QPalette.ColorRole.Base).name() == DARK.background.lower()
+        finally:
+            window.close()
