@@ -155,3 +155,59 @@ def _deleted_kind():
     from hitofude.storage.watcher import ChangeKind
 
     return ChangeKind.DELETED
+
+
+class TestRecoveryPrompt:
+    """復元の問いかけ（`docs/manual_test.md` §4）。
+
+    **めったに出ないのが正常。** 打鍵から 800ms で本体ファイルへ保存され、
+    退避は消える。手で `kill -9` を撃つ頃には保存が済んでいるので、
+    尋ねられないのが正しい。ここでは出る条件と、その後の分岐を見る。
+    """
+
+    def crashed_with_unsaved(self, window) -> Path:
+        """打ちかけのまま落ちた状態を作る。"""
+        path = opened_note(window, "保存済みの本文\n")
+        window.editor.moveCursor(window.editor.textCursor().MoveOperation.End)
+        window.editor.textCursor().insertText("打ちかけで落ちた分")
+        window._on_save_tick()  # 200ms 相当。ここで退避ができる
+        return path
+
+    def test_保存が済んでいれば尋ねない(self, window, monkeypatch) -> None:
+        """打鍵から 800ms 経てば保存され、退避は残らない。"""
+        opened_note(window)
+        window.editor.moveCursor(window.editor.textCursor().MoveOperation.End)
+        window.editor.textCursor().insertText("書いた分")
+        window.flush()
+
+        assert window.pending_recovery() == []
+        assert window.offer_recovery() == []
+
+    def test_打ちかけなら退避が残る(self, window) -> None:
+        self.crashed_with_unsaved(window)
+        assert len(window.pending_recovery()) == 1
+
+    def test_承諾すると別ファイルにする(self, window, monkeypatch) -> None:
+        path = self.crashed_with_unsaved(window)
+        monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+
+        restored = window.offer_recovery()
+        assert len(restored) == 1
+        assert "打ちかけで落ちた分" in restored[0].read_text(encoding="utf-8")
+        assert "打ちかけで落ちた分" not in path.read_text(encoding="utf-8")
+
+    def test_断ると何も増えない(self, window, monkeypatch) -> None:
+        before = set(window.vault.root.glob("*.md"))
+        self.crashed_with_unsaved(window)
+        monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No)
+
+        assert window.offer_recovery() == []
+        assert set(window.vault.root.glob("*.md")) == before | {window.current_note.path}
+
+    def test_断ったら次は尋ねられない(self, window, monkeypatch) -> None:
+        """断ったのに毎回出てくるのは鬱陶しい。"""
+        self.crashed_with_unsaved(window)
+        monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No)
+        window.offer_recovery()
+
+        assert window.pending_recovery() == []
