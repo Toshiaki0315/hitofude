@@ -23,7 +23,9 @@ __all__ = [
     "enable_key_repeat",
     "key_repeat_enabled",
     "macos_app_name",
+    "macos_appearance",
     "set_macos_app_name",
+    "set_macos_appearance",
     "system_is_dark",
 ]
 
@@ -31,6 +33,8 @@ BUNDLE_NAME_KEY = "CFBundleName"
 # macOS は既定で、母音などを押し続けるとアクセント候補を出す。文章を書く
 # アプリでは繰り返しのほうが要る
 PRESS_AND_HOLD_KEY = "ApplePressAndHoldEnabled"
+DARK_APPEARANCE = "NSAppearanceNameDarkAqua"
+LIGHT_APPEARANCE = "NSAppearanceNameAqua"
 CF_UTF8 = 0x08000100
 NAME_BUFFER_BYTES = 512
 
@@ -188,6 +192,69 @@ def key_repeat_enabled() -> bool:
     except Exception:
         logger.debug("キーリピートの設定を読めなかった", exc_info=True)
         return False
+
+
+def set_macos_appearance(*, dark: bool) -> bool:
+    """アプリが明るい/暗いどちらの外観かを macOS へ伝える。
+
+    **`QPalette` だけでは足りない。** ネイティブの部品（環境設定の
+    ポップアップボタンなど）は OS が chrome を描くので、こちらが背景色を
+    指定しても明るいまま残る。そこへパレットの明るい文字色が乗って、
+    白地に薄いグレーで読めなくなっていた（ユーザー報告）。
+
+    塗り替えるのではなく**アプリの外観そのものを申告する**のが筋で、
+    ネイティブ部品がまとめて追従する。
+    """
+    if sys.platform != "darwin":
+        return False
+    try:
+        import ctypes
+
+        runtime = _objc()
+        if runtime is None:
+            return False
+
+        wanted = _nsstring(runtime, DARK_APPEARANCE if dark else LIGHT_APPEARANCE)
+        appearance = _send(
+            runtime,
+            runtime.objc_getClass(b"NSAppearance"),
+            "appearanceNamed:",
+            wanted,
+            types=(ctypes.c_void_p,),
+        )
+        if not appearance:
+            return False
+
+        application = _send(runtime, runtime.objc_getClass(b"NSApplication"), "sharedApplication")
+        _send(runtime, application, "setAppearance:", appearance, types=(ctypes.c_void_p,))
+        return True
+    except Exception:
+        # 外観が変わらないだけ。アプリを落とす理由にはならない
+        logger.debug("外観を切り替えられなかった", exc_info=True)
+        return False
+
+
+def macos_appearance() -> str | None:
+    """いまアプリが名乗っている外観。確認用。"""
+    if sys.platform != "darwin":
+        return None
+    try:
+        import ctypes
+
+        runtime = _objc()
+        if runtime is None:
+            return None
+
+        application = _send(runtime, runtime.objc_getClass(b"NSApplication"), "sharedApplication")
+        appearance = _send(runtime, application, "appearance")
+        if not appearance:
+            return None
+        name = _send(runtime, appearance, "name")
+        text = _send(runtime, name, "UTF8String", returns=ctypes.c_char_p)
+        return text.decode() if text else None
+    except Exception:
+        logger.debug("外観を読めなかった", exc_info=True)
+        return None
 
 
 def set_macos_app_name(name: str = APP_NAME) -> bool:

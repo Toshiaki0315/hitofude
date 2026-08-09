@@ -239,3 +239,73 @@ class TestPaletteRoles:
             QPalette.ColorRole.ButtonText,
         ):
             assert palette.color(role).name() in allowed, f"{role} が浮いている"
+
+
+class TestMacOSAppearance:
+    """アプリの外観そのものを macOS へ伝える（ユーザー報告）。
+
+    `QPalette` を暗くしても、ネイティブの部品（環境設定のポップアップ
+    ボタンなど）は **OS が明るい chrome のまま描く**。文字だけがこちらの
+    明るい色になり、白地に薄いグレーで読めなくなっていた。
+
+    パレットで塗り替えるのではなく、**アプリが暗い外観だと OS に伝える**
+    のが筋。ネイティブ部品がまとめて追従する。
+    """
+
+    def test_ダークにできる(self, qapp: QApplication) -> None:
+        from hitofude.app import macos_appearance, set_macos_appearance
+
+        if sys.platform != "darwin":
+            pytest.skip("macOS 専用")
+        assert set_macos_appearance(dark=True) is True
+        assert macos_appearance() == "NSAppearanceNameDarkAqua"
+
+    def test_ライトへ戻せる(self, qapp: QApplication) -> None:
+        from hitofude.app import macos_appearance, set_macos_appearance
+
+        if sys.platform != "darwin":
+            pytest.skip("macOS 専用")
+        set_macos_appearance(dark=True)
+        set_macos_appearance(dark=False)
+        assert macos_appearance() == "NSAppearanceNameAqua"
+
+    def test_macOS以外では何もしない(self, monkeypatch) -> None:
+        from hitofude.app import macos_appearance, set_macos_appearance
+
+        monkeypatch.setattr(sys, "platform", "linux")
+        assert set_macos_appearance(dark=True) is False
+        assert macos_appearance() is None
+
+    def test_例外が出ても止まらない(self, monkeypatch) -> None:
+        """外観が変わらないだけ。アプリを落とす理由にはならない。"""
+        import ctypes.util
+
+        from hitofude.app import set_macos_appearance
+
+        monkeypatch.setattr(ctypes.util, "find_library", lambda name: None)
+        assert set_macos_appearance(dark=True) is False
+
+    def test_テーマ設定に追従する(self, qtbot, tmp_path) -> None:
+        from PySide6.QtCore import QSettings
+
+        from hitofude.app import macos_appearance
+        from hitofude.config import Config
+        from hitofude.theme import ThemeMode
+        from hitofude.ui.main_window import MainWindow
+
+        if sys.platform != "darwin":
+            pytest.skip("macOS 専用")
+
+        settings = QSettings(str(tmp_path / "look.ini"), QSettings.Format.IniFormat)
+        config = Config(settings)
+        config.vault_path = tmp_path / "LookVault"
+        config.theme_mode = ThemeMode.DARK
+
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+        try:
+            assert macos_appearance() == "NSAppearanceNameDarkAqua"
+            window.theme_watcher.set_mode(ThemeMode.LIGHT)
+            assert macos_appearance() == "NSAppearanceNameAqua"
+        finally:
+            window.close()

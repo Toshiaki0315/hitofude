@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from hitofude import APP_NAME, __version__
-from hitofude.app import ThemeWatcher, apply_theme
+from hitofude.app import ThemeWatcher, apply_theme, set_macos_appearance
 from hitofude.config import Config
 from hitofude.core import frontmatter
 from hitofude.core.document import Note, with_title
@@ -1025,6 +1025,8 @@ class MainWindow(QMainWindow):
         application = QApplication.instance()
         if application is not None:
             apply_theme(cast(QApplication, application), colors)
+        # ネイティブの部品はパレットで塗り替えられない。外観そのものを申告する
+        set_macos_appearance(dark=colors.is_dark)
 
     def _on_theme_changed(self, colors: ThemeColors) -> None:
         self._apply_palette(colors)
