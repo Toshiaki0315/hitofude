@@ -148,7 +148,7 @@ class MainWindow(QMainWindow):
         # 切り替えの通知も飛ばないまま明るいまま残る
         self._apply_palette(theme)
 
-        self._sidebar = Sidebar()
+        self._sidebar = Sidebar(theme=theme)
         self._list_pane = NoteListPane(theme=theme)
         self._note_list = self._list_pane.note_list
         self._pane = EditorPane(
@@ -1032,6 +1032,7 @@ class MainWindow(QMainWindow):
         self._apply_palette(colors)
         self._pane.set_theme(colors)
         self._list_pane.set_theme(colors)
+        self._sidebar.set_theme(colors)
         self._splitter.set_rule_color(colors.rule)
 
     # ------------------------------------------------------------------ 終了

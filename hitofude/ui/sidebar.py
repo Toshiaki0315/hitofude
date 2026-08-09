@@ -15,6 +15,8 @@ from PySide6.QtWidgets import QTreeView, QWidget
 
 from hitofude.core import tags as tag_utils
 from hitofude.storage.index_db import TagCount
+from hitofude.theme import LIGHT, ThemeColors
+from hitofude.ui.icons import Glyph, glyph_icon
 
 ALL_LABEL = "すべて"
 PINNED_LABEL = "お気に入り"
@@ -29,6 +31,14 @@ class FilterKind(Enum):
     PINNED = auto()
     TRASH = auto()
     TAG = auto()
+
+
+_GLYPHS = {
+    FilterKind.ALL: Glyph.ALL,
+    FilterKind.PINNED: Glyph.PINNED,
+    FilterKind.TRASH: Glyph.TRASH,
+    FilterKind.TAG: Glyph.TAG,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,8 +107,10 @@ class Sidebar(QTreeView):
     filter_changed = Signal(object)
     """選ばれた `Filter`。"""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, *, theme: ThemeColors = LIGHT) -> None:
         super().__init__(parent)
+        self._theme = theme
+        self._counts: list[TagCount] = []
         self._model = QStandardItemModel(self)
         self.setModel(self._model)
         self.setHeaderHidden(True)
@@ -111,22 +123,33 @@ class Sidebar(QTreeView):
 
     # ------------------------------------------------------------------ 構築
 
+    def set_theme(self, theme: ThemeColors) -> None:
+        """アイコンをテーマの色で描き直す。
+
+        線で描いているので、色を変えるには作り直すしかない。項目ごと
+        組み直すのが単純で、サイドバーの規模なら問題にならない。
+        """
+        self._theme = theme
+        self.set_tags(self._counts)
+
     def set_tags(self, counts: list[TagCount]) -> None:
         """タグ一覧を差し替える。選択中の項目は可能なら保つ。"""
+        self._counts = list(counts)
         keep = self.current_filter()
         self._model.clear()
         root = self._model.invisibleRootItem()
 
+        color = self._theme.foreground
         for filter_ in (ALL, PINNED, TRASH):
-            root.appendRow(_make_item(filter_.label, filter_))
+            root.appendRow(_make_item(filter_.label, filter_, color))
 
         if counts:
-            header = QStandardItem(TAGS_LABEL)
+            header = QStandardItem(glyph_icon(Glyph.TAG, color), TAGS_LABEL)
             header.setSelectable(False)
             header.setEditable(False)
             root.appendRow(header)
             for node in build_tag_tree(counts):
-                header.appendRow(_make_tag_item(node))
+                header.appendRow(_make_tag_item(node, color))
             self.expandAll()
 
         if keep is not None:
@@ -160,17 +183,19 @@ class Sidebar(QTreeView):
             self.filter_changed.emit(target)
 
 
-def _make_item(label: str, target: Filter) -> QStandardItem:
-    item = QStandardItem(label)
+def _make_item(label: str, target: Filter, color: str) -> QStandardItem:
+    # **アイコンは絵として付ける。** ラベルに記号を混ぜると、選択の判定や
+    # タグ名の突き合わせに紛れ込む
+    item = QStandardItem(glyph_icon(_GLYPHS[target.kind], color), label)
     item.setEditable(False)
     item.setData(target, _FILTER_ROLE)
     return item
 
 
-def _make_tag_item(node: TagNode) -> QStandardItem:
-    item = _make_item(f"{node.label}  {node.count}", Filter(FilterKind.TAG, node.tag))
+def _make_tag_item(node: TagNode, color: str) -> QStandardItem:
+    item = _make_item(f"{node.label}  {node.count}", Filter(FilterKind.TAG, node.tag), color)
     for child in node.children:
-        item.appendRow(_make_tag_item(child))
+        item.appendRow(_make_tag_item(child, color))
     return item
 
 

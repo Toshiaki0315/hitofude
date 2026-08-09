@@ -5,7 +5,9 @@ import pytest
 from hitofude.storage.index_db import TagCount
 from hitofude.ui.sidebar import (
     ALL,
+    ALL_LABEL,
     PINNED,
+    TAGS_LABEL,
     TRASH,
     Filter,
     FilterKind,
@@ -129,3 +131,89 @@ class TestFilterLabel:
     )
     def test_表示名(self, target: Filter, expected: str) -> None:
         assert target.label == expected
+
+
+@pytest.fixture
+def sidebar(qtbot) -> Sidebar:
+    widget = Sidebar()
+    qtbot.addWidget(widget)
+    return widget
+
+
+class TestIcons:
+    """項目の左にアイコンを出す（ユーザー要望）。
+
+    テーマの色で描くので、切り替えたら描き直す必要がある。
+    """
+
+    def counts(self):
+        from hitofude.storage.index_db import TagCount
+
+        return [TagCount(tag="仕事", count=3), TagCount(tag="仕事/会議", count=1)]
+
+    def item_for(self, sidebar, target):
+        index = sidebar._find(target)
+        return sidebar._model.itemFromIndex(index)
+
+    @pytest.mark.parametrize("target", [ALL, PINNED, TRASH])
+    def test_固定の項目に付く(self, sidebar, target) -> None:
+        assert not self.item_for(sidebar, target).icon().isNull()
+
+    def test_タグの見出しにも付く(self, sidebar) -> None:
+        sidebar.set_tags(self.counts())
+        header = sidebar._model.item(3)
+        assert header.text() == TAGS_LABEL
+        assert not header.icon().isNull()
+
+    def test_タグの項目にも付く(self, sidebar) -> None:
+        sidebar.set_tags(self.counts())
+        item = self.item_for(sidebar, Filter(FilterKind.TAG, "仕事"))
+        assert not item.icon().isNull()
+
+    def test_種類ごとに違う(self, sidebar) -> None:
+        from PySide6.QtCore import QSize
+
+        seen = set()
+        for target in (ALL, PINNED, TRASH):
+            image = self.item_for(sidebar, target).icon().pixmap(QSize(32, 32)).toImage()
+            seen.add(bytes(image.constBits()))
+        assert len(seen) == 3
+
+    def test_テーマの色で描かれる(self, sidebar) -> None:
+        from PySide6.QtCore import QSize
+        from PySide6.QtGui import QColor
+
+        from hitofude.theme import DARK
+
+        sidebar.set_theme(DARK)
+        image = self.item_for(sidebar, ALL).icon().pixmap(QSize(32, 32)).toImage()
+        drawn = {
+            QColor(image.pixelColor(x, y)).name()
+            for y in range(image.height())
+            for x in range(image.width())
+            if image.pixelColor(x, y).alpha() > 128
+        }
+        assert drawn == {DARK.foreground.lower()}
+
+    def test_テーマを変えると描き直す(self, sidebar) -> None:
+        from PySide6.QtCore import QSize
+
+        from hitofude.theme import DARK, LIGHT
+
+        sidebar.set_theme(LIGHT)
+        light = bytes(
+            self.item_for(sidebar, ALL).icon().pixmap(QSize(32, 32)).toImage().constBits()
+        )
+        sidebar.set_theme(DARK)
+        dark = bytes(self.item_for(sidebar, ALL).icon().pixmap(QSize(32, 32)).toImage().constBits())
+        assert light != dark
+
+    def test_タグを入れ替えても残る(self, sidebar) -> None:
+        """一覧の再構築でアイコンが消えない。"""
+        sidebar.set_tags(self.counts())
+        sidebar.set_tags([])
+        assert not self.item_for(sidebar, ALL).icon().isNull()
+
+    def test_文字は変えない(self, sidebar) -> None:
+        """アイコンは絵として付ける。ラベルに記号を混ぜない。"""
+        assert self.item_for(sidebar, ALL).text() == ALL_LABEL
