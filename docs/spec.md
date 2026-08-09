@@ -310,6 +310,8 @@ inline         | map=[0, 1]
 
 - ライト / ダーク / システム追従の 3 モード。
 - 色は `theme.py` に `dataclass` で定義し、`QPalette` とハイライタの両方に流し込む。
+  ただし**それだけでは macOS のネイティブ部品に届かない**（**→ ADR-0006 で補足**）。
+  アプリの外観そのものも申告する。
 - macOS のダークモード切り替えは `QGuiApplication.styleHints().colorSchemeChanged` シグナルで検知。
 
 ### 5.4 キーバインド
