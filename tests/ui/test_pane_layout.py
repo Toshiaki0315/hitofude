@@ -205,3 +205,35 @@ class TestSaveOnClose:
         again = open_window(qtbot, config)
         again.toggle_sidebar()
         assert again.centralWidget().sizes()[0] == 220
+
+
+class TestToolbarVisibility:
+    """書式ツールバーの表示状態（B-1）。
+
+    ペインと同じ罠を踏まないこと。`isVisible()` で保存すると、隠した窓から
+    終了したときに「隠す」で覚えてしまう。
+    """
+
+    def test_既定で出ている(self, qtbot, config) -> None:
+        window = open_window(qtbot, config)
+        assert window.editor_pane.toolbar_visible() is True
+
+    def test_隠した状態が次の起動に残る(self, qtbot, config) -> None:
+        window = open_window(qtbot, config)
+        window.toggle_toolbar()
+        window.close()
+        assert open_window(qtbot, config).editor_pane.toolbar_visible() is False
+
+    def test_出した状態も残る(self, qtbot, config) -> None:
+        config.toolbar_visible = False
+        window = open_window(qtbot, config)
+        window.toggle_toolbar()
+        window.close()
+        assert open_window(qtbot, config).editor_pane.toolbar_visible() is True
+
+    def test_窓を隠して終了しても消えない(self, qtbot, config) -> None:
+        """`Cmd+H` の罠。ペインで実際に踏んだ（`test_pane_layout` の由来）。"""
+        window = open_window(qtbot, config)
+        window.hide()
+        window.close()
+        assert open_window(qtbot, config).editor_pane.toolbar_visible() is True

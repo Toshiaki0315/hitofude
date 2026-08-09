@@ -492,6 +492,62 @@ class MarkdownEditor(QPlainTextEdit):
         self._replace_current_block(new_line)
         return True
 
+    def cycle_heading(self) -> bool:
+        """段落 → H1 → H2 → H3 → 段落（ツールバーの「見出し」）。"""
+        if self._composing:
+            return False
+        self._replace_current_block(commands.cycle_heading(self.textCursor().block().text()))
+        return True
+
+    def toggle_bullet(self) -> bool:
+        """箇条書きにする / 外す。選んだ行すべてが対象。"""
+        return self._toggle_lines(commands.toggle_bullet)
+
+    def toggle_ordered(self) -> bool:
+        """番号付きにする / 外す。番号は 1 から振り直す。"""
+        return self._toggle_lines(commands.toggle_ordered)
+
+    def toggle_quote(self) -> bool:
+        """引用にする / 外す。"""
+        return self._toggle_lines(commands.toggle_quote)
+
+    def _toggle_lines(self, toggle: Callable[[list[str]], list[str]]) -> bool:
+        """行単位のトグルを選択範囲に当てる。
+
+        **行の一部だけを選んでいても、その行は丸ごと対象にする。** 行の途中に
+        リスト記号は付けられない。
+        """
+        if self._composing:
+            return False  # R6: 確定前の文字列を巻き込むとプリエディットが壊れる
+
+        cursor = self.textCursor()
+        document = self.document()
+        first = document.findBlock(cursor.selectionStart())
+        last = document.findBlock(cursor.selectionEnd())
+
+        lines = [
+            document.findBlockByNumber(number).text()
+            for number in range(first.blockNumber(), last.blockNumber() + 1)
+        ]
+        replaced = toggle(lines)
+        if replaced == lines:
+            return False  # 何も変わらないなら Undo スタックを消費しない
+
+        start = first.position()
+        edit = QTextCursor(first)
+        edit.beginEditBlock()
+        edit.setPosition(start)
+        edit.setPosition(last.position() + last.length() - 1, QTextCursor.MoveMode.KeepAnchor)
+        edit.insertText("\n".join(replaced))
+        edit.endEditBlock()
+
+        # **選択は行を覆ったまま残す。** 残さないと 2 回目が 1 行にしか
+        # 効かず、押し間違えたときに同じボタンで戻せない
+        edit.setPosition(start)
+        edit.setPosition(start + len("\n".join(replaced)), QTextCursor.MoveMode.KeepAnchor)
+        self.setTextCursor(edit)
+        return True
+
     def _handle_auto_pair(self, character: str) -> bool:
         """選択したまま囲み記号を押すと選択範囲を囲む（spec §5.5-4）。"""
         cursor = self.textCursor()

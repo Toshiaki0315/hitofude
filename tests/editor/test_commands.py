@@ -7,10 +7,14 @@ import pytest
 
 from hitofude.core.models import BlockInfo, BlockType
 from hitofude.editor.commands import (
+    cycle_heading,
     insert_link,
     is_url,
     shift_heading,
+    toggle_bullet,
     toggle_checkbox,
+    toggle_ordered,
+    toggle_quote,
     toggle_wrap,
 )
 
@@ -151,3 +155,153 @@ class TestToggleCheckbox:
 
     def test_情報が無くても段落として扱う(self) -> None:
         assert toggle_checkbox("なにか", None) == "- [ ] なにか"
+
+
+class TestToggleBullet:
+    """箇条書きのトグル（B-1 のツールバー）。
+
+    ツールバーは**複数行を選んで押す**のが普通なので、1 行だけの
+    `toggle_checkbox` とは別に、行の並びを受け取る形にする。
+    """
+
+    def test_付ける(self) -> None:
+        assert toggle_bullet(["りんご", "みかん"]) == ["- りんご", "- みかん"]
+
+    def test_全部付いていれば外す(self) -> None:
+        assert toggle_bullet(["- りんご", "- みかん"]) == ["りんご", "みかん"]
+
+    def test_一部だけ付いていれば揃える(self) -> None:
+        """半端な状態で押したら、外すのではなく揃うほうが期待に近い。"""
+        assert toggle_bullet(["- りんご", "みかん"]) == ["- りんご", "- みかん"]
+
+    def test_字下げは保つ(self) -> None:
+        assert toggle_bullet(["  りんご"]) == ["  - りんご"]
+
+    def test_番号付きから乗り換える(self) -> None:
+        """入れ子にせず置き換える。`- 1. りんご` は誰も望んでいない。"""
+        assert toggle_bullet(["1. りんご", "2. みかん"]) == ["- りんご", "- みかん"]
+
+    def test_空行は触らない(self) -> None:
+        """`- ` だけの行が増えても書き手の役に立たない。"""
+        assert toggle_bullet(["りんご", "", "みかん"]) == ["- りんご", "", "- みかん"]
+
+    def test_空行しか無ければ付ける(self) -> None:
+        """何も書いていない行で押したのは「これから書く」という意思。"""
+        assert toggle_bullet([""]) == ["- "]
+
+    @pytest.mark.parametrize("marker", ["- ", "* ", "+ "])
+    def test_どの記号でも外せる(self, marker: str) -> None:
+        assert toggle_bullet([f"{marker}りんご"]) == ["りんご"]
+
+    def test_チェックボックスは保つ(self) -> None:
+        """`- [ ] 買う` から `- ` だけ外すと `[ ] 買う` が残って壊れる。"""
+        assert toggle_bullet(["- [ ] 買う"]) == ["[ ] 買う"]
+
+
+class TestToggleOrdered:
+    def test_付ける(self) -> None:
+        assert toggle_ordered(["りんご", "みかん"]) == ["1. りんご", "2. みかん"]
+
+    def test_全部付いていれば外す(self) -> None:
+        assert toggle_ordered(["1. りんご", "2. みかん"]) == ["りんご", "みかん"]
+
+    def test_番号を振り直す(self) -> None:
+        assert toggle_ordered(["5. りんご", "9. みかん"]) == ["りんご", "みかん"]
+
+    def test_箇条書きから乗り換える(self) -> None:
+        assert toggle_ordered(["- りんご", "- みかん"]) == ["1. りんご", "2. みかん"]
+
+    def test_空行を飛ばしても番号は続く(self) -> None:
+        assert toggle_ordered(["りんご", "", "みかん"]) == ["1. りんご", "", "2. みかん"]
+
+    def test_字下げは保つ(self) -> None:
+        assert toggle_ordered(["  りんご"]) == ["  1. りんご"]
+
+    def test_閉じ括弧の記法も外せる(self) -> None:
+        assert toggle_ordered(["1) りんご"]) == ["りんご"]
+
+
+class TestToggleQuote:
+    def test_付ける(self) -> None:
+        assert toggle_quote(["引用"]) == ["> 引用"]
+
+    def test_外す(self) -> None:
+        assert toggle_quote(["> 引用"]) == ["引用"]
+
+    def test_入れ子は一段だけ外す(self) -> None:
+        assert toggle_quote(["> > 引用"]) == ["> 引用"]
+
+    def test_空行にも付ける(self) -> None:
+        """引用の中の空行は引用の一部。抜けると引用が途切れて別々の引用になる。
+        リストが空行を飛ばすのとは逆だが、Markdown の仕様がこうなっている。"""
+        assert toggle_quote(["一段目", "", "二段目"]) == ["> 一段目", "> ", "> 二段目"]
+
+    def test_一部だけ付いていれば揃える(self) -> None:
+        """既に引用の行は一段のまま。押すたびに深くならない。"""
+        assert toggle_quote(["> 引用", "地の文"]) == ["> 引用", "> 地の文"]
+
+    def test_全部引用なら深くせず外す(self) -> None:
+        """**このボタンでは入れ子を作れない。** 3 つのボタンで手応えを
+        揃えるほうを採った（深くしたいときは `>` を打てばよい）。"""
+        assert toggle_quote(["> 一段目", "> 二段目"]) == ["一段目", "二段目"]
+
+    def test_空行は付いているかの判定に入れない(self) -> None:
+        """空行のせいで「付いていない」と見なされると、外したいのに深くなる。"""
+        assert toggle_quote(["> 一段目", "", "> 二段目"]) == ["一段目", "", "二段目"]
+
+    def test_記号だけの行も外せる(self) -> None:
+        assert toggle_quote([">"]) == [""]
+
+
+class TestLineTogglesShareRules:
+    """3 つとも同じ約束で動くこと。ツールバーのボタンとして並ぶので、
+    押したときの手応えが違うと使う側が覚えられない。"""
+
+    @pytest.mark.parametrize("toggle", [toggle_bullet, toggle_ordered, toggle_quote])
+    def test_二度押すと元に戻る(self, toggle) -> None:
+        lines = ["りんご", "みかん"]
+        assert toggle(toggle(lines)) == lines
+
+    @pytest.mark.parametrize("toggle", [toggle_bullet, toggle_ordered, toggle_quote])
+    def test_元の並びを壊さない(self, toggle) -> None:
+        lines = ["りんご", "みかん"]
+        toggle(lines)
+        assert lines == ["りんご", "みかん"]
+
+    @pytest.mark.parametrize("toggle", [toggle_bullet, toggle_ordered, toggle_quote])
+    def test_行数は変わらない(self, toggle) -> None:
+        assert len(toggle(["あ", "", "い", "う"])) == 4
+
+
+class TestCycleHeading:
+    """ツールバーの「見出し」ボタン（B-1）。
+
+    `shift_heading` は上げ下げの 2 方向で、ボタン 1 つには収まらない。
+    段落 → H1 → H2 → H3 → 段落 と一周させる。H4〜H6 はツールバーからは
+    出さない（`Cmd+Ctrl+↑↓` で届く）。押すたびに深くなるだけのボタンは、
+    H6 で行き止まりになって戻せない。
+    """
+
+    def test_段落は見出しになる(self) -> None:
+        assert cycle_heading("メモ") == "# メモ"
+
+    @pytest.mark.parametrize(
+        ("line", "expected"),
+        [("# メモ", "## メモ"), ("## メモ", "### メモ"), ("### メモ", "メモ")],
+    )
+    def test_一周する(self, line: str, expected: str) -> None:
+        assert cycle_heading(line) == expected
+
+    @pytest.mark.parametrize("line", ["#### メモ", "##### メモ", "###### メモ"])
+    def test_深い見出しは段落へ戻す(self, line: str) -> None:
+        """手で打った H4〜H6 で行き止まりにしない。"""
+        assert cycle_heading(line) == "メモ"
+
+    def test_四回押すと元に戻る(self) -> None:
+        line = "メモ"
+        for _ in range(4):
+            line = cycle_heading(line)
+        assert line == "メモ"
+
+    def test_空行でも見出しにできる(self) -> None:
+        assert cycle_heading("") == "# "

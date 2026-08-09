@@ -34,6 +34,41 @@ class Glyph(Enum):
     TAG = auto()
     """タグ。"""
 
+    # ------------------------------------------- 書式ツールバー（B-1）
+
+    BOLD = auto()
+    """太字。"""
+
+    ITALIC = auto()
+    """斜体。"""
+
+    STRIKE = auto()
+    """打ち消し。"""
+
+    CODE = auto()
+    """コード。山括弧。"""
+
+    MARKER = auto()
+    """マーカー。引いた線。"""
+
+    LINK = auto()
+    """リンク。鎖の輪。"""
+
+    HEADING = auto()
+    """見出し。"""
+
+    BULLET = auto()
+    """箇条書き。点と行。"""
+
+    ORDERED = auto()
+    """番号付き。数字と行。"""
+
+    CHECKBOX = auto()
+    """チェックボックス。"""
+
+    QUOTE = auto()
+    """引用。縦線と行。本文での見え方（`painter_overlay`）に合わせる。"""
+
 
 def glyph_icon(glyph: Glyph, color: str, *, filled: bool = False) -> QIcon:
     """線で描いたアイコン。同じ指定なら描き直さない。
@@ -117,9 +152,150 @@ def _draw_tag(painter: QPainter) -> None:
     painter.drawEllipse(QPointF(21, 21), 4.5, 4.5)
 
 
+# ------------------------------------------------- 書式ツールバー（B-1）
+#
+# 太字・斜体・打ち消し・見出しは**字そのもの**を描く。B / I / S / H は
+# どの編集ソフトでも同じ絵で、線で描いた抽象記号より早く読める。
+# 残りは線で描く。引用は本文での見え方（`painter_overlay` の縦線）に揃える。
+
+_LETTER_SIZE = 44
+_LINE_LEFT, _LINE_RIGHT = 24.0, 54.0
+_LINE_ROWS = (17.0, 32.0, 47.0)
+
+
+def _letter(painter: QPainter, char: str, *, bold: bool = False, italic: bool = False) -> None:
+    font = painter.font()
+    font.setPixelSize(_LETTER_SIZE)
+    font.setBold(bold)
+    font.setItalic(italic)
+    painter.setFont(font)
+    # 字は塗りではなくペンの色で出る。輪郭用の太いペンは字には効かない
+    painter.drawText(QRectF(0, 0, CANVAS, CANVAS), Qt.AlignmentFlag.AlignCenter, char)
+
+
+def _rows(painter: QPainter, rows=_LINE_ROWS) -> None:
+    """本文を表す横線。リスト系のアイコンで共通に使う。"""
+    for y in rows:
+        painter.drawLine(QPointF(_LINE_LEFT, y), QPointF(_LINE_RIGHT, y))
+
+
+def _draw_bold(painter: QPainter) -> None:
+    _letter(painter, "B", bold=True)
+
+
+def _draw_italic(painter: QPainter) -> None:
+    """傾いた I。**字を斜体にしただけでは斜線にしか見えない**（実際に描いて確認）。
+    上下の横棒を足すと I だと読める。"""
+    painter.drawLine(QPointF(26, 14), QPointF(48, 14))
+    painter.drawLine(QPointF(16, 50), QPointF(38, 50))
+    painter.drawLine(QPointF(38, 14), QPointF(26, 50))
+
+
+def _draw_strike(painter: QPainter) -> None:
+    _letter(painter, "S")
+    painter.drawLine(QPointF(12, 32), QPointF(52, 32))
+
+
+def _draw_code(painter: QPainter) -> None:
+    """山括弧。"""
+    painter.drawPolyline([QPointF(24, 18), QPointF(10, 32), QPointF(24, 46)])
+    painter.drawPolyline([QPointF(40, 18), QPointF(54, 32), QPointF(40, 46)])
+
+
+def _draw_marker(painter: QPainter) -> None:
+    """マーカーペンと引いた線。
+
+    **横線だけで表すと箇条書き・引用と見分けが付かない**（実際に並べて確認）。
+    ペンの形を足して区別する。
+    """
+    pen = painter.pen()
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+
+    body = QPainterPath()  # 傾けたペン先
+    body.moveTo(QPointF(40, 8))
+    body.lineTo(QPointF(56, 24))
+    body.lineTo(QPointF(28, 44))
+    body.lineTo(QPointF(16, 44))
+    body.lineTo(QPointF(16, 32))
+    body.closeSubpath()
+    painter.drawPath(body)
+
+    stroke = QPen(pen)  # 引いた跡
+    stroke.setWidthF(9.0)
+    painter.setPen(stroke)
+    painter.drawLine(QPointF(14, 55), QPointF(50, 55))
+    painter.setPen(pen)
+
+
+def _draw_link(painter: QPainter) -> None:
+    """鎖の輪 2 つ。傾けた角丸で表す。"""
+    painter.save()
+    painter.translate(32, 32)
+    painter.rotate(-40)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRoundedRect(QRectF(-26, -11, 30, 22), 11, 11)
+    painter.drawRoundedRect(QRectF(-4, -11, 30, 22), 11, 11)
+    painter.restore()
+
+
+def _draw_heading(painter: QPainter) -> None:
+    _letter(painter, "H", bold=True)
+
+
+def _draw_bullet(painter: QPainter) -> None:
+    """点と行。"""
+    _rows(painter)
+    painter.setBrush(QBrush(painter.pen().color()))
+    for y in _LINE_ROWS:
+        painter.drawEllipse(QPointF(12, y), 3.5, 3.5)
+
+
+def _draw_ordered(painter: QPainter) -> None:
+    """数字と行。"""
+    _rows(painter)
+    font = painter.font()
+    font.setPixelSize(17)
+    painter.setFont(font)
+    for index, y in enumerate(_LINE_ROWS, start=1):
+        painter.drawText(
+            QRectF(0, y - 11, 20, 22),
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            str(index),
+        )
+
+
+def _draw_checkbox(painter: QPainter) -> None:
+    """四角とチェック。"""
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRoundedRect(QRectF(11, 11, 42, 42), 8, 8)
+    painter.drawPolyline([QPointF(20, 33), QPointF(29, 42), QPointF(45, 22)])
+
+
+def _draw_quote(painter: QPainter) -> None:
+    """縦線と行。本文での引用の見え方に合わせる。"""
+    pen = painter.pen()
+    bar = QPen(pen)
+    bar.setWidthF(7.0)
+    painter.setPen(bar)
+    painter.drawLine(QPointF(13, 15), QPointF(13, 49))
+    painter.setPen(pen)
+    _rows(painter, rows=(20.0, 32.0, 44.0))
+
+
 _DRAW = {
     Glyph.ALL: _draw_all,
     Glyph.PINNED: _draw_pinned,
     Glyph.TRASH: _draw_trash,
     Glyph.TAG: _draw_tag,
+    Glyph.BOLD: _draw_bold,
+    Glyph.ITALIC: _draw_italic,
+    Glyph.STRIKE: _draw_strike,
+    Glyph.CODE: _draw_code,
+    Glyph.MARKER: _draw_marker,
+    Glyph.LINK: _draw_link,
+    Glyph.HEADING: _draw_heading,
+    Glyph.BULLET: _draw_bullet,
+    Glyph.ORDERED: _draw_ordered,
+    Glyph.CHECKBOX: _draw_checkbox,
+    Glyph.QUOTE: _draw_quote,
 }

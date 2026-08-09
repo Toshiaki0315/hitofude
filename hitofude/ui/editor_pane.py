@@ -14,6 +14,7 @@ from hitofude.editor.editor_widget import (
 )
 from hitofude.theme import LIGHT, ThemeColors
 from hitofude.ui.find_bar import FindBar
+from hitofude.ui.format_toolbar import FormatToolbar
 
 
 class EditorPane(QWidget):
@@ -31,10 +32,13 @@ class EditorPane(QWidget):
         )
         self._find = FindBar(theme=theme)
         self._find.hide()
+        self._toolbar = FormatToolbar(self._editor, theme=theme)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+        # ツールバーは検索バーより上。押す頻度が高いものほど動かない位置に置く
+        layout.addWidget(self._toolbar)
         layout.addWidget(self._find)
         layout.addWidget(self._editor, 1)
 
@@ -53,6 +57,10 @@ class EditorPane(QWidget):
     @property
     def find_bar(self) -> FindBar:
         return self._find
+
+    @property
+    def toolbar(self) -> FormatToolbar:
+        return self._toolbar
 
     # ------------------------------------------------------------------ 操作
 
@@ -85,9 +93,21 @@ class EditorPane(QWidget):
         if self._find.query:
             self._on_find(self._find.query, backward)
 
+    def set_toolbar_visible(self, visible: bool) -> None:
+        self._toolbar.setVisible(visible)
+
+    def toolbar_visible(self) -> bool:
+        """隠す意思があるか。
+
+        **`isVisible()` では答えられない。** ウィンドウを出す前とウィンドウを
+        隠している間は、隠していなくても False になる（`ui/panes.py` と同じ罠）。
+        """
+        return not self._toolbar.isHidden()
+
     def set_theme(self, theme: ThemeColors) -> None:
         self._editor.set_theme(theme)
         self._find.set_theme(theme)
+        self._toolbar.set_theme(theme)
 
     # ------------------------------------------------------------------ 連携
 

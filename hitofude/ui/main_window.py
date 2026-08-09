@@ -212,6 +212,7 @@ class MainWindow(QMainWindow):
         # 順序が逆だと割り当てた幅がその場で捨てられる
         self._sidebar.setVisible(self._config.sidebar_visible)
         self._list_pane.setVisible(self._config.note_list_visible)
+        self._pane.set_toolbar_visible(self._config.toolbar_visible)
         self._splitter.restore_sizes(self._config.splitter_sizes)
 
     # ------------------------------------------------------------------ 参照
@@ -1017,6 +1018,9 @@ class MainWindow(QMainWindow):
     def toggle_note_list(self) -> None:
         self._splitter.toggle_pane(1)
 
+    def toggle_toolbar(self) -> None:
+        self._pane.set_toolbar_visible(not self._pane.toolbar_visible())
+
     def _apply_splitter_style(self, theme: ThemeColors) -> None:
         """ペインの境界に 1px の線を引く。"""
         self._splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {theme.rule}; }}")
@@ -1054,6 +1058,7 @@ class MainWindow(QMainWindow):
         self._config.splitter_sizes = self._splitter.sizes_to_keep()
         self._config.sidebar_visible = not self._sidebar.isHidden()
         self._config.note_list_visible = not self._list_pane.isHidden()
+        self._config.toolbar_visible = self._pane.toolbar_visible()
         self._config.window_geometry = self.saveGeometry()
         self._config.sync()
 

@@ -267,3 +267,86 @@ class TestUnknownCommandKeys:
         select(editor, 3, 5)
         qtbot.keyClick(editor, Qt.Key.Key_B, CMD)
         assert editor.toPlainText() == "これは**強調**です"
+
+
+class TestLineToggles:
+    """箇条書き・番号付き・引用（B-1 のツールバーから呼ぶ）。
+
+    純関数側は `tests/editor/test_commands.py`。ここは**選択範囲の解釈**と
+    **Undo が 1 手にまとまること**を見る。
+    """
+
+    def test_カーソル行に付ける(self, editor) -> None:
+        editor.setPlainText("りんご")
+        editor.toggle_bullet()
+        assert editor.toPlainText() == "- りんご"
+
+    def test_選んだ行すべてに付ける(self, editor) -> None:
+        editor.setPlainText("りんご\nみかん\nぶどう")
+        select(editor, 0, len("りんご\nみかん"))
+        editor.toggle_bullet()
+        assert editor.toPlainText() == "- りんご\n- みかん\nぶどう"
+
+    def test_行の途中までの選択でもその行は丸ごと対象(self, editor) -> None:
+        """`ご\nみ` だけ選んでも、行の一部にリストは付けられない。"""
+        editor.setPlainText("りんご\nみかん")
+        select(editor, 2, 5)
+        editor.toggle_bullet()
+        assert editor.toPlainText() == "- りんご\n- みかん"
+
+    def test_番号付きにする(self, editor) -> None:
+        editor.setPlainText("りんご\nみかん")
+        select(editor, 0, 7)
+        editor.toggle_ordered()
+        assert editor.toPlainText() == "1. りんご\n2. みかん"
+
+    def test_引用にする(self, editor) -> None:
+        editor.setPlainText("引用\nしたい")
+        select(editor, 0, 6)
+        editor.toggle_quote()
+        assert editor.toPlainText() == "> 引用\n> したい"
+
+    def test_二度押すと元に戻る(self, editor) -> None:
+        editor.setPlainText("りんご\nみかん")
+        select(editor, 0, 7)
+        editor.toggle_bullet()
+        editor.toggle_bullet()
+        assert editor.toPlainText() == "りんご\nみかん"
+
+    def test_選択は行を覆ったまま残る(self, editor) -> None:
+        """残らないと 2 回目が 1 行にしか効かず、二度押しで戻せない。"""
+        editor.setPlainText("りんご\nみかん")
+        select(editor, 0, 7)
+        editor.toggle_bullet()
+        cursor = editor.textCursor()
+        assert cursor.hasSelection()
+        assert editor.toPlainText()[cursor.selectionStart() : cursor.selectionEnd()] == (
+            "- りんご\n- みかん"
+        )
+
+    def test_Undoは1手で戻る(self, editor) -> None:
+        """ADR-0002 と同じ約束。3 行なら 3 手、では使い物にならない。"""
+        editor.setPlainText("りんご\nみかん\nぶどう")
+        select(editor, 0, len("りんご\nみかん\nぶどう"))
+        editor.toggle_bullet()
+        editor.undo()
+        assert editor.toPlainText() == "りんご\nみかん\nぶどう"
+
+    def test_変わらないときは何もしない(self, editor) -> None:
+        """Undo スタックを無駄に消費しない。
+
+        今ある 3 つのトグルはどれも必ず行が変わるので、この道は
+        通らない。将来「条件によっては変えない」トグルを足したときに
+        効くガードなので、ここでは直接呼んで確かめる。
+        """
+        editor.setPlainText("りんご")
+        assert editor._toggle_lines(lambda lines: list(lines)) is False
+        editor.undo()
+        assert editor.toPlainText() == "りんご"
+
+    def test_変換中は何もしない(self, editor) -> None:
+        """R6。確定前の文字列を巻き込むとプリエディットが壊れる。"""
+        editor.setPlainText("りんご")
+        editor._composing = True
+        assert editor.toggle_bullet() is False
+        assert editor.toPlainText() == "りんご"

@@ -37,6 +37,7 @@ _TRASH_DAYS = "trash/days"
 _SPLITTER = "layout/splitter"
 _SIDEBAR = "layout/sidebar_visible"
 _NOTE_LIST = "layout/note_list_visible"
+_TOOLBAR = "layout/toolbar_visible"
 _GEOMETRY = "layout/geometry"
 _LAST_NOTE = "session/last_note"
 
@@ -146,6 +147,15 @@ class Config:
     @note_list_visible.setter
     def note_list_visible(self, value: bool) -> None:
         self.settings.setValue(_NOTE_LIST, bool(value))
+
+    @property
+    def toolbar_visible(self) -> bool:
+        """書式ツールバー（B-1）。既定は出す。"""
+        return self.settings.value(_TOOLBAR, True, type=bool)
+
+    @toolbar_visible.setter
+    def toolbar_visible(self, value: bool) -> None:
+        self.settings.setValue(_TOOLBAR, bool(value))
 
     @property
     def window_geometry(self) -> QByteArray | None:

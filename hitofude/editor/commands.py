@@ -15,6 +15,9 @@ from hitofude.core.models import MAX_HEADING_LEVEL, BlockInfo, BlockType
 # spec §5.5-4: 選択状態でこれらを押すと選択範囲を囲む
 AUTO_PAIRS = {"*": "*", "`": "`", "[": "]", "(": ")", '"': '"'}
 
+# ツールバーの「見出し」ボタンが回る深さ。H4〜H6 は `Cmd+Ctrl+↑↓` で届く
+TOOLBAR_MAX_HEADING_LEVEL = 3
+
 _URL_RE = re.compile(r"^\s*[A-Za-z][A-Za-z0-9+.\-]*://\S+\s*$")
 _HEADING_RE = re.compile(r"^(?P<hashes>#{1,6})[ \t]+")
 _TASK_RE = re.compile(r"^(?P<prefix>[ \t]*[-*+][ \t]+)\[(?P<state>[ xX])\][ \t]+")
@@ -93,6 +96,23 @@ def shift_heading(line: str, delta: int) -> str | None:
     return f"{'#' * level} {body}"
 
 
+def cycle_heading(line: str) -> str:
+    """段落 → H1 → H2 → H3 → 段落 と一周させる（B-1 のツールバー）。
+
+    `shift_heading` は上げ下げの 2 方向で、ボタン 1 つには収まらない。
+    押すたびに深くなるだけにすると **H6 で行き止まり**になって戻せない。
+
+    H4〜H6 はツールバーからは出さない（`Cmd+Ctrl+↑↓` で届く）。手で打った
+    H4 以下でここを押したときは段落へ戻す。行き止まりを作らないため。
+    """
+    heading = _HEADING_RE.match(line)
+    current = len(heading.group("hashes")) if heading else 0
+    body = line[heading.end() :] if heading else line
+
+    level = current + 1 if current < TOOLBAR_MAX_HEADING_LEVEL else 0
+    return f"{'#' * level} {body}" if level else body
+
+
 def toggle_checkbox(line: str, info: BlockInfo | None) -> str | None:
     """チェックボックスを切り替える（spec §5.4 の `Cmd+Shift+T`）。
 
@@ -112,3 +132,94 @@ def toggle_checkbox(line: str, info: BlockInfo | None) -> str | None:
     if info is not None and info.type in (BlockType.HEADING, BlockType.CODE_FENCE_BODY):
         return None  # 見出しやコードをタスクにするのは事故でしかない
     return f"- [ ] {line}"
+
+
+# ------------------------------------------------------- 行単位のトグル（B-1）
+#
+# ツールバーのボタンは**複数行を選んで押す**のが普通なので、1 行を受ける
+# `toggle_checkbox` とは別に、行の並びを受けて並びを返す形にする。
+#
+# 3 つに共通の約束（`TestLineTogglesShareRules` が固定している）:
+#
+# - **全部付いていれば外す。一部だけなら揃える。** 半端な状態で押したときに
+#   外れると、揃えたかった側の意図と正反対になる
+# - 行数を変えない。入力を書き換えない
+# - 字下げは保つ
+
+_INDENT_RE = re.compile(r"^[ \t]*")
+_ORDERED_RE = re.compile(r"^(?P<indent>[ \t]*)\d{1,9}[.)][ \t]+")
+_UNORDERED_RE = re.compile(r"^(?P<indent>[ \t]*)[-*+][ \t]+")
+_QUOTE_RE = re.compile(r"^> ?")
+
+
+def toggle_bullet(lines: list[str]) -> list[str]:
+    """箇条書きにする / 外す。番号付きからは乗り換える。"""
+    return _toggle_list(lines, numbered=False)
+
+
+def toggle_ordered(lines: list[str]) -> list[str]:
+    """番号付きにする / 外す。番号は 1 から振り直す。"""
+    return _toggle_list(lines, numbered=True)
+
+
+def _toggle_list(lines: list[str], *, numbered: bool) -> list[str]:
+    """リスト記号の付け外し。
+
+    **空行は触らない。** `- ` だけの行が増えても書き手の役に立たない。
+    ただし空行しか無いとき（何も書いていない行で押したとき）は付ける。
+    「これから書く」という意思なので、そこで何も起きないほうが困る。
+    """
+    wanted = _ORDERED_RE if numbered else _UNORDERED_RE
+    targets = [index for index, line in enumerate(lines) if line.strip()] or list(range(len(lines)))
+    removing = all(wanted.match(lines[index]) for index in targets)
+
+    result = list(lines)
+    number = 0
+    for index in targets:
+        line = lines[index]
+        # 付けるときは、今の記号（`- ` でも `1. ` でも）を落としてから付け直す。
+        # 落とさないと `- 1. りんご` のような入れ子ができる
+        stripped, indent = _without_list_marker(line)
+        if removing:
+            result[index] = stripped
+            continue
+        number += 1
+        marker = f"{number}. " if numbered else "- "
+        result[index] = f"{indent}{marker}{stripped.lstrip()}"
+    return result
+
+
+def _without_list_marker(line: str) -> tuple[str, str]:
+    """リスト記号を外した行と、その行の字下げ。
+
+    チェックボックスは記号の一部として扱わない。`- [ ] 買う` から `- ` だけ
+    外すと `[ ] 買う` が残る。**残す**のが正しい。チェックを消したいなら
+    チェックボックスのトグルで消せる。
+    """
+    indent = _INDENT_RE.match(line).group()
+    for pattern in (_ORDERED_RE, _UNORDERED_RE):
+        found = pattern.match(line)
+        if found is not None:
+            return line[found.end() :], indent
+    return line[len(indent) :], indent
+
+
+def toggle_quote(lines: list[str]) -> list[str]:
+    """引用にする / 外す。
+
+    **空行も引用にする。** 引用の中の空行が引用から抜けると、そこで引用が
+    途切れて別々の引用になる。リストが空行を飛ばすのとは逆だが、Markdown の
+    仕様がそうなっている以上こちらが正しい。
+
+    ただし**付いているかの判定には空行を入れない。** 入れると、空行を挟んだ
+    引用を選んで押したときに「付いていない」と見なされ、外したいのに一段
+    深くなる。
+
+    **このボタンでは入れ子を作れない**（全部引用なら外れる）。3 つのボタンで
+    手応えを揃えるほうを採った。深くしたいときは `>` を打てばよい。
+    """
+    targets = [line for line in lines if line.strip()] or lines
+    if all(_QUOTE_RE.match(line) for line in targets):
+        return [_QUOTE_RE.sub("", line, count=1) for line in lines]
+    # 既に引用の行はそのまま。押すたびに深くなると、揃えたかった意図と食い違う
+    return [line if _QUOTE_RE.match(line) else f"> {line}" if line else "> " for line in lines]
