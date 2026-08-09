@@ -26,7 +26,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from hitofude.config import MAX_POINT_SIZE, MIN_POINT_SIZE, Config
+from hitofude.config import (
+    DEFAULT_FONT_FAMILY,
+    DEFAULT_MONO_FAMILY,
+    DEFAULT_POINT_SIZE,
+    DEFAULT_TRASH_DAYS,
+    MAX_POINT_SIZE,
+    MIN_POINT_SIZE,
+    Config,
+)
 from hitofude.theme import ThemeMode
 
 THEME_LABELS = {
@@ -96,6 +104,13 @@ class PreferencesDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
+        # `ResetRole` に置くと OS の作法どおり左端へ並ぶ
+        self._reset = buttons.addButton("デフォルトに戻す", QDialogButtonBox.ButtonRole.ResetRole)
+        self._reset.setToolTip(
+            "フォント・テーマ・ゴミ箱の保持を既定へ戻します（保管フォルダはそのまま）"
+        )
+        self._reset.clicked.connect(self.reset_to_defaults)
+
         layout = QVBoxLayout(self)
         layout.addLayout(form)
         layout.addWidget(self._restart_note)
@@ -104,6 +119,10 @@ class PreferencesDialog(QDialog):
         self._pending_vault: Path | None = None
 
     # ------------------------------------------------------------------ 参照
+
+    @property
+    def reset_button(self) -> QPushButton:
+        return self._reset
 
     @property
     def selected_theme(self) -> ThemeMode:
@@ -127,6 +146,21 @@ class PreferencesDialog(QDialog):
         self._pending_vault = path
         self._vault_label.setText(str(path))
         self._restart_note.setVisible(path != self._config.vault_path)
+
+    def reset_to_defaults(self) -> None:
+        """入力欄を既定値に戻す。
+
+        **保管フォルダは戻さない。** そこはノートの置き場であって好みの設定では
+        ない。戻すと別のフォルダ（多くは空）を指すことになり、ノートが消えた
+        ように見える。
+
+        書き込むのは OK を押したとき。間違えて押しても Cancel で元に戻せる。
+        """
+        self._font.setCurrentText(DEFAULT_FONT_FAMILY)
+        self._size.setValue(DEFAULT_POINT_SIZE)
+        self._mono.setCurrentText(DEFAULT_MONO_FAMILY)
+        self._theme.setCurrentIndex(self._theme.findData(ThemeMode.SYSTEM))
+        self._trash_days.setValue(DEFAULT_TRASH_DAYS)
 
     def accept(self) -> None:
         self.apply()

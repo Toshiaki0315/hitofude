@@ -115,3 +115,114 @@ class TestBounds:
 
     def test_保持日数は1日以上(self, dialog) -> None:
         assert dialog._trash_days.minimum() >= 1
+
+
+class TestResetToDefaults:
+    """「デフォルトに戻す」（ユーザー要望）。
+
+    **保管フォルダは戻さない。** そこはノートの置き場であって好みの設定では
+    ない。戻すと別のフォルダ（多くは空）を指すことになり、ノートが消えたように
+    見える。ボタンにもその旨を出す。
+
+    押した時点では**入力欄を書き換えるだけ**。書き込むのは OK を押したとき。
+    間違えて押しても Cancel で元に戻せる。
+    """
+
+    def defaults(self):
+        from hitofude.config import (
+            DEFAULT_FONT_FAMILY,
+            DEFAULT_MONO_FAMILY,
+            DEFAULT_POINT_SIZE,
+            DEFAULT_TRASH_DAYS,
+        )
+
+        return DEFAULT_FONT_FAMILY, DEFAULT_POINT_SIZE, DEFAULT_MONO_FAMILY, DEFAULT_TRASH_DAYS
+
+    def customized(self, config: Config) -> None:
+        config.font_family = "Times New Roman"
+        config.font_point_size = 22.0
+        config.mono_family = "Courier New"
+        config.theme_mode = ThemeMode.DARK
+        config.trash_days = 7
+
+    def test_ボタンがある(self, dialog) -> None:
+        assert "デフォルト" in dialog.reset_button.text()
+
+    def test_何を戻さないか書いてある(self, dialog) -> None:
+        assert "保管フォルダ" in dialog.reset_button.toolTip()
+
+    def test_入力欄が既定値に戻る(self, qtbot, config: Config) -> None:
+        self.customized(config)
+        widget = PreferencesDialog(config)
+        qtbot.addWidget(widget)
+
+        widget.reset_to_defaults()
+        font, size, mono, days = self.defaults()
+        assert widget._font.currentText() == font
+        assert widget._size.value() == size
+        assert widget._mono.currentText() == mono
+        assert widget._trash_days.value() == days
+
+    def test_テーマも既定に戻る(self, qtbot, config: Config) -> None:
+        self.customized(config)
+        widget = PreferencesDialog(config)
+        qtbot.addWidget(widget)
+
+        widget.reset_to_defaults()
+        assert widget.selected_theme is ThemeMode.SYSTEM
+
+    def test_保管フォルダは変えない(self, qtbot, config: Config, tmp_path) -> None:
+        moved = tmp_path / "別の場所"
+        moved.mkdir()
+        config.vault_path = moved
+        widget = PreferencesDialog(config)
+        qtbot.addWidget(widget)
+
+        widget.reset_to_defaults()
+        assert widget.selected_vault == moved
+
+    def test_押しただけでは設定を書き換えない(self, qtbot, config: Config) -> None:
+        """Cancel で元に戻せること。"""
+        self.customized(config)
+        widget = PreferencesDialog(config)
+        qtbot.addWidget(widget)
+
+        widget.reset_to_defaults()
+        assert config.font_family == "Times New Roman"
+        assert config.trash_days == 7
+
+    def test_OKで既定が書き込まれる(self, qtbot, config: Config) -> None:
+        self.customized(config)
+        widget = PreferencesDialog(config)
+        qtbot.addWidget(widget)
+
+        widget.reset_to_defaults()
+        widget.accept()
+
+        font, size, mono, days = self.defaults()
+        assert config.font_family == font
+        assert config.font_point_size == size
+        assert config.mono_family == mono
+        assert config.trash_days == days
+        assert config.theme_mode is ThemeMode.SYSTEM
+
+    def test_Cancelなら元のまま(self, qtbot, config: Config) -> None:
+        self.customized(config)
+        widget = PreferencesDialog(config)
+        qtbot.addWidget(widget)
+
+        widget.reset_to_defaults()
+        widget.reject()
+        assert config.font_family == "Times New Roman"
+        assert config.theme_mode is ThemeMode.DARK
+
+    def test_押すと反映される(self, qtbot, config: Config) -> None:
+        """ボタンの接続が繋がっているか（配線漏れの回帰）。"""
+        from PySide6.QtCore import Qt
+
+        self.customized(config)
+        widget = PreferencesDialog(config)
+        qtbot.addWidget(widget)
+
+        qtbot.mouseClick(widget.reset_button, Qt.MouseButton.LeftButton)
+        assert widget._trash_days.value() == self.defaults()[3]
