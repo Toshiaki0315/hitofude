@@ -224,6 +224,11 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._build_formats()
         self.rehighlight()  # テーマ変更は全体再ハイライトが許される数少ない場面（R7）
 
+    @property
+    def mono_family(self) -> str:
+        """等幅フォント名。タブ幅の計算にも使う（`editor_widget._apply_tab_width`）。"""
+        return self._mono_family
+
     def set_mono_family(self, family: str) -> None:
         """コード・表に使う等幅フォント（spec §5.2）。"""
         if family == self._mono_family:

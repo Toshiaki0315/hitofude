@@ -191,9 +191,12 @@ class TestTabWidth:
     """
 
     def advance(self, editor, text: str) -> float:
-        from PySide6.QtGui import QFontMetricsF
+        """**等幅フォント**での幅。タブが効くのはコードブロックの中。"""
+        from PySide6.QtGui import QFont, QFontMetricsF
 
-        return QFontMetricsF(editor.font()).horizontalAdvance(text)
+        font = QFont(editor.highlighter.mono_family)
+        font.setPointSizeF(editor.font().pointSizeF())
+        return QFontMetricsF(font).horizontalAdvance(text)
 
     def test_既定は4文字ぶん(self, editor) -> None:
         assert editor.tabStopDistance() == pytest.approx(self.advance(editor, "    "), abs=1)
@@ -208,12 +211,21 @@ class TestTabWidth:
         editor.set_base_point_size(30.0)
         assert editor.tabStopDistance() > before
 
-    def test_フォントを変えても追従する(self, editor) -> None:
-        editor.set_tab_width(8)
-        wide = editor.tabStopDistance()
-        editor.set_font_family("Menlo")
-        assert editor.tabStopDistance() == pytest.approx(self.advance(editor, " " * 8), abs=1)
-        assert wide != editor.tabStopDistance() or True  # フォント次第で同じこともある
+    def test_等幅フォントを変えると追従する(self, editor) -> None:
+        editor.set_tab_width(4)
+        before = editor.tabStopDistance()
+        editor.set_mono_family("Courier")
+        # **等幅フォントの字幅に一致すること**が要件。値が変わるかは環境依存
+        # （Menlo と Courier は空白幅が同じことがある。実際に踏んだ）
+        assert editor.tabStopDistance() == pytest.approx(self.advance(editor, "    "), abs=1)
+        assert before > 0
+
+    def test_コードブロックの中でちょうど4文字ぶん(self, editor) -> None:
+        """**ユーザー報告の回帰。** 本文フォント（Hiragino）の空白幅で
+        計算していたので、等幅（Menlo）のコードブロックでは 2.2 文字ぶんに
+        しか見えなかった（実測: Hiragino の空白 6.66px、Menlo は 12.03px）。"""
+        editor.set_tab_width(4)
+        assert editor.tabStopDistance() == pytest.approx(self.advance(editor, "    "), abs=1)
 
     def test_今の幅を答える(self, editor) -> None:
         editor.set_tab_width(3)

@@ -47,6 +47,8 @@ THEME_LABELS = {
 }
 
 MAX_TRASH_DAYS = 3650
+# タブ幅の入力欄。1 桁ぶん + 矢印が収まればよい
+TAB_WIDTH_FIELD = 70
 
 
 class PreferencesDialog(QDialog):
@@ -79,10 +81,17 @@ class PreferencesDialog(QDialog):
 
         self._tab_width = QSpinBox(self)
         self._tab_width.setRange(MIN_TAB_WIDTH, MAX_TAB_WIDTH)
-        self._tab_width.setSuffix(" 文字")
         self._tab_width.setValue(config.tab_width)
         self._tab_width.setToolTip("タブを何文字ぶんの幅で見せるか。書いた文字は変わりません。")
-        form.addRow("タブ幅", self._tab_width)
+        # **単位を接尾辞にしない。** `setSuffix(" 文字")` だと矢印が「文字」の
+        # 右に付いて数字から離れる（ユーザー要望）。数字と単位を分け、
+        # 矢印は数字のすぐ横に置く
+        self._tab_width.setMaximumWidth(TAB_WIDTH_FIELD)
+        tab_row = QHBoxLayout()
+        tab_row.addWidget(self._tab_width)
+        tab_row.addWidget(QLabel("文字", self))
+        tab_row.addStretch(1)
+        form.addRow("タブ幅", tab_row)
 
         self._theme = QComboBox(self)
         for mode, label in THEME_LABELS.items():

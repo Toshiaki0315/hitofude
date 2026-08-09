@@ -85,13 +85,14 @@ class MarkdownEditor(QPlainTextEdit):
         self.setFrameShape(QPlainTextEdit.Shape.NoFrame)
         self.setTabChangesFocus(False)
         self._tab_width = DEFAULT_TAB_WIDTH
-        self._apply_tab_width()
 
         self._images = ImageCache()
         self._highlighter = MarkdownHighlighter(
             self.document(), theme, base_point_size=base_point_size
         )
         self._highlighter.set_image_source(self._images, self.image_width())
+        # 等幅フォントの字幅で決まるので、ハイライタを作ったあとに呼ぶ
+        self._apply_tab_width()
 
         # リビールで掛け直す「旧ブロック」を覚えておく（R7）
         self._last_block = 0
@@ -215,8 +216,16 @@ class MarkdownEditor(QPlainTextEdit):
         self._apply_tab_width()
 
     def _apply_tab_width(self) -> None:
-        metrics = QFontMetricsF(self.font())
-        self.setTabStopDistance(metrics.horizontalAdvance(" " * self._tab_width))
+        """**等幅フォントの空白幅**で決める。
+
+        本文フォントで決めると、コードブロックの中で文字数が合わない。
+        Hiragino Sans の空白は 6.66px、Menlo は 12.03px（15pt での実測）なので、
+        「4 文字」と設定してもコードの中では 2.2 文字ぶんにしか見えなかった
+        （ユーザー報告）。タブを使うのはほぼコードの中なので、そちらに合わせる。
+        """
+        font = QFont(self._highlighter.mono_family)
+        font.setPointSizeF(self.font().pointSizeF())
+        self.setTabStopDistance(QFontMetricsF(font).horizontalAdvance(" " * self._tab_width))
 
     def set_font_family(self, family: str) -> None:
         font = self.font()
@@ -226,6 +235,7 @@ class MarkdownEditor(QPlainTextEdit):
 
     def set_mono_family(self, family: str) -> None:
         self._highlighter.set_mono_family(family)
+        self._apply_tab_width()  # タブ幅は等幅フォントの字幅で決まる
 
     def format_table(self) -> bool:
         """キャレットのある表の縦線を揃える（spec §1.2）。
@@ -601,6 +611,8 @@ class MarkdownEditor(QPlainTextEdit):
         """画像を探す起点（保管フォルダ）。変えると抱えていた絵を捨てる。"""
         self._images.set_base_path(base_path)
         self._highlighter.set_image_source(self._images, self.image_width())
+        # 等幅フォントの字幅で決まるので、ハイライタを作ったあとに呼ぶ
+        self._apply_tab_width()
         self._highlighter.rehighlight()
 
     def refresh_images(self) -> None:

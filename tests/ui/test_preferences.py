@@ -291,3 +291,36 @@ class TestTabWidthApplied:
         config.tab_width = 8
         window._apply_preferences()
         assert window.editor.tab_width() == 8
+
+
+class TestTabWidthLayout:
+    """タブ幅の入力欄の並び（ユーザー要望）。
+
+    `setSuffix(" 文字")` だと**矢印が「文字」の右**に付き、数字から離れる。
+    数字と単位を分け、矢印は数字のすぐ横に置く。
+    """
+
+    def test_単位を接尾辞にしない(self, config, qtbot) -> None:
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        assert dialog._tab_width.suffix() == ""
+
+    def test_数字だけが入っている(self, config, qtbot) -> None:
+        config.tab_width = 4
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        assert dialog._tab_width.text() == "4"
+
+    def test_単位のラベルが隣にある(self, config, qtbot) -> None:
+        from PySide6.QtWidgets import QLabel
+
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        labels = [w.text() for w in dialog.findChildren(QLabel)]
+        assert "文字" in labels
+
+    def test_入力欄は数字ぶんの幅(self, config, qtbot) -> None:
+        """横いっぱいに伸びると、矢印が遠くなる。"""
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        assert dialog._tab_width.maximumWidth() < 200
