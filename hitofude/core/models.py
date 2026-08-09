@@ -79,6 +79,13 @@ class BlockState:
     in_code: bool = False
     in_front_matter: bool = False
     in_table: bool = False
+    after_blank: bool = True
+    """直前が空行か。インデントコードは空行の後でしか始まらない（CommonMark）。"""
+
+    in_list: bool = False
+    """リストの中か。中では字下げが入れ子を意味するのでコードにしない（§6.4）。"""
+
+    in_indented_code: bool = False
     quote_depth: int = 0
     fence_char: str = ""
     fence_len: int = 0
@@ -91,6 +98,9 @@ class BlockState:
     _QUOTE_MASK = 0b1111
     _FENCE_LEN_SHIFT = 8
     _FENCE_LEN_MASK = 0b11111
+    _NOT_AFTER_BLANK = 1 << 13
+    _IN_LIST = 1 << 14
+    _INDENTED_CODE = 1 << 15
 
     MAX_QUOTE_DEPTH = _QUOTE_MASK
     MAX_FENCE_LEN = _FENCE_LEN_MASK
@@ -112,6 +122,14 @@ class BlockState:
             value |= self._TILDE_FENCE
         value |= min(self.quote_depth, self.MAX_QUOTE_DEPTH) << self._QUOTE_SHIFT
         value |= min(self.fence_len, self.MAX_FENCE_LEN) << self._FENCE_LEN_SHIFT
+        if not self.after_blank:
+            # **既定を 0 のままにするため反転して持つ。** 初期状態（文書の先頭）は
+            # 空行の後と同じ扱いで、`encode()` が 0 でなければならない
+            value |= self._NOT_AFTER_BLANK
+        if self.in_list:
+            value |= self._IN_LIST
+        if self.in_indented_code:
+            value |= self._INDENTED_CODE
         return value
 
     @classmethod
@@ -130,6 +148,9 @@ class BlockState:
             quote_depth=(value >> cls._QUOTE_SHIFT) & cls._QUOTE_MASK,
             fence_char=fence_char,
             fence_len=(value >> cls._FENCE_LEN_SHIFT) & cls._FENCE_LEN_MASK if in_code else 0,
+            after_blank=not (value & cls._NOT_AFTER_BLANK),
+            in_list=bool(value & cls._IN_LIST),
+            in_indented_code=bool(value & cls._INDENTED_CODE),
         )
 
 

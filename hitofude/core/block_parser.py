@@ -19,6 +19,10 @@ from hitofude.core.models import BlockInfo, BlockState, BlockType
 _MD = MarkdownIt("commonmark").enable(["table", "strikethrough"])
 
 _QUOTE_PREFIX_RE = re.compile(r"^(?:[ \t]*>[ \t]?)+")
+INDENTED_CODE_WIDTH = 4
+_LIST_TYPES = frozenset(
+    {BlockType.BULLET_LIST_ITEM, BlockType.ORDERED_LIST_ITEM, BlockType.TASK_LIST_ITEM}
+)
 _HEADING_MARKER_RE = re.compile(r"^[ \t]*#{1,6}[ \t]*")
 _TASK_MARKER_RE = re.compile(r"^[ \t]*[-*+][ \t]+\[(?P<state>[ xX])\][ \t]+")
 _BULLET_MARKER_RE = re.compile(r"^[ \t]*[-*+][ \t]+")
@@ -303,7 +307,7 @@ def classify_line(text: str, line: int, state: BlockState) -> tuple[BlockInfo, B
             in_code=True, fence_char=marker[0], fence_len=len(marker), quote_depth=0
         )
 
-    return _classify_body(text, line, state_in_table=state.in_table)
+    return _classify_body(text, line, state=state)
 
 
 def _classify_front_matter(text: str, line: int, state: BlockState) -> tuple[BlockInfo, BlockState]:
@@ -327,14 +331,28 @@ def _classify_inside_fence(text: str, line: int, state: BlockState) -> tuple[Blo
 
 
 def _classify_body(
-    text: str, line: int, *, state_in_table: bool = False
+    text: str, line: int, *, state: BlockState | None = None
 ) -> tuple[BlockInfo, BlockState]:
+    context = state or BlockState()
     quote = _QUOTE_PREFIX_RE.match(text)
     quote_len = quote.end() if quote else 0
     quote_depth = text.count(">", 0, quote_len) if quote else 0
     body = text[quote_len:]
+    blank = not body.strip()
 
-    block = _classify_leaf(body, line, quote_len, in_table=state_in_table)
+    if _is_indented_code(body, context, blank=blank):
+        block = BlockInfo(line=line, type=BlockType.CODE_FENCE_BODY)
+        if quote_depth:
+            block = replace(block, quote_depth=quote_depth, marker_len=quote_len)
+        return block, replace(
+            context,
+            quote_depth=quote_depth,
+            in_table=False,
+            after_blank=False,
+            in_indented_code=True,
+        )
+
+    block = _classify_leaf(body, line, quote_len, in_table=context.in_table)
     in_table = block.type in (BlockType.TABLE_DELIMITER, BlockType.TABLE_ROW)
 
     if quote_depth:
@@ -342,7 +360,55 @@ def _classify_body(
         marker_len = quote_len if kind is BlockType.BLOCKQUOTE else block.marker_len
         block = replace(block, type=kind, quote_depth=quote_depth, marker_len=marker_len)
 
-    return block, BlockState(quote_depth=quote_depth, in_table=in_table)
+    return block, BlockState(
+        quote_depth=quote_depth,
+        in_table=in_table,
+        after_blank=blank,
+        in_list=_next_in_list(block.type, context, blank=blank),
+        # 空行はコードを終わらせない。次の字下げ行で続きになる（CommonMark）
+        in_indented_code=context.in_indented_code and blank,
+    )
+
+
+def _is_indented_code(body: str, state: BlockState, *, blank: bool) -> bool:
+    """その行がインデントコードか。
+
+    **行だけを見て決めるには文脈が要る。** 4 スペース下がっていても、
+    段落の続き（前の行が空行でない）なら段落だし、リストの中なら入れ子の
+    項目になる（§6.4）。`parse()` は markdown-it が文書全体を見て決めるが、
+    ハイライタは 1 行ずつしか見られないので、`BlockState` に持たせている。
+    """
+    if blank or state.in_list:
+        return False
+    if _indent_width(body) < INDENTED_CODE_WIDTH:
+        return False
+    return state.in_indented_code or state.after_blank
+
+
+def _indent_width(body: str) -> int:
+    """タブを 4 桁として数えた字下げ幅。"""
+    width = 0
+    for char in body:
+        if char == " ":
+            width += 1
+        elif char == "\t":
+            width += INDENTED_CODE_WIDTH
+        else:
+            break
+    return width
+
+
+def _next_in_list(kind: BlockType, state: BlockState, *, blank: bool) -> bool:
+    """次の行がリストの中にいるか。
+
+    リストは空行を挟んでも続きうるので、空行では判断を変えない。
+    字下げのない別のブロックが来たところで終わる。
+    """
+    if kind in _LIST_TYPES:
+        return True
+    if blank:
+        return state.in_list
+    return False
 
 
 def _classify_leaf(body: str, line: int, quote_len: int, *, in_table: bool = False) -> BlockInfo:

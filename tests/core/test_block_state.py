@@ -47,7 +47,8 @@ class TestClassifyPlain:
         block, state = classify_line("ただの文章", 3, BlockState())
         assert block.type is BlockType.PARAGRAPH
         assert block.line == 3
-        assert state == BlockState()
+        # 段落の後は空行ではない。次の行の字下げはコードではなく段落の続き
+        assert state == BlockState(after_blank=False)
 
     @pytest.mark.parametrize("text", ["", "   ", "\t"])
     def test_空行(self, text: str) -> None:
@@ -98,10 +99,16 @@ class TestClassifyPlain:
         assert block.marker_len == 6
 
     def test_リストの深さはインデント2文字単位の目安(self) -> None:
-        """行単位では正確な入れ子が決まらない。確定値は block_parser が出す（§6.6）。"""
+        """行単位では正確な入れ子が決まらない。確定値は block_parser が出す（§6.6）。
+
+        **入れ子の項目はリストの中にしかない。** 文脈なしで 4 字下げた行は
+        インデントコード（CommonMark。markdown-it も同じ）なので、
+        `in_list` を渡して「リストの中」を表す。
+        """
+        inside = BlockState(in_list=True)
         assert classify_line("- a", 0, BlockState())[0].level == 1
-        assert classify_line("  - a", 0, BlockState())[0].level == 2
-        assert classify_line("    - a", 0, BlockState())[0].level == 3
+        assert classify_line("  - a", 0, inside)[0].level == 2
+        assert classify_line("    - a", 0, inside)[0].level == 3
 
 
 class TestClassifyQuote:

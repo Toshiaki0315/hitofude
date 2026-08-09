@@ -101,9 +101,11 @@ class TestIndent:
         assert editor.toPlainText() == "  - 項目"
 
     def test_ShiftTabで字上げする(self, editor, qtbot) -> None:
-        put(editor, "    - 項目")
+        # **リストの中に置く。** 文脈なしで 4 字下げた行はインデントコード
+        # （CommonMark）で、リスト項目ではない
+        put(editor, "- 親\n    - 項目")
         qtbot.keyClick(editor, Qt.Key.Key_Backtab)
-        assert editor.toPlainText() == "  - 項目"
+        assert editor.toPlainText() == "- 親\n  - 項目"
 
     def test_字下げしてもキャレットは同じ文字の位置に残る(self, editor, qtbot) -> None:
         put(editor, "- 項目")
