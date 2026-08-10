@@ -543,3 +543,22 @@ class TestSortOrder:
         window.set_sort_order(SortOrder.TITLE)
         window.set_filter(Filter(kind=FilterKind.TAG, tag="共通"))
         assert titles(window) == ["あ", "い", "う"]
+
+
+class TestTagCompletion:
+    """タグ補完が索引と繋がっていること（C-4）。"""
+
+    def test_索引のタグが候補になる(self, window) -> None:
+        make_note(window, "メモ", "本文\n\n#日報\n")
+        assert "日報" in window._known_tags()
+
+    def test_名前順に並ぶ(self, window) -> None:
+        make_note(window, "メモ", "本文\n\n#日報 #あ行 #仕事\n")
+        assert window._known_tags() == sorted(window._known_tags())
+
+    def test_エディタに渡っている(self, window) -> None:
+        make_note(window, "メモ", "本文\n\n#日報\n")
+        window.editor.setPlainText("#日")
+        window.editor.moveCursor(window.editor.textCursor().MoveOperation.End)
+        window.editor.update_tag_completion()
+        assert window.editor.tag_candidates() == ["日報"]

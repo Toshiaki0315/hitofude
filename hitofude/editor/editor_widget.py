@@ -23,9 +23,9 @@ from PySide6.QtGui import (
     QTextBlock,
     QTextCursor,
 )
-from PySide6.QtWidgets import QPlainTextEdit, QTextEdit, QWidget
+from PySide6.QtWidgets import QListWidget, QPlainTextEdit, QTextEdit, QWidget
 
-from hitofude.core import frontmatter, search
+from hitofude.core import frontmatter, search, tags
 from hitofude.core.document import plain_text
 from hitofude.core.models import BlockInfo
 from hitofude.editor import attachments, commands, painter_overlay, table
@@ -50,6 +50,10 @@ DEFAULT_FONT_FAMILY = "Hiragino Sans"
 DEFAULT_POINT_SIZE = 15.0
 # タブ幅（文字数）。既定は `config.DEFAULT_TAB_WIDTH` と揃える
 DEFAULT_TAB_WIDTH = 4
+
+# タグ補完のポップアップ（C-4）
+TAG_POPUP_ROWS = 8
+TAG_POPUP_PADDING = 24
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +81,14 @@ class MarkdownEditor(QPlainTextEdit):
         self._theme = theme
         # 添付の保存先を知らないまま受け取るための口（R3 の分担を UI 側でも保つ）
         self._attachment_handler: Callable[[bytes, str], str | None] | None = None
+        # 既存タグの取り出し口（C-4）。索引はエディタの外にある
+        self._tag_source: Callable[[], list[str]] | None = None
+        self._tag_candidates: list[str] = []
+        self._tag_popup = QListWidget(self)
+        self._tag_popup.setWindowFlags(Qt.WindowType.ToolTip)
+        self._tag_popup.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._tag_popup.itemClicked.connect(lambda entry: self.complete_tag(entry.text()))
+        self._tag_popup.hide()
 
         font = QFont(font_family)
         font.setPointSizeF(base_point_size)
@@ -342,6 +354,12 @@ class MarkdownEditor(QPlainTextEdit):
         super().inputMethodEvent(event)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() == Qt.Key.Key_Escape and self._tag_candidates:
+            # 候補が出ているときの Esc は「候補を閉じる」。本文には触らない
+            self._tag_candidates = []
+            self._hide_tag_popup()
+            return
+
         """入力補助を差し込む（spec §5.5）。
 
         **変換中は特殊処理をすべて無効化する（R6）。** 日本語変換の確定 Enter を
@@ -392,6 +410,8 @@ class MarkdownEditor(QPlainTextEdit):
             return
 
         super().keyPressEvent(event)
+        # 打ったあとに候補を出し直す（C-4）。変換中は中で弾く
+        self.update_tag_completion()
 
     # -------------------------------------------------- front matter の保護
 
@@ -621,6 +641,75 @@ class MarkdownEditor(QPlainTextEdit):
         self._highlighter.rehighlight()
 
     # ------------------------------------------------------------------ 添付
+
+    # ------------------------------------------------------------- タグ補完
+
+    def set_tag_source(self, source: Callable[[], list[str]] | None) -> None:
+        """既存タグの取り出し口（C-4）。
+
+        **エディタは索引を知らない。** 呼び出し側（`MainWindow`）が渡す。
+        添付の保存先と同じ形で、R3 の分担を UI 側でも保つ。
+        """
+        self._tag_source = source
+
+    def tag_candidates(self) -> list[str]:
+        """今出ている候補。空なら出していない。"""
+        return list(self._tag_candidates)
+
+    def update_tag_completion(self) -> None:
+        """打っている位置を見て候補を出し直す（C-4）。
+
+        **変換中は出さない**（R6）。確定前に一覧が出ると変換候補と重なる。
+        """
+        self._tag_candidates = []
+        if self._composing or self._tag_source is None:
+            self._hide_tag_popup()
+            return
+
+        cursor = self.textCursor()
+        prefix = tags.prefix_at(cursor.block().text(), cursor.positionInBlock())
+        if prefix is None:
+            self._hide_tag_popup()
+            return
+
+        self._tag_candidates = tags.matches(prefix, self._tag_source())
+        if not self._tag_candidates:
+            self._hide_tag_popup()
+            return
+        self._show_tag_popup()
+
+    def complete_tag(self, tag: str) -> None:
+        """打ちかけのタグを候補で置き換える（C-4）。"""
+        cursor = self.textCursor()
+        prefix = tags.prefix_at(cursor.block().text(), cursor.positionInBlock())
+        if prefix is None:
+            return
+
+        cursor.beginEditBlock()
+        cursor.setPosition(cursor.position() - len(prefix), QTextCursor.MoveMode.KeepAnchor)
+        cursor.insertText(tag)
+        cursor.endEditBlock()
+        self.setTextCursor(cursor)
+        self._tag_candidates = []
+        self._hide_tag_popup()
+
+    def _show_tag_popup(self) -> None:
+        popup = self._tag_popup
+        popup.clear()
+        popup.addItems(self._tag_candidates)
+        popup.setCurrentRow(0)
+        rect = self.cursorRect()
+        popup.move(self.viewport().mapToGlobal(rect.bottomLeft()))
+        popup.resize(
+            popup.sizeHintForColumn(0) + TAG_POPUP_PADDING,
+            popup.sizeHintForRow(0) * min(len(self._tag_candidates), TAG_POPUP_ROWS)
+            + TAG_POPUP_PADDING,
+        )
+        popup.show()
+
+    def _hide_tag_popup(self) -> None:
+        if self._tag_popup.isVisible():
+            self._tag_popup.hide()
 
     def set_attachment_handler(self, handler: Callable[[bytes, str], str | None] | None) -> None:
         """画像を受け取ったときの保存先を差し込む。

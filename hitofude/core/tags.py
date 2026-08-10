@@ -124,3 +124,31 @@ def parent(tag: str) -> str | None:
 def leaf(tag: str) -> str:
     """末端の名前だけ（`work/会議` → `会議`）。ツリーの表示ラベルに使う。"""
     return tag.rpartition(SEPARATOR)[2]
+
+
+# 打ちかけのタグ（C-4 / タグ補完）。`TAG_RE` と同じく **直前は行頭か空白**。
+# URL の `#anchor` を拾わないための約束
+_TYPING_RE = re.compile(r"(?<![^\s])#(?P<name>[^\s#]*)$")
+
+
+def prefix_at(line: str, column: int) -> str | None:
+    """その位置で打ちかけているタグ。タグの外なら None。
+
+    **カーソルより後ろは見ない。** `#日報メモ` の途中に居るときは、打った分
+    （`日`）で絞る。後ろまで含めると、直そうとしている綴りで絞ってしまう。
+    """
+    found = _TYPING_RE.search(line[:column])
+    return found.group("name") if found is not None else None
+
+
+def matches(prefix: str, known: list[str]) -> list[str]:
+    """前方一致で候補を絞る。大文字小文字は区別しない。
+
+    **打ったものと同じだけの候補は返さない。** 選ぶものが無いのに一覧が
+    出ていると、Enter がタグの決定なのか改行なのか分からなくなる。
+    """
+    lowered = prefix.lower()
+    found = [tag for tag in known if tag.lower().startswith(lowered)]
+    if found == [prefix]:
+        return []
+    return found

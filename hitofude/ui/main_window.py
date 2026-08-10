@@ -193,6 +193,7 @@ class MainWindow(QMainWindow):
 
         self._editor.set_attachment_handler(self.save_attachment)
         self._editor.set_image_base(self._vault.root)
+        self._editor.set_tag_source(self._known_tags)
         self._editor.set_mono_family(self._config.mono_family)
         self._editor.set_tab_width(self._config.tab_width)
         self._apply_list_font()
@@ -929,6 +930,13 @@ class MainWindow(QMainWindow):
         palette = self._make_palette("見出しへ飛ぶ…")
         palette.set_provider(self._outline_items)
         palette.open_with()
+
+    def _known_tags(self) -> list[str]:
+        """索引にあるタグ（C-4 / 補完の候補）。件数の多い順ではなく名前順。
+
+        探しているものが五十音で見つかるほうが速い。
+        """
+        return sorted(entry.tag for entry in self._db.tag_tree())
 
     def _outline_items(self, query: str) -> list[PaletteItem]:
         items = [

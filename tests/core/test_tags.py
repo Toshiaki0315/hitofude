@@ -5,7 +5,16 @@
 
 import pytest
 
-from hitofude.core.tags import ancestors, extract, find_all, leaf, normalize, parent
+from hitofude.core.tags import (
+    ancestors,
+    extract,
+    find_all,
+    leaf,
+    matches,
+    normalize,
+    parent,
+    prefix_at,
+)
 
 
 class TestNormalize:
@@ -135,3 +144,65 @@ class TestHierarchy:
     )
     def test_leafは末端の名前を返す(self, tag: str, expected: str) -> None:
         assert leaf(tag) == expected
+
+
+class TestPrefixAt:
+    """入力中のタグを見つける（C-4 / タグ補完）。
+
+    綴りを覚えていないと `#日報` と `#日報メモ` のような揺れが起きる。
+    打ち始めたところで候補を出す。
+    """
+
+    def test_打ちかけのタグを返す(self) -> None:
+        assert prefix_at("メモ #日報", 6) == "日報"
+
+    def test_記号だけでも返す(self) -> None:
+        """`#` を打った時点で候補を全部見せたい。"""
+        assert prefix_at("メモ #", 4) == ""
+
+    def test_行頭でも返す(self) -> None:
+        assert prefix_at("#日報", 3) == "日報"
+
+    def test_タグの外ではNone(self) -> None:
+        assert prefix_at("ただの文章", 5) is None
+
+    def test_語の途中の記号は拾わない(self) -> None:
+        """URL の `#anchor` をタグと誤認しない（`TAG_RE` と同じ約束）。"""
+        assert prefix_at("http://x/a#b", 12) is None
+
+    def test_空白をまたがない(self) -> None:
+        assert prefix_at("#日報 のメモ", 8) is None
+
+    def test_カーソルより後ろは見ない(self) -> None:
+        """`#日報` の途中にカーソルがあるとき、候補は打った分だけで絞る。"""
+        assert prefix_at("#日報メモ", 2) == "日"
+
+    def test_階層も返す(self) -> None:
+        assert prefix_at("#仕事/日報", 6) == "仕事/日報"
+
+    def test_空行ではNone(self) -> None:
+        assert prefix_at("", 0) is None
+
+
+KNOWN_TAGS = ["仕事", "仕事/日報", "日報", "日記", "hitofude/使い方"]
+
+
+class TestMatches:
+    def test_前方一致で絞る(self) -> None:
+        assert matches("日", KNOWN_TAGS) == ["日報", "日記"]
+
+    def test_空なら全部(self) -> None:
+        assert matches("", KNOWN_TAGS) == KNOWN_TAGS
+
+    def test_階層の途中でも絞る(self) -> None:
+        assert matches("仕事/", KNOWN_TAGS) == ["仕事/日報"]
+
+    def test_大文字小文字を区別しない(self) -> None:
+        assert matches("HITO", KNOWN_TAGS) == ["hitofude/使い方"]
+
+    def test_一致が無ければ空(self) -> None:
+        assert matches("存在しない", KNOWN_TAGS) == []
+
+    def test_打ったものと同じだけなら出さない(self) -> None:
+        """候補が今打っているものだけなら、出しても選ぶものが無い。"""
+        assert matches("日報", ["日報"]) == []
