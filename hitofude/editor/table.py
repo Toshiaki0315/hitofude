@@ -36,9 +36,20 @@ class _Row:
     cells: list[str]
 
 
+# 全角として数える East Asian Width。`A`（Ambiguous）を入れているのが要点で、
+# `→ ① ± § Ω` などは環境によって幅が変わるが、**日本語フォントでは全角**
+# （表に使う BIZ UDGothic 15pt での実測は 5 つとも半角のちょうど 2 倍）。
+# 半角として数えていたので、これらを含む行だけ桁がずれていた（実測 20px / C-1）
+_WIDE_WIDTHS = "WFA"
+
+
 def display_width(text: str) -> int:
-    """等幅フォントで占める桁数。全角は 2、半角は 1。"""
-    return sum(2 if unicodedata.east_asian_width(char) in "WF" else 1 for char in text)
+    """等幅フォントで占める桁数。全角は 2、半角は 1。
+
+    **絵文字は揃わないことがある。** 🍎 の実測は半角の 2.30 倍で、
+    空白（1 桁）を足し引きしても合わせようがない。
+    """
+    return sum(2 if unicodedata.east_asian_width(char) in _WIDE_WIDTHS else 1 for char in text)
 
 
 def _split_row(line: str) -> _Row:

@@ -214,7 +214,7 @@ const greeting = "書き出すとファイル名が見出しとして出ます";
 | 取り消し線 / ハイライト              | `Cmd+Shift+X` / `Cmd+Shift+H`           |
 | リンク                               | `Cmd+K`                                 |
 | チェックボックス                     | `Cmd+Shift+T`                           |
-| 見出しレベル ±                       | `Cmd+Shift+↑` / `Cmd+Shift+↓`           |
+| 見出しレベル ±                      | `Cmd+Shift+↑` / `Cmd+Shift+↓`         |
 | 表を整形                             | `Cmd+Shift+L`                           |
 | ピン留め（お気に入り）               | `Cmd+Shift+P`                           |
 | 記号をすべて表示                     | `Cmd+/`                                 |

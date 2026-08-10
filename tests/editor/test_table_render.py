@@ -369,3 +369,65 @@ class TestCellPadding:
         height = document.documentLayout().blockBoundingRect(document.findBlockByNumber(2)).height()
         widget.deleteLater()
         return height
+
+
+class TestColumnAlignment:
+    """桁が揃うこと（C-1 / 既知の不具合）。
+
+    **原因は文字幅の見積もりと実際の描画幅のずれ。** 整形は東アジアの文字幅
+    （全角 2・半角 1）で桁を数えるが、等幅フォントに CJK が無いので代替
+    フォントが使われ、実際の比は 2.00 ではない。15pt での実測:
+
+        あ 1.66 倍 / ① 1.66 倍（見積もりは 1）/ 🍎 1.91 倍
+
+    同じ種類の文字だけの表は偶然揃うが、行ごとに種類が混ざると崩れる。
+    整形（`format_table`）は文字数で揃えるので、**画面側で字送りを足して
+    合わせる**。ソースは触らない（R1）。
+    """
+
+    def pipe_positions(self, editor, line: int) -> list[float]:
+        document = editor.document()
+        block = document.findBlockByNumber(line)
+        document.documentLayout().blockBoundingRect(block)
+        layout = block.layout()
+        found = layout.lineAt(0)
+        return [found.cursorToX(i)[0] for i, ch in enumerate(block.text()) if ch == "|"]
+
+    def gap(self, editor, source: str) -> float:
+        from PySide6.QtGui import QTextCursor
+
+        editor.setPlainText(source)
+        editor.moveCursor(QTextCursor.MoveOperation.End)
+        head = self.pipe_positions(editor, 0)
+        body = self.pipe_positions(editor, 2)
+        assert len(head) == len(body), f"桁数が違う: {head} / {body}"
+        return max((abs(a - b) for a, b in zip(head, body, strict=True)), default=0.0)
+
+    def test_日本語だけの表は揃う(self, editor) -> None:
+        assert self.gap(editor, "| 項目 | 担当 |\n| --- | --- |\n| 設計 | 野村 |\n\n末尾\n") < 1
+
+    def test_英数字だけの表は揃う(self, editor) -> None:
+        assert self.gap(editor, "| Item | Owner |\n| --- | --- |\n| Plan | Nomura |\n\n末尾\n") < 1
+
+    def test_矢印や丸数字が混ざっても揃う(self, editor) -> None:
+        """**ずれを再現した組み合わせ。** 実測で 20px ずれていた。"""
+        assert self.gap(editor, "| → 前 | ① 番 |\n| --- | --- |\n| 設計 | 野村 |\n\n末尾\n") < 2
+
+    def test_絵文字は揃わないことがある(self, editor) -> None:
+        """**既知の制限。** 🍎 の実測は半角の 2.30 倍で、空白（1 桁）を
+        足し引きしても合わせようがない。整形は桁数では揃えるので、
+        ずれても壊れはしない。"""
+        assert self.gap(editor, "| 🍎 林檎 | 状態 |\n| --- | --- |\n| 通常 | 済み |\n\n末尾\n") < 12
+
+    def test_英数字と日本語が混ざっても揃う(self, editor) -> None:
+        assert self.gap(editor, "| ID | 名前 |\n| --- | --- |\n| あ | Nomura |\n\n末尾\n") < 2
+
+    def test_ソースは変えない(self, editor) -> None:
+        """R1。揃えるのは見た目だけ。"""
+        from PySide6.QtGui import QTextCursor
+
+        source = "| → 前 | ① 番 |\n| --- | --- |\n| 設計 | 野村 |\n\n末尾\n"
+        editor.setPlainText(source)
+        editor.moveCursor(QTextCursor.MoveOperation.End)
+        assert editor.toPlainText().count("→") == 1
+        assert "①" in editor.toPlainText()

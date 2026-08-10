@@ -131,3 +131,32 @@ class TestFindTable:
 
     def test_範囲外の行番号でも落ちない(self) -> None:
         assert find_table(list(DOC), 99) is None
+
+
+class TestAmbiguousWidth:
+    """曖昧幅の文字（C-1 / 既知の不具合の原因）。
+
+    Unicode の East Asian Width が `A`（Ambiguous）の文字は、環境によって
+    半角にも全角にもなる。**日本語フォントでは全角**で描かれる。
+
+    実測（表に使う BIZ UDGothic 15pt、半角 10.0px を 1 とする）:
+
+        → 2.00 / ① 2.00 / ± 2.00 / § 2.00 / Ω 2.00
+
+    1 桁として数えていたので、これらを含む行だけ桁がずれていた（実測 20px）。
+    """
+
+    @pytest.mark.parametrize("char", ["→", "①", "±", "§", "Ω"])
+    def test_曖昧幅は全角として数える(self, char: str) -> None:
+        assert display_width(char) == 2
+
+    def test_半角は1のまま(self) -> None:
+        assert display_width("abc123") == 6
+
+    def test_全角は2のまま(self) -> None:
+        assert display_width("日本語") == 6
+
+    def test_矢印を含む行が揃う(self) -> None:
+        formatted = format_table(["| → 前 | ① |", "| --- | --- |", "| 設計 | 野村 |"])
+        widths = {display_width(line) for line in formatted}
+        assert len(widths) == 1, formatted
