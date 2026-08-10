@@ -160,3 +160,21 @@ class TestSortMenu:
 
     def test_何のボタンか分かる(self, pane) -> None:
         assert pane.sort_button.toolTip()
+
+    def test_記号と三角が重ならない(self, pane) -> None:
+        """ユーザー報告。`⇅` の上にポップアップ用の三角が重なっていた。
+
+        実測では記号が 13.5px なのにボタンが 28px しかなく、三角の場所が
+        足りていなかった。
+        """
+        from PySide6.QtGui import QFontMetricsF
+
+        from hitofude.ui.note_list_pane import SORT_GLYPH, SORT_INDICATOR_ROOM
+
+        glyph = QFontMetricsF(pane.sort_button.font()).horizontalAdvance(SORT_GLYPH)
+        assert pane.sort_button.width() >= glyph + SORT_INDICATOR_ROOM
+
+    def test_三角の場所を確保している(self, pane) -> None:
+        from hitofude.ui.note_list_pane import SORT_INDICATOR_ROOM
+
+        assert SORT_INDICATOR_ROOM >= 12

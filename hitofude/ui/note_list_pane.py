@@ -7,8 +7,10 @@
 `MainWindow`（vault と索引の両方に触る必要があるため）。
 """
 
+import math
+
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QFontMetricsF
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QMenu,
@@ -24,6 +26,12 @@ from hitofude.ui.panes import NOTE_LIST_MIN_WIDTH
 
 NEW_NOTE_GLYPH = "＋"
 SORT_GLYPH = "⇅"
+# ポップアップ用の三角の場所（C-3 の手直し）。**記号と重なる**ので確保する。
+# 既定のボタン幅は 28px で、記号 13.5px を引くと三角に 14px しか残らず、
+# 実機で重なって見えた（ユーザー報告）。
+#
+# 拡大して並べて選んだ: 14 は接触、20 は際どい、**26 で明確に離れる**
+SORT_INDICATOR_ROOM = 26
 HEADER_MARGIN = 6
 
 # 並び順の選択肢（C-3）。**設定ダイアログには置かない。** 並び替えは
@@ -59,6 +67,9 @@ class NoteListPane(QWidget):
         self._sort.setAutoRaise(True)
         self._sort.setCursor(Qt.CursorShape.PointingHandCursor)
         self._sort.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        glyph = QFontMetricsF(self._sort.font()).horizontalAdvance(SORT_GLYPH)
+        # 切り捨てると 1px 足りずに重なることがある（実測 31.5 → 31）
+        self._sort.setMinimumWidth(math.ceil(glyph + SORT_INDICATOR_ROOM))
         menu = QMenu(self._sort)
         self._sort_actions: dict[SortOrder, QAction] = {}
         for order, label in SORT_LABELS.items():
