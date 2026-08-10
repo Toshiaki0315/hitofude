@@ -15,6 +15,22 @@ from hitofude.ui.quick_open import (
 pytestmark = pytest.mark.gui
 
 
+@pytest.fixture
+def window(qtbot, tmp_path: Path):
+    from PySide6.QtCore import QSettings
+
+    from hitofude.config import Config
+    from hitofude.ui.main_window import MainWindow
+
+    settings = QSettings(str(tmp_path / "t.ini"), QSettings.Format.IniFormat)
+    config = Config(settings)
+    config.vault_path = tmp_path / "Notes"
+    found = MainWindow(config)
+    qtbot.addWidget(found)
+    found.show()
+    return found
+
+
 def item(title: str, subtitle: str = "") -> PaletteItem:
     return PaletteItem(title=title, subtitle=subtitle, path=Path(f"{title}.md"))
 
@@ -141,12 +157,15 @@ class TestPalette:
         palette.open_with()
         palette.move_selection(1)
 
-    def test_決定するとパスが飛ぶ(self, palette, qtbot) -> None:
+    def test_決定すると選んだ項目が飛ぶ(self, palette, qtbot) -> None:
         palette.set_provider(lambda q: [item("会議メモ")])
         palette.open_with()
         with qtbot.waitSignal(palette.chosen, timeout=1000) as blocker:
             palette._accept_item()
-        assert Path(blocker.args[0]).name == "会議メモ.md"
+        # **項目そのものを渡す。** アウトライン（C-2）は行番号も要るので、
+        # パスだけでは足りない
+        assert blocker.args[0].path.name == "会議メモ.md"
+        assert blocker.args[0].title == "会議メモ"
 
     def test_決定すると閉じる(self, palette) -> None:
         palette.set_provider(lambda q: [item("会議メモ")])
@@ -163,3 +182,55 @@ class TestPalette:
         image = QImage(palette.size(), QImage.Format.Format_ARGB32)
         image.fill(QColor("white"))
         palette.render(image)
+
+
+class TestOutline:
+    """アウトライン（C-2）。見出しへ飛ぶ。
+
+    ノート横断のクイックオープンと同じ道具（`Palette`）を使う。入口が
+    増えても操作を覚え直さずに済む。
+    """
+
+    SOURCE = "# 大見出し\n\n本文\n\n## 中見出し\n\n本文\n\n### 小見出し\n"
+
+    def test_見出しが並ぶ(self, window) -> None:
+        window.editor.setPlainText(self.SOURCE)
+        assert [item.title for item in window._outline_items("")] == [
+            "大見出し",
+            "中見出し",
+            "小見出し",
+        ]
+
+    def test_深さが分かる(self, window) -> None:
+        """字下げで階層を見せる。"""
+        window.editor.setPlainText(self.SOURCE)
+        items = window._outline_items("")
+        assert items[0].subtitle != items[2].subtitle
+
+    def test_絞り込める(self, window) -> None:
+        window.editor.setPlainText(self.SOURCE)
+        assert [item.title for item in window._outline_items("中")] == ["中見出し"]
+
+    def test_選ぶとその行へ飛ぶ(self, window) -> None:
+        window.editor.setPlainText(self.SOURCE)
+        window.jump_to_line(4)
+        assert window.editor.textCursor().blockNumber() == 4
+
+    def test_飛んだ先にカーソルが入る(self, window) -> None:
+        window.editor.setPlainText(self.SOURCE)
+        window.jump_to_line(4)
+        assert window.editor.hasFocus()
+
+    def test_無い行番号でも落ちない(self, window) -> None:
+        window.editor.setPlainText(self.SOURCE)
+        window.jump_to_line(999)
+        assert window.editor.toPlainText() == self.SOURCE
+
+    def test_見出しが無ければ空(self, window) -> None:
+        window.editor.setPlainText("ただの段落\n")
+        assert window._outline_items("") == []
+
+    def test_開ける(self, window, qtbot) -> None:
+        window.editor.setPlainText(self.SOURCE)
+        window.open_outline()
+        assert window.findChild(Palette) is not None

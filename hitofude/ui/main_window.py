@@ -36,6 +36,7 @@ from hitofude.app import ThemeWatcher, apply_theme, set_macos_appearance
 from hitofude.config import Config
 from hitofude.core import frontmatter
 from hitofude.core.document import Note, with_title
+from hitofude.core.outline import headings
 from hitofude.core.stats import count as count_text
 from hitofude.editor import exporter
 from hitofude.editor.editor_widget import MarkdownEditor
@@ -910,6 +911,40 @@ class MainWindow(QMainWindow):
         palette.set_provider(self._quick_open_items)
         palette.open_with()
 
+    def open_outline(self) -> None:
+        """`Cmd+R`。このノートの見出しへ飛ぶ（C-2）。
+
+        ノート横断のクイックオープンと同じ道具を使う。入口が増えても
+        操作を覚え直さずに済む。
+        """
+        palette = self._make_palette("見出しへ飛ぶ…")
+        palette.set_provider(self._outline_items)
+        palette.open_with()
+
+    def _outline_items(self, query: str) -> list[PaletteItem]:
+        items = [
+            PaletteItem(
+                title=found.text or "（無題の見出し）",
+                # 字下げで階層を見せる。深さを数字で出しても読み取りにくい
+                subtitle="　" * (found.level - 1) + "#" * found.level,
+                path=self._note.path if self._note else Path(),
+                line=found.line,
+            )
+            for found in headings(self._editor.toPlainText())
+        ]
+        return fuzzy_filter(query, items)
+
+    def jump_to_line(self, line: int) -> None:
+        """その行の先頭へカーソルを移す（C-2）。無い行番号なら何もしない。"""
+        block = self._editor.document().findBlockByNumber(line)
+        if not block.isValid():
+            return
+        cursor = self._editor.textCursor()
+        cursor.setPosition(block.position())
+        self._editor.setTextCursor(cursor)
+        self._editor.centerCursor()
+        self._editor.setFocus()
+
     def full_text_search(self) -> None:
         """`Cmd+Shift+F`。本文を検索する（spec §5.4）。"""
         palette = self._make_palette("本文を検索…")
@@ -936,9 +971,12 @@ class MainWindow(QMainWindow):
             for hit in self._db.search(query)
         ]
 
-    def _on_palette_chosen(self, relative: Path) -> None:
-        self.open_note(self._vault.root / relative)
-        self._note_list.select_path(relative)
+    def _on_palette_chosen(self, item: PaletteItem) -> None:
+        if item.line is not None:
+            self.jump_to_line(item.line)
+            return
+        self.open_note(self._vault.root / item.path)
+        self._note_list.select_path(item.path)
 
     # ------------------------------------------------------------ エクスポート
 

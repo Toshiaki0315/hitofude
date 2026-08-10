@@ -43,6 +43,8 @@ class PaletteItem:
     title: str
     subtitle: str
     path: Path
+    line: int | None = None
+    """同じノートの中の飛び先（アウトライン。C-2）。ノートを開く用途では None。"""
 
 
 def fuzzy_score(query: str, text: str) -> int | None:
@@ -97,6 +99,8 @@ class Palette(QDialog):
     """入力欄 + 結果一覧。候補は `provider` が返す。"""
 
     chosen = Signal(object)
+    """選ばれた `PaletteItem`。行番号を持つ用途（アウトライン）があるので
+    パスだけでは足りない。"""
     """選ばれた `Path`。"""
 
     def __init__(
@@ -174,7 +178,7 @@ class Palette(QDialog):
         item = self.current_item()
         if item is None:
             return
-        self.chosen.emit(item.path)
+        self.chosen.emit(item)
         self.accept()
 
     def move_selection(self, delta: int) -> None:

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QSplitter
 
 from hitofude.config import Config
 from hitofude.ui.main_window import MainWindow
+from hitofude.ui.quick_open import PaletteItem
 from hitofude.ui.sidebar import ALL, Filter, FilterKind
 
 pytestmark = pytest.mark.gui
@@ -390,7 +391,7 @@ class TestQuickOpen:
     def test_選ぶとそのノートが開く(self, window) -> None:
         self._prepare(window)
         target = window._quick_open_items("会議")[0]
-        window._on_palette_chosen(target.path)
+        window._on_palette_chosen(PaletteItem(title=target.title, subtitle="", path=target.path))
         assert "来期の予算について" in window.editor.toPlainText()
 
 
@@ -430,7 +431,7 @@ class TestFullTextSearch:
     def test_選ぶとそのノートが開く(self, window) -> None:
         self._prepare(window)
         target = window._search_items("予算について")[0]
-        window._on_palette_chosen(target.path)
+        window._on_palette_chosen(PaletteItem(title=target.title, subtitle="", path=target.path))
         assert "予算" in window.editor.toPlainText()
 
 

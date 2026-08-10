@@ -46,6 +46,7 @@ def build_menus(window) -> None:
     search_menu = window.menuBar().addMenu("検索")
     add(search_menu, "クイックオープン", "Ctrl+O", window.quick_open)
     add(search_menu, "全文検索", "Ctrl+Shift+F", window.full_text_search)
+    add(search_menu, "見出しへ飛ぶ", "Ctrl+R", window.open_outline)
     search_menu.addSeparator()
     add(search_menu, "このノート内を検索", "Ctrl+F", window._pane.open_find)
     add(search_menu, "次を検索", "Ctrl+G", window._pane.find_again)
