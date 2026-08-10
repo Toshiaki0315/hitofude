@@ -10,6 +10,7 @@ import pytest
 from PySide6.QtCore import QSettings, Qt
 
 from hitofude.config import Config
+from hitofude.storage.index_db import SortOrder
 from hitofude.theme import DARK, LIGHT
 from hitofude.ui.note_list import NoteListView
 from hitofude.ui.note_list_pane import NoteListPane
@@ -126,3 +127,36 @@ class TestInWindow:
 
         window.theme_watcher.set_mode(ThemeMode.DARK)
         assert window.note_list.isVisible()
+
+
+class TestSortMenu:
+    """並び順の切り替え（C-3）。
+
+    一覧の上に置く。**設定ダイアログに入れない。** 並び替えは「今そうしたい」
+    操作で、環境設定のように一度決めて忘れるものではない。
+    """
+
+    def test_ボタンがある(self, pane) -> None:
+        assert pane.sort_button is not None
+
+    def test_3つの並びから選べる(self, pane) -> None:
+        labels = [action.text() for action in pane.sort_button.menu().actions()]
+        assert len(labels) == 3
+
+    def test_今の並びに印が付く(self, pane) -> None:
+        pane.set_sort_order(SortOrder.TITLE)
+        checked = [a.text() for a in pane.sort_button.menu().actions() if a.isChecked()]
+        assert len(checked) == 1
+
+    def test_選ぶと知らせる(self, pane, qtbot) -> None:
+        target = next(a for a in pane.sort_button.menu().actions() if a.data() is SortOrder.CREATED)
+        with qtbot.waitSignal(pane.sort_order_changed, timeout=1000) as blocker:
+            target.trigger()
+        assert blocker.args[0] is SortOrder.CREATED
+
+    def test_今の並びを答える(self, pane) -> None:
+        pane.set_sort_order(SortOrder.CREATED)
+        assert pane.sort_order() is SortOrder.CREATED
+
+    def test_何のボタンか分かる(self, pane) -> None:
+        assert pane.sort_button.toolTip()

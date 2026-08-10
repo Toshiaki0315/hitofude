@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from hitofude.core.document import Note
-from hitofude.storage.index_db import IndexDb, rebuild
+from hitofude.storage.index_db import IndexDb, SortOrder, rebuild
 from hitofude.storage.vault import Vault
 
 
@@ -359,3 +359,59 @@ class TestSearchAcrossMarkers:
         """R1: 索引用の写しを作るだけで、保存内容には触れない。"""
         note = add(vault, db, "会議メモ", "来期の**予算**について")
         assert "**予算**" in note.path.read_text(encoding="utf-8")
+
+
+class TestSortOrder:
+    """一覧の並び順（C-3 / ユーザー提案）。
+
+    既定は「ピン → 更新順」。**ピン留めは常に先頭**で、並び順を変えても
+    そこは動かさない。ピン留めは「上に置いておきたい」という明示の意思なので。
+    """
+
+    def rows(self, db, vault, order) -> list[str]:
+        return [row.title for row in db.notes(order=order)]
+
+    @pytest.fixture
+    def filled(self, db, vault):
+        """日時を明示して置く。
+
+        **`sleep` では差が付かない。** front matter の日時は秒単位なので、
+        続けて作ると同じ値になり、並び順を検査できない（実際に踏んだ）。
+        """
+        stamps = (
+            ("さくら", "2026-08-01T10:00:00+09:00", "2026-08-01T10:00:00+09:00"),
+            ("あんず", "2026-08-02T10:00:00+09:00", "2026-08-02T10:00:00+09:00"),
+            ("もみじ", "2026-08-03T10:00:00+09:00", "2026-08-03T10:00:00+09:00"),
+        )
+        for title, created, modified in stamps:
+            note = vault.create(title, f"# {title}\n")
+            text = note.path.read_text(encoding="utf-8")
+            text = text.replace(note.meta["created"], created).replace(
+                note.meta["modified"], modified
+            )
+            note.path.write_text(text, encoding="utf-8")
+            db.upsert_note(Note.read(note.path), vault.root)
+        return db
+
+    def test_既定は更新順(self, filled, vault) -> None:
+        assert self.rows(filled, vault, SortOrder.MODIFIED) == ["もみじ", "あんず", "さくら"]
+
+    def test_作成順にできる(self, filled, vault) -> None:
+        assert self.rows(filled, vault, SortOrder.CREATED) == ["もみじ", "あんず", "さくら"]
+
+    def test_名前順にできる(self, filled, vault) -> None:
+        assert self.rows(filled, vault, SortOrder.TITLE) == ["あんず", "さくら", "もみじ"]
+
+    def test_どの並びでもピン留めが先頭(self, filled, vault) -> None:
+        rows = filled.notes()
+        target = next(row for row in rows if row.title == "さくら")
+        filled.upsert_note(vault.set_pinned(vault.root / target.path, True), vault.root)
+        for order in SortOrder:
+            assert self.rows(filled, vault, order)[0] == "さくら", order
+
+    def test_タグで絞っても並び順が効く(self, db, vault) -> None:
+        for title in ("う", "い", "あ"):
+            note = vault.create(title, f"# {title}\n\n#共通\n")
+            db.upsert_note(note, vault.root)
+        titles = [row.title for row in db.notes_with_tag("共通", order=SortOrder.TITLE)]
+        assert titles == ["あ", "い", "う"]

@@ -500,3 +500,46 @@ class TestPlaceManual:
         first = window.current_note.path
         window.place_manual()
         assert window.current_note.path != first
+
+
+class TestSortOrder:
+    """並び順の切り替え（C-3）。一覧まで届くこと。"""
+
+    def test_起動時に設定を読む(self, qtbot, tmp_path) -> None:
+        from PySide6.QtCore import QSettings
+
+        from hitofude.config import Config
+        from hitofude.storage.index_db import SortOrder
+        from hitofude.ui.main_window import MainWindow
+
+        settings = QSettings(str(tmp_path / "t.ini"), QSettings.Format.IniFormat)
+        config = Config(settings)
+        config.vault_path = tmp_path / "Notes"
+        config.sort_order = SortOrder.TITLE
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+        assert window.note_list_pane.sort_order() is SortOrder.TITLE
+
+    def test_選ぶと並びが変わる(self, window) -> None:
+        from hitofude.storage.index_db import SortOrder
+
+        for title in ("う", "い", "あ"):
+            make_note(window, title)
+        window.set_sort_order(SortOrder.TITLE)
+        assert titles(window)[:3] == ["あ", "い", "う"]
+
+    def test_選んだ並びを覚える(self, window) -> None:
+        from hitofude.storage.index_db import SortOrder
+
+        window.set_sort_order(SortOrder.CREATED)
+        assert window._config.sort_order is SortOrder.CREATED
+
+    def test_タグで絞っても効く(self, window) -> None:
+        from hitofude.storage.index_db import SortOrder
+        from hitofude.ui.sidebar import Filter, FilterKind
+
+        for title in ("う", "い", "あ"):
+            make_note(window, title, "本文\n\n#共通\n")
+        window.set_sort_order(SortOrder.TITLE)
+        window.set_filter(Filter(kind=FilterKind.TAG, tag="共通"))
+        assert titles(window) == ["あ", "い", "う"]

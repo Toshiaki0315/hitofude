@@ -42,7 +42,7 @@ from hitofude.editor import exporter
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.storage import autosave
 from hitofude.storage.autosave import Debouncer
-from hitofude.storage.index_db import IndexDb, NoteRow
+from hitofude.storage.index_db import IndexDb, NoteRow, SortOrder
 from hitofude.storage.vault import (
     ConflictAction,
     Vault,
@@ -181,6 +181,8 @@ class MainWindow(QMainWindow):
         self.statusBar().setSizeGripEnabled(False)
 
         self._list_pane.new_note_requested.connect(self.new_note)
+        self._list_pane.sort_order_changed.connect(self.set_sort_order)
+        self._list_pane.set_sort_order(self._config.sort_order)
         self._note_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._note_list.customContextMenuRequested.connect(self._show_context_menu)
 
@@ -383,16 +385,23 @@ class MainWindow(QMainWindow):
         self._sidebar.set_tags(self._db.tag_tree())
 
     def _rows_for(self, target: Filter) -> list[NoteRow]:
+        order = self._config.sort_order
         match target.kind:
             case FilterKind.ALL:
-                return self._db.notes()
+                return self._db.notes(order=order)
             case FilterKind.PINNED:
-                return [row for row in self._db.notes() if row.pinned]
+                return [row for row in self._db.notes(order=order) if row.pinned]
             case FilterKind.TRASH:
                 return self._trash_rows()
             case FilterKind.TAG:
-                return self._db.notes_with_tag(target.tag or "")
+                return self._db.notes_with_tag(target.tag or "", order=order)
         return []
+
+    def set_sort_order(self, order: SortOrder) -> None:
+        """一覧の並び順を変えて覚える（C-3）。"""
+        self._config.sort_order = order
+        self._list_pane.set_sort_order(order)
+        self.refresh()
 
     def _trash_rows(self) -> list[NoteRow]:
         """ゴミ箱の中身を並べる。

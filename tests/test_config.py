@@ -6,6 +6,7 @@ import pytest
 from PySide6.QtCore import QSettings
 
 from hitofude.config import DEFAULT_TAB_WIDTH, DEFAULT_VAULT_NAME, Config
+from hitofude.storage.index_db import SortOrder
 from hitofude.theme import ThemeMode
 
 pytestmark = pytest.mark.gui
@@ -197,3 +198,18 @@ class TestTabWidth:
     def test_壊れた値でも落ちない(self, config) -> None:
         config.settings.setValue("editor/tab_width", "あ")
         assert config.tab_width == DEFAULT_TAB_WIDTH
+
+
+class TestSortOrder:
+    """一覧の並び順（C-3）。"""
+
+    def test_既定は更新順(self, config) -> None:
+        assert config.sort_order is SortOrder.MODIFIED
+
+    def test_変えられる(self, config) -> None:
+        config.sort_order = SortOrder.TITLE
+        assert config.sort_order is SortOrder.TITLE
+
+    def test_壊れた値は既定に戻す(self, config) -> None:
+        config.settings.setValue("list/sort_order", "なにか")
+        assert config.sort_order is SortOrder.MODIFIED

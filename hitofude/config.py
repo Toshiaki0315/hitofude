@@ -13,6 +13,7 @@ from pathlib import Path
 from PySide6.QtCore import QByteArray, QSettings
 
 from hitofude.core.paths import relative_inside
+from hitofude.storage.index_db import SortOrder
 from hitofude.theme import ThemeMode
 
 DEFAULT_VAULT_NAME = "HitofudeNotes"
@@ -44,6 +45,7 @@ _SIDEBAR = "layout/sidebar_visible"
 _NOTE_LIST = "layout/note_list_visible"
 _TOOLBAR = "layout/toolbar_visible"
 _TAB_WIDTH = "editor/tab_width"
+_SORT_ORDER = "list/sort_order"
 _GEOMETRY = "layout/geometry"
 _LAST_NOTE = "session/last_note"
 
@@ -153,6 +155,19 @@ class Config:
     @note_list_visible.setter
     def note_list_visible(self, value: bool) -> None:
         self.settings.setValue(_NOTE_LIST, bool(value))
+
+    @property
+    def sort_order(self) -> SortOrder:
+        """一覧の並び順（C-3）。知らない値は既定へ戻す。"""
+        stored = self.settings.value(_SORT_ORDER, SortOrder.MODIFIED.value, type=str)
+        try:
+            return SortOrder(stored)
+        except ValueError:
+            return SortOrder.MODIFIED
+
+    @sort_order.setter
+    def sort_order(self, value: SortOrder) -> None:
+        self.settings.setValue(_SORT_ORDER, value.value)
 
     @property
     def tab_width(self) -> int:

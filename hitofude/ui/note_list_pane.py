@@ -8,18 +8,37 @@
 """
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QMenu,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
+from hitofude.storage.index_db import SortOrder
 from hitofude.theme import LIGHT, ThemeColors
 from hitofude.ui.note_list import NoteListView
 from hitofude.ui.panes import NOTE_LIST_MIN_WIDTH
 
 NEW_NOTE_GLYPH = "＋"
+SORT_GLYPH = "⇅"
 HEADER_MARGIN = 6
+
+# 並び順の選択肢（C-3）。**設定ダイアログには置かない。** 並び替えは
+# 「今そうしたい」操作で、一度決めて忘れる設定とは性質が違う
+SORT_LABELS = {
+    SortOrder.MODIFIED: "更新の新しい順",
+    SortOrder.CREATED: "作成の新しい順",
+    SortOrder.TITLE: "名前順",
+}
 
 
 class NoteListPane(QWidget):
     new_note_requested = Signal()
+    sort_order_changed = Signal(object)
+    """並び順が選ばれた（`SortOrder`）。覚えるのは `MainWindow` の仕事。"""
 
     def __init__(self, parent: QWidget | None = None, *, theme: ThemeColors = LIGHT) -> None:
         super().__init__(parent)
@@ -34,8 +53,27 @@ class NoteListPane(QWidget):
         self._new.setCursor(Qt.CursorShape.PointingHandCursor)
         self._new.clicked.connect(self.new_note_requested.emit)
 
+        self._sort = QToolButton(self)
+        self._sort.setText(SORT_GLYPH)
+        self._sort.setToolTip("並び順")
+        self._sort.setAutoRaise(True)
+        self._sort.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._sort.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        menu = QMenu(self._sort)
+        self._sort_actions: dict[SortOrder, QAction] = {}
+        for order, label in SORT_LABELS.items():
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setData(order)
+            action.triggered.connect(lambda _=False, o=order: self._choose_sort(o))
+            self._sort_actions[order] = action
+        self._sort.setMenu(menu)
+        self._sort_order = SortOrder.MODIFIED
+        self.set_sort_order(self._sort_order)
+
         header = QHBoxLayout()
         header.setContentsMargins(HEADER_MARGIN, HEADER_MARGIN, HEADER_MARGIN, 0)
+        header.addWidget(self._sort)
         header.addStretch(1)
         header.addWidget(self._new)
 
@@ -54,6 +92,23 @@ class NoteListPane(QWidget):
     @property
     def new_button(self) -> QToolButton:
         return self._new
+
+    @property
+    def sort_button(self) -> QToolButton:
+        return self._sort
+
+    def sort_order(self) -> SortOrder:
+        return self._sort_order
+
+    def set_sort_order(self, order: SortOrder) -> None:
+        """今の並びを覚えて印を付け直す。**知らせは出さない**（読み込み用）。"""
+        self._sort_order = order
+        for candidate, action in self._sort_actions.items():
+            action.setChecked(candidate is order)
+
+    def _choose_sort(self, order: SortOrder) -> None:
+        self.set_sort_order(order)
+        self.sort_order_changed.emit(order)
 
     def set_theme(self, theme: ThemeColors) -> None:
         self._list.set_theme(theme)

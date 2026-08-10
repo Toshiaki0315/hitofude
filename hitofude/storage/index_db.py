@@ -11,6 +11,7 @@
 import sqlite3
 from collections.abc import Iterable
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 from hitofude.core import tags as tag_utils
@@ -53,6 +54,36 @@ CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
     tokenize = 'trigram'
 );
 """
+
+
+class SortOrder(Enum):
+    """一覧の並び順（C-3）。"""
+
+    MODIFIED = "modified"
+    """更新の新しい順。既定。"""
+
+    CREATED = "created"
+    """作成の新しい順。"""
+
+    TITLE = "title"
+    """名前順。"""
+
+
+_ORDER_COLUMNS = {
+    SortOrder.MODIFIED: "modified_at DESC",
+    SortOrder.CREATED: "created_at DESC",
+    SortOrder.TITLE: "title COLLATE NOCASE ASC",
+}
+
+
+def _order_by(order: SortOrder, *, prefix: str = "") -> str:
+    """`ORDER BY` の中身。
+
+    **ピン留めは常に先頭。** 並び順を変えても動かさない。ピン留めは
+    「上に置いておきたい」という明示の意思で、並べ替えの対象ではない。
+    """
+    column = _ORDER_COLUMNS.get(order, _ORDER_COLUMNS[SortOrder.MODIFIED])
+    return f"{prefix}pinned DESC, {prefix}{column}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,24 +277,30 @@ class IndexDb:
 
     # -------------------------------------------------------------------- 参照
 
-    def notes(self, *, include_trashed: bool = False, limit: int | None = None) -> list[NoteRow]:
+    def notes(
+        self,
+        *,
+        include_trashed: bool = False,
+        limit: int | None = None,
+        order: "SortOrder" = SortOrder.MODIFIED,
+    ) -> list[NoteRow]:
         sql = "SELECT * FROM notes"
         if not include_trashed:
             sql += " WHERE trashed = 0"
-        sql += " ORDER BY pinned DESC, modified_at DESC"
+        sql += f" ORDER BY {_order_by(order)}"
         if limit is not None:
             sql += f" LIMIT {int(limit)}"
         return [_to_row(row) for row in self._connection.execute(sql)]
 
-    def notes_with_tag(self, tag: str) -> list[NoteRow]:
+    def notes_with_tag(self, tag: str, *, order: "SortOrder" = SortOrder.MODIFIED) -> list[NoteRow]:
         """そのタグ、または配下のタグを持つノート。"""
         normalized = tag_utils.normalize(tag)
         rows = self._connection.execute(
-            """
+            f"""
             SELECT notes.* FROM notes
             JOIN tags ON tags.note_id = notes.id
             WHERE tags.tag = ? AND notes.trashed = 0
-            ORDER BY notes.pinned DESC, notes.modified_at DESC
+            ORDER BY {_order_by(order, prefix="notes.")}
             """,
             (normalized,),
         )
