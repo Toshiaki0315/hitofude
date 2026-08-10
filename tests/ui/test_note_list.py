@@ -13,13 +13,18 @@ pytestmark = pytest.mark.gui
 
 
 def row(
-    title: str, *, name: str | None = None, modified: str = "", pinned: bool = False
+    title: str,
+    *,
+    name: str | None = None,
+    modified: str = "",
+    pinned: bool = False,
+    preview: str | None = None,
 ) -> NoteRow:
     return NoteRow(
         id=title,
         path=Path(f"{name or title}.md"),
         title=title,
-        preview=f"{title} のプレビュー",
+        preview=f"{title} のプレビュー" if preview is None else preview,
         modified_at=modified,
         mtime_ns=0,
         size_bytes=0,
@@ -234,3 +239,76 @@ class TestPinMark:
         pinned = self.painted(LIGHT, pinned=True)
         plain = self.painted(LIGHT, pinned=False)
         assert bytes(pinned.constBits()) != bytes(plain.constBits())
+
+
+def _option(view):
+    from PySide6.QtWidgets import QStyleOptionViewItem
+
+    option = QStyleOptionViewItem()
+    option.initFrom(view)
+    option.rect = view.viewport().rect()
+    option.font = view.font()
+    return option
+
+
+class TestPreviewHeight:
+    """プレビューに要る高さ（ユーザー要望の見直し）。
+
+    **`QFontMetrics.height()` では足りない。** 折り返しの組版は
+    `lineSpacing()` で進む。Hiragino Sans 12pt は height 12 / lineSpacing 18 で、
+    2 行だと 12px 不足し、実機でプレビューの 2 行目が切れていた。
+    """
+
+    @pytest.fixture
+    def font(self):
+        from PySide6.QtGui import QFont
+
+        found = QFont("Hiragino Sans")
+        found.setPointSizeF(12.0)
+        return found
+
+    def test_1行なら1行ぶん(self, font, qapp) -> None:
+        from PySide6.QtGui import QFontMetrics
+
+        from hitofude.ui.note_list import preview_height
+
+        assert preview_height(font, "ひとこと", 280) == QFontMetrics(font).lineSpacing()
+
+    def test_折り返すと2行ぶん(self, font, qapp) -> None:
+        from PySide6.QtGui import QFontMetrics
+
+        from hitofude.ui.note_list import preview_height
+
+        assert preview_height(font, "あ" * 200, 280) == QFontMetrics(font).lineSpacing() * 2
+
+    def test_行間で数える(self, font, qapp) -> None:
+        """`height()` で数えると 2 行目が切れる（実機で確認）。"""
+        from PySide6.QtGui import QFontMetrics
+
+        from hitofude.ui.note_list import preview_height
+
+        metrics = QFontMetrics(font)
+        assert preview_height(font, "あ" * 200, 280) > metrics.height() * 2
+
+    def test_長くても2行で止める(self, font, qapp) -> None:
+        """一覧なので、1 件が画面を占めてはいけない。"""
+        from hitofude.ui.note_list import preview_height
+
+        assert preview_height(font, "あ" * 200, 280) == preview_height(font, "い" * 4000, 280)
+
+    def test_空なら0(self, font, qapp) -> None:
+        from hitofude.ui.note_list import preview_height
+
+        assert preview_height(font, "", 280) == 0
+
+    def test_幅が狭いほど折り返す(self, font, qapp) -> None:
+        from hitofude.ui.note_list import preview_height
+
+        assert preview_height(font, "あ" * 30, 120) >= preview_height(font, "あ" * 30, 400)
+
+    def test_余白は詰めすぎない(self, qapp) -> None:
+        """拡大して並べて選んだ。12px は行間が空きすぎ（4 件目が画面外）、
+        7px はタイトル同士が近すぎる。9px を採る。"""
+        from hitofude.ui.note_list import _Metrics
+
+        assert 8 <= _Metrics().padding <= 10

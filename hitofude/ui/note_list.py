@@ -99,12 +99,42 @@ class NoteListModel(QAbstractListModel):
         return QModelIndex()
 
 
+PREVIEW_MAX_LINES = 2
+
+
 @dataclass(frozen=True, slots=True)
 class _Metrics:
-    padding: int = 12
+    padding: int = 9
+    """行の上下左右の余白。
+
+    **拡大して並べて選んだ。** 12px は行間が空いて 1 画面に入る件数が減り、
+    7px はタイトル同士が近すぎる。
+    """
     spacing: int = 4
     date_width: int = 48
-    preview_lines: int = 2
+
+
+def preview_height(font: QFont, text: str, width: int) -> int:
+    """プレビューに要る高さ。
+
+    **`QFontMetrics.height()` で数えてはいけない。** 折り返しの組版は
+    `lineSpacing()` で進む。Hiragino Sans 12pt は height 12 / lineSpacing 18 で、
+    2 行だと 12px 足りず、実機でプレビューの 2 行目が切れていた。
+
+    実際に折り返した行数で数えるので、**1 行しかないノートの行は低くなる**。
+    常に 2 行ぶん取ると一覧がすかすかになる。長い本文は 2 行で止める。
+    """
+    if not text:
+        return 0
+    metrics = QFontMetrics(font)
+    spacing = metrics.lineSpacing()
+    needed = metrics.boundingRect(
+        QRect(0, 0, max(width, 1), spacing * PREVIEW_MAX_LINES),
+        int(Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap),
+        text,
+    ).height()
+    lines = max(1, min(PREVIEW_MAX_LINES, round(needed / spacing)))
+    return spacing * lines
 
 
 class NoteItemDelegate(QStyledItemDelegate):
@@ -120,12 +150,12 @@ class NoteItemDelegate(QStyledItemDelegate):
 
     def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
         metrics = QFontMetrics(option.font)
-        height = (
-            self._metrics.padding * 2
-            + metrics.height()
-            + self._metrics.spacing
-            + metrics.height() * self._metrics.preview_lines
+        preview = preview_height(
+            option.font,
+            index.data(NoteRole.PREVIEW) or "",
+            option.rect.width() - self._metrics.padding * 2,
         )
+        height = self._metrics.padding * 2 + metrics.height() + self._metrics.spacing + preview
         return QSize(option.rect.width(), height)
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
@@ -177,7 +207,7 @@ class NoteItemDelegate(QStyledItemDelegate):
             body.left(),
             body.top() + line_height + self._metrics.spacing,
             body.width(),
-            QFontMetrics(option.font).height() * self._metrics.preview_lines,
+            preview_height(option.font, index.data(NoteRole.PREVIEW) or "", body.width()),
         )
         painter.drawText(
             preview_rect,

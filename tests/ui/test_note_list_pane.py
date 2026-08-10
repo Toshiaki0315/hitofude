@@ -221,3 +221,23 @@ class TestEmptyState:
         """絞り込んだ結果が 0 件でも、一覧が真っ白なのは同じ。"""
         pane.note_list.set_rows([])
         assert pane.empty_notice_visible() is True
+
+
+class TestHeaderLook:
+    """ヘッダの見た目（ユーザー要望の見直し）。
+
+    実機を見ると `⇅` だけ枠付きで浮いていた。`set_theme` が `＋` にしか
+    書式を当てていなかったため（**あとから足したボタンが漏れていた**）。
+    """
+
+    def test_2つのボタンが同じ書式(self, pane) -> None:
+        assert pane.sort_button.styleSheet() == pane.new_button.styleSheet()
+
+    def test_枠を描かない(self, pane) -> None:
+        assert "border: none" in pane.sort_button.styleSheet()
+
+    def test_テーマを変えても揃う(self, pane) -> None:
+        from hitofude.theme import DARK
+
+        pane.set_theme(DARK)
+        assert pane.sort_button.styleSheet() == pane.new_button.styleSheet()

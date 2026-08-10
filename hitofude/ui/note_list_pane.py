@@ -158,5 +158,9 @@ class NoteListPane(QWidget):
 
     def set_theme(self, theme: ThemeColors) -> None:
         self._list.set_theme(theme)
-        # ボタンだけに当てる。ペイン全体へ流すと一覧の配色まで上書きしてしまう
-        self._new.setStyleSheet(f"QToolButton {{ color: {theme.muted_foreground}; border: none; }}")
+        # ボタンだけに当てる。ペイン全体へ流すと一覧の配色まで上書きしてしまう。
+        # **両方に当てる。** 片方だけだと、あとから足したボタンが枠付きで
+        # 浮いて見える（実機で `⇅` だけ枠が出ていた）
+        style = f"QToolButton {{ color: {theme.muted_foreground}; border: none; }}"
+        for button in (self._new, self._sort):
+            button.setStyleSheet(style)

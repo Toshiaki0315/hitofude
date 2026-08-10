@@ -16,6 +16,7 @@
 from dataclasses import dataclass
 
 from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QToolButton, QWidget
 
 from hitofude.theme import LIGHT, ThemeColors
@@ -24,6 +25,8 @@ from hitofude.ui.icons import Glyph, glyph_icon
 ICON_SIZE = 18
 BUTTON_SIZE = 26
 BAR_MARGIN = 6
+# 本文との境目。ペインの区切り（`QSplitter::handle`）と同じ太さに揃える
+RULE_HEIGHT = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +91,25 @@ class FormatToolbar(QWidget):
     def set_theme(self, theme: ThemeColors) -> None:
         self._theme = theme
         self._apply_theme()
+
+    def rule_height(self) -> int:
+        return RULE_HEIGHT
+
+    def rule_color(self) -> str:
+        return self._theme.rule
+
+    def paintEvent(self, event) -> None:
+        """下端に 1px の線を引く。
+
+        **QSS の `border-bottom` にしない。** ボタンにも書式を当てているので、
+        同じシートで枠を足すと子まで巻き込む。ここは 1 本引くだけ。
+        """
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.fillRect(
+            0, self.height() - RULE_HEIGHT, self.width(), RULE_HEIGHT, QColor(self._theme.rule)
+        )
+        painter.end()
 
     def _apply_theme(self) -> None:
         for action, found in zip(self.ACTIONS, self._buttons, strict=True):

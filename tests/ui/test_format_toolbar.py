@@ -155,3 +155,28 @@ class TestVisibility:
     def test_今の状態を答える(self, pane) -> None:
         pane.set_toolbar_visible(False)
         assert pane.toolbar_visible() is False
+
+
+class TestSeparation:
+    """本文との境目（ユーザー要望の見直し）。
+
+    実機で見るとツールバーと本文が地続きで、ボタンが本文に浮いて見えた。
+    ペインの区切り（`QSplitter::handle`）と同じ 1px の線で仕切る。
+    """
+
+    def test_下に線を引く(self, pane) -> None:
+        assert pane.toolbar.rule_height() == 1
+
+    def test_線の色はペインの区切りと同じ(self, pane) -> None:
+        from hitofude.theme import LIGHT
+
+        pane.set_theme(LIGHT)
+        assert pane.toolbar.rule_color() == LIGHT.rule
+
+    def test_テーマに追従する(self, pane) -> None:
+        from hitofude.theme import DARK, LIGHT
+
+        pane.set_theme(LIGHT)
+        light = pane.toolbar.rule_color()
+        pane.set_theme(DARK)
+        assert pane.toolbar.rule_color() != light
