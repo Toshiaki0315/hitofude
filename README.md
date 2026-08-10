@@ -51,3 +51,15 @@ make check
 同梱する PySide6 は LGPLv3 で、**ソースを MIT で配ることには影響しない**。
 ビルドした `.app` を再配布する場合だけ LGPL の条件（Qt を差し替えられること）
 を満たす必要がある。
+
+## 同梱している他所のソフトウェア
+
+| もの | 用途 | ライセンス |
+| --- | --- | --- |
+| [Mermaid](https://github.com/mermaid-js/mermaid) 11.16.1 | 書き出した HTML で図を描く | MIT（`hitofude/resources/vendor/mermaid-LICENSE.txt`） |
+
+書き出した HTML には Mermaid 本体と**その MIT 表記**が一緒に埋め込まれる。
+`mermaid.min.js` には mermaid 自身の著作権表示が入っていないため、こちらで添えている。
+
+依存ライブラリ（PySide6 ほか）は `pyproject.toml` を参照。**PySide6 は LGPLv3** なので、
+`.app` を第三者へ配布する場合は別途その条件も確認すること。

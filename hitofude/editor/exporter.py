@@ -29,6 +29,8 @@ PDF_MARGIN_MM = 18.0
 # 図の置き場（`core/html.py` が出す）と、描くための JavaScript（B-4）
 MERMAID_MARKER = '<pre class="mermaid">'
 MERMAID_RESOURCE = "mermaid.min.js"
+MERMAID_LICENSE_RESOURCE = "mermaid-LICENSE.txt"
+MERMAID_ORIGIN = "https://github.com/mermaid-js/mermaid"
 
 logger = logging.getLogger(__name__)
 
@@ -133,9 +135,22 @@ def _mermaid_script(body: str, theme: ThemeColors) -> str:
         return ""
     scheme = "dark" if theme.is_dark else "default"
     return (
-        f"\n<script>{script}</script>\n"
+        f"\n<script>{_mermaid_notice()}{script}</script>\n"
         f'<script>mermaid.initialize({{startOnLoad: true, theme: "{scheme}"}});</script>\n'
     )
+
+
+def _mermaid_notice() -> str:
+    """埋め込む JavaScript に添えるライセンス表記（B-4）。
+
+    **MIT の条件**。複製物には著作権表示と許諾表示を含める。書き出した HTML は
+    人に渡るので、それ自体が mermaid の複製物になる。`mermaid.min.js` には
+    mermaid 自身の表記が入っていない（中にあるのは同梱ライブラリのぶんだけ。
+    実測）ので、こちらで添える。
+    """
+    text = _read_vendor(MERMAID_LICENSE_RESOURCE)
+    body = text.replace("*/", "*\\/") if text else "MIT License"
+    return f"/*!\nmermaid — {MERMAID_ORIGIN}\n\n{body}\n*/\n"
 
 
 def _read_vendor(name: str) -> str | None:

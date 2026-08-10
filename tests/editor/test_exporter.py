@@ -406,3 +406,23 @@ class TestMermaid:
     def test_図に背景を敷かない(self, qapp) -> None:
         """`<pre>` なのでコードの背景を引き継ぐ。絵に灰色の板が見える。"""
         assert ".mermaid { background: none" in to_html(self.DIAGRAM)
+
+    def test_ライセンス表記も一緒に埋める(self, qapp) -> None:
+        """**MIT の条件**。複製物には著作権表示と許諾表示を含める。
+
+        書き出した HTML は人に渡るので、それ自体が mermaid の複製物になる。
+        `mermaid.min.js` には mermaid 自身の表記が入っていない（実測）ので、
+        こちらで添える。
+        """
+        html = to_html(self.DIAGRAM)
+        assert "Knut Sveidqvist" in html
+        assert "MIT License" in html
+
+    def test_出どころとバージョンも書く(self, qapp) -> None:
+        """あとから追跡できるように。"""
+        html = to_html(self.DIAGRAM)
+        assert "mermaid" in html
+        assert "github.com/mermaid-js/mermaid" in html
+
+    def test_図が無ければ表記も要らない(self, qapp) -> None:
+        assert "Knut Sveidqvist" not in to_html("# 見出し\n")
