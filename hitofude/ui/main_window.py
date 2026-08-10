@@ -65,6 +65,7 @@ from hitofude.ui.panes import (
 )
 from hitofude.ui.preferences import PreferencesDialog
 from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
+from hitofude.ui.shortcut_sheet import ShortcutSheet
 from hitofude.ui.sidebar import ALL, Filter, FilterKind, Sidebar
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,8 @@ STASH_INTERVAL_SECONDS = 2.0
 # 文字数を数え直すまでの待ち。38,000 字のノートで 40ms 掛かる（実測）ので
 # 1 打ごとには数えられない
 STATS_DELAY_MS = 400
+# 「直前のノートへ戻る」で遡れる数（C-8）
+MAX_HISTORY = 20
 DIRTY_MARK = "•"
 # ステータスバー右端の余白。ウィンドウの角が丸いので、右端ぴったりに置くと
 # 最後の文字が欠ける（実際に欠けた）
@@ -126,7 +129,10 @@ class MainWindow(QMainWindow):
         self._sync_reporter.failed.connect(self._on_index_sync_failed)
         self._syncing_index = False
         self._closing = False
-        self._previous_path: Path | None = None
+        # 開いたノートの履歴（C-8）。**今いるノートは入れない。**
+        # 入れると「戻る」の 1 回目が今の場所になり、押しても何も起きない
+        self._history: list[Path] = []
+        self._going_back = False
 
         self._stats_timer = QTimer(self)
         self._stats_timer.setSingleShot(True)
@@ -173,6 +179,12 @@ class MainWindow(QMainWindow):
         self._splitter.setChildrenCollapsible(False)
 
         self.setCentralWidget(self._splitter)
+
+        # **文字数より左に置く。** 右端は文字数の場所で、あとから増えたものを
+        # 右へ足すと、保存のたびに文字数が横へ動いて見える
+        self._saved_label = QLabel("", self)
+        self._saved_label.setToolTip("最後に保存した時刻。保存は自動で、打ち始めると消えます。")
+        self.statusBar().addPermanentWidget(self._saved_label)
 
         self._stats_label = QLabel("", self)
         self._stats_label.setToolTip(STATS_TOOLTIP)
@@ -669,7 +681,7 @@ class MainWindow(QMainWindow):
             return
 
         if self._note is not None and self._note.path != path:
-            self._previous_path = self._note.path
+            self._push_history(self._note.path)
         self._note = note
         self._loading = True
         try:
@@ -686,6 +698,8 @@ class MainWindow(QMainWindow):
         self._update_title()
         self._stats_timer.stop()
         self._update_stats()
+        # 別のノートの保存時刻を出したままにしない（C-5）
+        self._show_saved(None)
         self._remember_note(note.path)
 
     def new_note(self) -> None:
@@ -721,8 +735,21 @@ class MainWindow(QMainWindow):
         self._debouncer.touch()
         self._update_title()
         self._stats_timer.start()
+        # 古い時刻が残っていると今の状態と食い違う（C-5）
+        self._show_saved(None)
 
     # --------------------------------------------------------- 表示の更新
+
+    def _show_saved(self, at: "datetime | None") -> None:
+        """保存済みの合図（C-5）。`None` で消す。
+
+        **開いただけでは出さない。** まだ何も書いていないのに「保存しました」
+        は嘘になる。打ち始めたら消す。
+        """
+        self._saved_label.setText(f"{at:%H:%M} に保存" if at is not None else "")
+
+    def saved_text(self) -> str:
+        return self._saved_label.text()
 
     def _update_title(self) -> None:
         """未保存なら印を付ける。
@@ -757,11 +784,37 @@ class MainWindow(QMainWindow):
             method()
 
     def open_previous_note(self) -> None:
-        """直前に開いていたノートへ戻る。もう一度押すと行き来する。"""
-        target = self._previous_path
-        if target is None or not target.is_file():
+        """直前に開いていたノートへ戻る（C-8）。押すたびに遡れる。
+
+        **消えたノートは飛ばす。** ゴミ箱へ入れた直後に押したとき、
+        戻る先が無いのではなく「その前」へ行けるほうが自然。
+        """
+        while self._history:
+            target = self._history.pop()
+            if not target.is_file():
+                continue
+            # **戻る操作は履歴に積まない。** 積むと今いた場所が上に乗り、
+            # 次に押したときそこへ戻ってしまう（2 つのノートを往復する）
+            self._going_back = True
+            try:
+                self.open_note(target)
+            finally:
+                self._going_back = False
             return
-        self.open_note(target)
+
+    def _push_history(self, path: Path) -> None:
+        """履歴に積む（C-8）。
+
+        同じノートを続けて積まない。開き直すたびに増えると、戻るのに
+        同じ数だけ押すことになる。
+        """
+        if self._going_back:
+            return
+        if self._history and self._history[-1] == path:
+            return
+        self._history.append(path)
+        # 際限なく持つと閉じるときの保存も重くなる
+        del self._history[:-MAX_HISTORY]
 
     def _on_save_tick(self) -> None:
         if self._debouncer.due():
@@ -827,6 +880,7 @@ class MainWindow(QMainWindow):
         self._db.upsert_note(self._note, self._vault.root)
         self.refresh()
         self._update_title()
+        self._show_saved(datetime.now())
         self._remember_note(self._note.path)
 
     def _rename_if_title_changed(self, previous: Note, current: Note) -> Note:
@@ -1052,6 +1106,12 @@ class MainWindow(QMainWindow):
         self._db.upsert_note(note, self._vault.root)
         self.refresh()
         self.open_note(note.path)
+
+    def show_shortcuts(self) -> None:
+        """`Cmd+?`。ショートカットの一覧を出す（C-7）。"""
+        sheet = ShortcutSheet(self)
+        sheet.finished.connect(sheet.deleteLater)
+        sheet.show()
 
     def show_about(self) -> None:
         QMessageBox.about(

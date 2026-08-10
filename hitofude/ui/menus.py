@@ -83,6 +83,7 @@ def build_menus(window) -> None:
     add(view_menu, "タイプライタモード", "Ctrl+Shift+Y", window._editor.toggle_typewriter_mode)
 
     help_menu = window.menuBar().addMenu("ヘルプ")
+    add(help_menu, "ショートカット一覧", "Ctrl+?", window.show_shortcuts)
     add(help_menu, "使い方のノートを置き直す", "", window.place_manual)
     help_menu.addSeparator()
     add(help_menu, f"{APP_NAME} について", "", window.show_about)

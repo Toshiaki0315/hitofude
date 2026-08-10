@@ -205,3 +205,69 @@ class TestSeededManual:
 
         again = open_window(qtbot, fresh)
         assert again.current_note.path == path
+
+
+class TestHistory:
+    """直近ノートの履歴（C-8 / ユーザー提案）。
+
+    今までは 1 つ前にしか戻れず、押すたびに 2 つのノートを往復していた。
+    数件たどれるようにする。
+    """
+
+    def test_2つ前まで戻れる(self, qtbot, config) -> None:
+        window = open_window(qtbot, config)
+        first = make_note(window, "一")
+        second = make_note(window, "二")
+        third = make_note(window, "三")
+        for path in (first, second, third):
+            window.open_note(path)
+        window.open_previous_note()
+        window.open_previous_note()
+        assert window.current_note.path.name == first.name
+
+    def test_戻ったあとに開くとそこから続く(self, qtbot, config) -> None:
+        window = open_window(qtbot, config)
+        first = make_note(window, "一")
+        second = make_note(window, "二")
+        window.open_note(first)
+        window.open_note(second)
+        window.open_previous_note()
+        assert window.current_note.path.name == first.name
+
+    def test_履歴の端では何もしない(self, qtbot, config) -> None:
+        window = open_window(qtbot, config)
+        first = make_note(window, "一")
+        window.open_note(first)
+        window.open_previous_note()
+        window.open_previous_note()
+        assert window.current_note.path.name == first.name
+
+    def test_同じノートを続けて開いても増えない(self, qtbot, config) -> None:
+        window = open_window(qtbot, config)
+        first = make_note(window, "一")
+        second = make_note(window, "二")
+        window.open_note(first)
+        window.open_note(second)
+        window.open_note(second)
+        window.open_previous_note()
+        assert window.current_note.path.name == first.name
+
+    def test_消えたノートは飛ばす(self, qtbot, config) -> None:
+        window = open_window(qtbot, config)
+        first = make_note(window, "一")
+        second = make_note(window, "二")
+        third = make_note(window, "三")
+        for path in (first, second, third):
+            window.open_note(path)
+        second.unlink()
+        window.open_previous_note()
+        assert window.current_note.path.name == first.name
+
+    def test_履歴は限りがある(self, qtbot, config) -> None:
+        """際限なく持つと、閉じるときの保存も重くなる。"""
+        from hitofude.ui.main_window import MAX_HISTORY
+
+        window = open_window(qtbot, config)
+        for index in range(MAX_HISTORY + 5):
+            window.open_note(make_note(window, f"ノート{index}"))
+        assert len(window._history) <= MAX_HISTORY

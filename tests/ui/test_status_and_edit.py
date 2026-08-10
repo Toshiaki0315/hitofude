@@ -170,15 +170,18 @@ class TestPreviousNote:
         window.open_previous_note()
         assert window.current_note.path == first
 
-    def test_もう一度押すと行き来する(self, window) -> None:
+    def test_もう一度押すとさらに前へ遡る(self, window) -> None:
+        """**C-8 で往復をやめた。** 以前は 2 つのノートを行き来していたが、
+        押した回数だけ遡るほうが、来た道を戻る操作として素直。"""
         first = note(window, "ひとつめ")
         second = note(window, "ふたつめ")
-        window.open_note(first)
-        window.open_note(second)
+        third = note(window, "みっつめ")
+        for path in (first, second, third):
+            window.open_note(path)
 
         window.open_previous_note()
         window.open_previous_note()
-        assert window.current_note.path == second
+        assert window.current_note.path == first
 
     def test_戻る先が無ければ何もしない(self, window) -> None:
         window.open_previous_note()
@@ -337,3 +340,50 @@ class TestStatusMargin:
         tip = window._stats_label.toolTip()
         assert "装飾" in tip or "マーカー" in tip
         assert "行" in tip
+
+
+class TestSavedNotice:
+    """保存済みの合図（C-5 / ユーザー提案）。
+
+    今までは未保存の `•` が消えるだけで、「書けた」ことが積極的に分からない。
+    データを預ける道具なので、書けたことが見えるのは安心に直結する。
+    """
+
+    def test_保存すると時刻が出る(self, window) -> None:
+        window.open_note(note(window, "メモ", "本文\n"))
+        window.editor.textCursor().insertText("追記")
+        window.flush()
+        assert "保存" in window.saved_text()
+
+    def test_開いただけでは出さない(self, window) -> None:
+        """まだ何も書いていないのに「保存しました」は嘘になる。"""
+        window.open_note(note(window, "メモ", "本文\n"))
+        assert window.saved_text() == ""
+
+    def test_時刻を含む(self, window) -> None:
+        window.open_note(note(window, "メモ", "本文\n"))
+        window.editor.textCursor().insertText("追記")
+        window.flush()
+        assert ":" in window.saved_text()
+
+    def test_打ち始めると消える(self, window) -> None:
+        """古い時刻が残っていると、今の状態と食い違う。"""
+        window.open_note(note(window, "メモ", "本文\n"))
+        window.editor.textCursor().insertText("追記")
+        window.flush()
+        window.editor.textCursor().insertText("さらに")
+        assert window.saved_text() == ""
+
+    def test_ノートを切り替えると消える(self, window) -> None:
+        window.open_note(note(window, "一つ目", "本文\n"))
+        window.editor.textCursor().insertText("追記")
+        window.flush()
+        window.open_note(note(window, "二つ目", "本文\n"))
+        assert window.saved_text() == ""
+
+    def test_文字数の左に置く(self, window) -> None:
+        """右端は文字数の場所。あとから増えたものを右へ足すと動いて見える。"""
+        window.open_note(note(window, "メモ", "本文\n"))
+        window.editor.textCursor().insertText("追記")
+        window.flush()
+        assert window._saved_label.x() < window._stats_label.x()

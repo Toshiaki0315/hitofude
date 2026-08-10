@@ -10,12 +10,25 @@ import pytest
 from PySide6.QtCore import QSettings, Qt
 
 from hitofude.config import Config
-from hitofude.storage.index_db import SortOrder
+from hitofude.storage.index_db import NoteRow, SortOrder
 from hitofude.theme import DARK, LIGHT
 from hitofude.ui.note_list import NoteListView
 from hitofude.ui.note_list_pane import NoteListPane
 
 pytestmark = pytest.mark.gui
+
+
+def sample_row() -> NoteRow:
+    return NoteRow(
+        id="x",
+        path=Path("メモ.md"),
+        title="メモ",
+        preview="本文",
+        modified_at="2026-08-10T10:00:00+09:00",
+        mtime_ns=0,
+        size_bytes=0,
+        pinned=False,
+    )
 
 
 @pytest.fixture
@@ -178,3 +191,33 @@ class TestSortMenu:
         from hitofude.ui.note_list_pane import SORT_INDICATOR_ROOM
 
         assert SORT_INDICATOR_ROOM >= 12
+
+
+class TestEmptyState:
+    """空のときの案内（C-6 / ユーザー提案）。
+
+    ノートが 0 件だと一覧が真っ白になる。初回起動の第一印象なので、
+    次に何をすればよいかを置く。
+    """
+
+    def test_空なら案内が出る(self, pane) -> None:
+        pane.note_list.set_rows([])
+        assert pane.empty_notice_visible() is True
+
+    def test_案内に作り方が書いてある(self, pane) -> None:
+        pane.note_list.set_rows([])
+        assert "＋" in pane.empty_notice_text()
+
+    def test_1件でもあれば出さない(self, pane) -> None:
+        pane.note_list.set_rows([sample_row()])
+        assert pane.empty_notice_visible() is False
+
+    def test_空に戻ればまた出る(self, pane) -> None:
+        pane.note_list.set_rows([sample_row()])
+        pane.note_list.set_rows([])
+        assert pane.empty_notice_visible() is True
+
+    def test_ゴミ箱が空のときも出る(self, pane) -> None:
+        """絞り込んだ結果が 0 件でも、一覧が真っ白なのは同じ。"""
+        pane.note_list.set_rows([])
+        assert pane.empty_notice_visible() is True

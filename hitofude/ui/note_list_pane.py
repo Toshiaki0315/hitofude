@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QFontMetricsF
 from PySide6.QtWidgets import (
     QHBoxLayout,
+    QLabel,
     QMenu,
     QToolButton,
     QVBoxLayout,
@@ -36,6 +37,8 @@ HEADER_MARGIN = 6
 
 # 並び順の選択肢（C-3）。**設定ダイアログには置かない。** 並び替えは
 # 「今そうしたい」操作で、一度決めて忘れる設定とは性質が違う
+EMPTY_NOTICE = "ノートがありません。\n右上の ＋ で作れます。"
+
 SORT_LABELS = {
     SortOrder.MODIFIED: "更新の新しい順",
     SortOrder.CREATED: "作成の新しい順",
@@ -88,11 +91,22 @@ class NoteListPane(QWidget):
         header.addStretch(1)
         header.addWidget(self._new)
 
+        # 一覧の上に重ねる。差し替えではなく重ねるのは、一覧の幅や
+        # スクロール位置をそのまま保つため（C-6）
+        self._empty = QLabel(EMPTY_NOTICE, self._list)
+        self._empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._empty.setWordWrap(True)
+        self._empty.hide()
+        self._list.model().modelReset.connect(self._sync_empty_notice)
+        self._list.model().rowsInserted.connect(self._sync_empty_notice)
+        self._list.model().rowsRemoved.connect(self._sync_empty_notice)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addLayout(header)
         layout.addWidget(self._list, 1)
+        self._sync_empty_notice()
 
         self.set_theme(theme)
 
@@ -120,6 +134,27 @@ class NoteListPane(QWidget):
     def _choose_sort(self, order: SortOrder) -> None:
         self.set_sort_order(order)
         self.sort_order_changed.emit(order)
+
+    def empty_notice_visible(self) -> bool:
+        return not self._empty.isHidden()
+
+    def empty_notice_text(self) -> str:
+        return self._empty.text()
+
+    def _sync_empty_notice(self) -> None:
+        """ノートが 0 件のときだけ案内を出す（C-6）。
+
+        **絞り込んだ結果が 0 件でも出す。** 一覧が真っ白なのは同じで、
+        次に何をすればよいか分からない。
+        """
+        empty = self._list.model().rowCount() == 0
+        self._empty.setVisible(empty)
+        if empty:
+            self._empty.resize(self._list.viewport().size())
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._sync_empty_notice()
 
     def set_theme(self, theme: ThemeColors) -> None:
         self._list.set_theme(theme)
