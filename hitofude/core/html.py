@@ -109,6 +109,7 @@ def _render_fence(self, tokens, index, options, env) -> str:
 
     - ` ```js:index.js ` のファイル名を見出しとして出す（B-3）
     - 言語が分かれば色を付ける（B-6）
+    - ` ```mermaid ` は図の置き場にする（B-4）
 
     **言語のクラスは言語だけにする。** `language-js:index.js` のままだと
     色分けの仕組みが言語を見つけられない。
@@ -116,7 +117,10 @@ def _render_fence(self, tokens, index, options, env) -> str:
     token = tokens[index]
     lang, separator, name = token.info.strip().partition(":")
 
-    body = _code_html(token.content, lang, dark=env.get(_DARK_CODE, False))
+    if lang == MERMAID_LANG:
+        body = f'<pre class="mermaid">{escapeHtml(token.content)}</pre>\n'
+    else:
+        body = _code_html(token.content, lang, dark=env.get(_DARK_CODE, False))
     if not separator:
         return body
 
@@ -176,6 +180,10 @@ _DARK_CODE = "hitofude_dark_code"
 
 # Pygments の配色。**色を書き出す時点で焼き込む**ので、JavaScript も
 # スタイルシートの読み込みも要らない（ブラウザでも PDF でも同じに出る）
+# 図として描く言語（B-4）。色分けもコード扱いもしない。Mermaid が読む文字列を
+# そのまま置き、ブラウザ側の JavaScript に描いてもらう
+MERMAID_LANG = "mermaid"
+
 LIGHT_CODE_STYLE = "friendly"
 DARK_CODE_STYLE = "github-dark"
 

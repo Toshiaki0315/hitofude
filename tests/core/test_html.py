@@ -435,3 +435,44 @@ class TestCodeHighlight:
         html = render("```python\nx = 1\n```\n\n$E = mc^2$\n")
         assert "color:" in html
         assert "<math" in html
+
+
+class TestMermaid:
+    """Mermaid の図（B-4）。
+
+    **図にするのはブラウザ側の JavaScript。** Python に実装が無いので、
+    書き出した HTML の中で描いてもらう（同梱するのは `editor/exporter.py`）。
+    ここは「図として描く場所」を用意するところまで。
+    """
+
+    def test_図の置き場になる(self) -> None:
+        assert '<pre class="mermaid">' in render("```mermaid\ngraph TD\n  A --> B\n```\n")
+
+    def test_中身はそのまま渡す(self) -> None:
+        """色分けなどの加工をしない。Mermaid が読むのは `textContent` なので、
+        `-->` が `--&gt;` になっていてもブラウザが戻す。"""
+        import html as html_module
+
+        rendered = render("```mermaid\ngraph TD\n  A --> B\n```\n")
+        assert "graph TD\n  A --> B" in html_module.unescape(rendered)
+
+    def test_コードとしては出さない(self) -> None:
+        """`<code>` に入れると Mermaid が拾わない。"""
+        assert "<code" not in render("```mermaid\ngraph TD\n```\n")
+
+    def test_記号はエスケープする(self) -> None:
+        """`-->` の `>` がそのまま出ると HTML が壊れる。"""
+        html = render("```mermaid\ngraph TD\n  A[<b>x</b>] --> B\n```\n")
+        assert "<b>" not in html
+
+    def test_色は付けない(self) -> None:
+        """Pygments に通すと span だらけになって Mermaid が読めない。"""
+        assert "color:" not in render("```mermaid\ngraph TD\n  A --> B\n```\n")
+
+    def test_ファイル名付きでも図にする(self) -> None:
+        html = render("```mermaid:流れ図\ngraph TD\n  A --> B\n```\n")
+        assert '<pre class="mermaid">' in html
+        assert "流れ図" in html
+
+    def test_他の言語は今まで通り(self) -> None:
+        assert '<pre class="mermaid">' not in render("```python\nx = 1\n```\n")

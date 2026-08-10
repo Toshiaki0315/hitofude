@@ -70,7 +70,17 @@ OPTIONS = {
     # True にすると Carbon 依存で Apple Silicon で問題が出る（§8.1）
     "argv_emulation": False,
     "iconfile": str(ROOT / "resources" / "Hitofude.icns"),
-    "packages": ["PySide6", "shiboken6", "markdown_it", "yaml", "watchdog", "hitofude"],
+    "packages": [
+        "PySide6",
+        "shiboken6",
+        "markdown_it",
+        "mdit_py_plugins",
+        "pygments",
+        "latex2mathml",
+        "yaml",
+        "watchdog",
+        "hitofude",
+    ],
     "includes": ["sqlite3", "mdurl"],
     "excludes": EXCLUDES,
     "plist": {

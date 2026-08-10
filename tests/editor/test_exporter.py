@@ -354,3 +354,55 @@ class TestMath:
             "$$\n\\frac{a}{b}\n$$\n", theme=LIGHT, base_point_size=11.0, base_path=None
         )
         assert "\\frac{a}{b}" in document.toPlainText()
+
+
+class TestMermaid:
+    """Mermaid の図（B-4）。
+
+    図を描くのはブラウザ側の JavaScript。**同梱する**ので、渡した相手が
+    オフラインでも出る（`to_html` の「外部リソースを参照しない」を守る）。
+    """
+
+    DIAGRAM = "```mermaid\ngraph TD\n  A --> B\n```\n"
+
+    def test_図があれば描画用のJSを埋める(self, qapp) -> None:
+        html = to_html(self.DIAGRAM)
+        assert "mermaid.initialize" in html
+
+    def test_外部を参照しない(self, qapp) -> None:
+        html = to_html(self.DIAGRAM)
+        assert "<script src=" not in html
+        assert "cdn." not in html
+
+    def test_図が無ければ埋めない(self, qapp) -> None:
+        """図の無いノートまで 3.4MB 太らせない。"""
+        html = to_html("# 見出し\n\n```python\nx = 1\n```\n")
+        assert "mermaid.initialize" not in html
+
+    def test_図の無い書き出しは小さいまま(self, qapp) -> None:
+        assert len(to_html("# 見出し\n")) < 100_000
+
+    def test_テーマに合わせる(self, qapp) -> None:
+        from hitofude.theme import DARK, LIGHT
+
+        assert to_html(self.DIAGRAM, theme=DARK) != to_html(self.DIAGRAM, theme=LIGHT)
+
+    def test_PDFにはJSを埋めない(self, qapp) -> None:
+        """`QPrinter` では JavaScript が動かない。埋めても無駄に太るだけ。"""
+        from hitofude.editor.exporter import _to_document
+        from hitofude.theme import LIGHT
+
+        document = _to_document(self.DIAGRAM, theme=LIGHT, base_point_size=11.0, base_path=None)
+        assert "mermaid.initialize" not in document.toPlainText()
+
+    def test_PDFには図の元が残る(self, qapp) -> None:
+        """図にできない代わりに、書いたものは失わない。"""
+        from hitofude.editor.exporter import _to_document
+        from hitofude.theme import LIGHT
+
+        document = _to_document(self.DIAGRAM, theme=LIGHT, base_point_size=11.0, base_path=None)
+        assert "graph TD" in document.toPlainText()
+
+    def test_図に背景を敷かない(self, qapp) -> None:
+        """`<pre>` なのでコードの背景を引き継ぐ。絵に灰色の板が見える。"""
+        assert ".mermaid { background: none" in to_html(self.DIAGRAM)

@@ -26,6 +26,10 @@ from hitofude.theme import LIGHT, ThemeColors
 
 PDF_MARGIN_MM = 18.0
 
+# 図の置き場（`core/html.py` が出す）と、描くための JavaScript（B-4）
+MERMAID_MARKER = '<pre class="mermaid">'
+MERMAID_RESOURCE = "mermaid.min.js"
+
 logger = logging.getLogger(__name__)
 
 # HTML の `<img src="...">`。書き出し先から解決できない相対パスを埋め込みに置き換える
@@ -107,8 +111,41 @@ def to_html(
         "<!doctype html>\n"
         f'<html lang="ja"><head><meta charset="utf-8">{heading}'
         f"<style>{_stylesheet(theme)}</style></head>\n"
-        f"<body>{body}</body></html>\n"
+        f"<body>{body}{_mermaid_script(body, theme)}</body></html>\n"
     )
+
+
+def _mermaid_script(body: str, theme: ThemeColors) -> str:
+    """図があるときだけ描画用の JavaScript を埋める（B-4）。
+
+    **CDN を参照しない。** 渡した相手がオフラインだと図が出ず、将来 CDN が
+    消えれば過去に書き出したファイルまで壊れる。`to_html` の「外部リソースを
+    参照しない」という約束もここで破れる。
+
+    **図の無いノートには埋めない。** 同梱している JavaScript は 3.4MB あり、
+    全部の書き出しに付けると割に合わない。
+    """
+    if MERMAID_MARKER not in body:
+        return ""
+    script = _read_vendor(MERMAID_RESOURCE)
+    if script is None:
+        logger.warning("mermaid.min.js が見つからない。図はコードのまま出る")
+        return ""
+    scheme = "dark" if theme.is_dark else "default"
+    return (
+        f"\n<script>{script}</script>\n"
+        f'<script>mermaid.initialize({{startOnLoad: true, theme: "{scheme}"}});</script>\n'
+    )
+
+
+def _read_vendor(name: str) -> str | None:
+    """同梱している他所のファイルを読む。無くても書き出しは止めない。"""
+    from importlib.resources import files
+
+    try:
+        return (files("hitofude.resources.vendor") / name).read_text(encoding="utf-8")
+    except (FileNotFoundError, ModuleNotFoundError, OSError):
+        return None
 
 
 def write_html(
@@ -221,6 +258,8 @@ def _stylesheet(theme: ThemeColors) -> str:
         "font-family: 'Menlo', monospace; padding: 2px 4px; }"
         # 区切り線は脚注プラグインが `<hr class="footnotes-sep">` を出すので引かない
         f".footnotes {{ color: {theme.muted_foreground}; font-size: 0.9em; }}"
+        # 図（B-4）。コードの背景を引き継ぐと、絵に灰色の板が敷かれて見える
+        ".mermaid { background: none; padding: 0; text-align: center; }"
     )
 
 
