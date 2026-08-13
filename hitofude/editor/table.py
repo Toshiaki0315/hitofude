@@ -42,14 +42,47 @@ class _Row:
 # 半角として数えていたので、これらを含む行だけ桁がずれていた（実測 20px / C-1）
 _WIDE_WIDTHS = "WFA"
 
+# GFM でセルの中のリテラルなパイプを表す書き方
+ESCAPED_PIPE = "\\|"
+
 
 def display_width(text: str) -> int:
     """等幅フォントで占める桁数。全角は 2、半角は 1。
 
     **絵文字は揃わないことがある。** 🍎 の実測は半角の 2.30 倍で、
     空白（1 桁）を足し引きしても合わせようがない。
+
+    `\\|`（エスケープしたパイプ）は 2 文字だが画面には 1 文字として出るので、
+    1 桁として数える。
     """
-    return sum(2 if unicodedata.east_asian_width(char) in _WIDE_WIDTHS else 1 for char in text)
+    counted = text.replace(ESCAPED_PIPE, "|")
+    return sum(2 if unicodedata.east_asian_width(char) in _WIDE_WIDTHS else 1 for char in counted)
+
+
+def split_cells(body: str) -> list[str]:
+    """行の中身をセルに割る。
+
+    **`\\|` は区切りにしない。** GFM ではセルの中のリテラルなパイプを表す。
+    見ずに割ると行が壊れ、整形が表全体をその列数に揃えてしまう
+    （`docs/manual_test.md` が 3 列から 16 列に増えた。ユーザー報告）。
+    """
+    cells: list[str] = []
+    current: list[str] = []
+    index = 0
+    while index < len(body):
+        char = body[index]
+        if char == "\\" and index + 1 < len(body) and body[index + 1] == "|":
+            current.append(ESCAPED_PIPE)
+            index += 2
+            continue
+        if char == "|":
+            cells.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+        index += 1
+    cells.append("".join(current))
+    return cells
 
 
 def _split_row(line: str) -> _Row:
@@ -57,9 +90,9 @@ def _split_row(line: str) -> _Row:
     body = line[len(prefix) :].strip()
     if body.startswith("|"):
         body = body[1:]
-    if body.endswith("|"):
+    if body.endswith("|") and not body.endswith(ESCAPED_PIPE):
         body = body[:-1]
-    return _Row(prefix=prefix, cells=[cell.strip() for cell in body.split("|")])
+    return _Row(prefix=prefix, cells=[cell.strip() for cell in split_cells(body)])
 
 
 def _is_row(line: str) -> bool:

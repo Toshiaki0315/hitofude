@@ -6,7 +6,7 @@ GFM / Qiita と同じ記法。**日本語は等幅フォントで 2 桁ぶんの
 
 import pytest
 
-from hitofude.editor.table import Alignment, display_width, find_table, format_table
+from hitofude.editor.table import Alignment, _split_row, display_width, find_table, format_table
 
 
 class TestDisplayWidth:
@@ -160,3 +160,40 @@ class TestAmbiguousWidth:
         formatted = format_table(["| → 前 | ① |", "| --- | --- |", "| 設計 | 野村 |"])
         widths = {display_width(line) for line in formatted}
         assert len(widths) == 1, formatted
+
+
+class TestEscapedPipe:
+    """セルの中のパイプ（ユーザー報告の原因）。
+
+    GFM では `\\|` と書けばセルの中のリテラルなパイプになる。**エスケープを
+    見ずに割ると、行が壊れて列が増える。**
+
+    実際に `docs/manual_test.md` で起きた。`` `|` `` と書いた行が 4 セルと
+    見なされ、整形が表全体をその列数に揃えた結果、GitHub で 13 列の空欄が
+    並ぶ表になっていた。
+    """
+
+    def test_エスケープしたパイプは区切りにしない(self) -> None:
+        assert _split_row(r"| a | `\|` の説明 | c |").cells == ["a", r"`\|` の説明", "c"]
+
+    def test_素のパイプは今まで通り区切り(self) -> None:
+        """エスケープしていないものは GFM でも区切り。ここは変えない。"""
+        assert len(_split_row("| a | b | c |").cells) == 3
+
+    def test_整形しても列が増えない(self) -> None:
+        rows = [
+            "| 見出し | 説明 |",
+            "| --- | --- |",
+            r"| 記号 | `\|` のこと |",
+        ]
+        formatted = format_table(rows)
+        assert all(len(_split_row(line).cells) == 2 for line in formatted), formatted
+
+    def test_エスケープを保つ(self) -> None:
+        formatted = format_table(["| a | b |", "| --- | --- |", r"| x | `\|` |"])
+        assert r"`\|`" in formatted[2]
+
+    def test_桁も合う(self) -> None:
+        """`\\|` は 2 文字だが画面には 1 文字として出る。"""
+        formatted = format_table(["| a | b |", "| --- | --- |", r"| x | `\|` |"])
+        assert len({display_width(line) for line in formatted}) == 1
