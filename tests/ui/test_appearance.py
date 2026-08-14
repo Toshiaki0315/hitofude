@@ -217,7 +217,8 @@ class TestShortcutRegistration:
             ("Ctrl+Shift+P", "ピン留め"),
             ("Ctrl+Shift+M", "Markdown で書き出す…"),
             ("Ctrl+Shift+E", "HTML で書き出す…"),
-            ("Ctrl+P", "PDF で書き出す…"),
+            # macOS の慣習に合わせて印刷へ譲った（C-9）。PDF はそこからも出せる
+            ("Ctrl+P", "印刷…"),
             ("Ctrl+,", "環境設定…"),
             ("Ctrl+1", "サイドバー"),
             ("Ctrl+2", "ノートリスト"),

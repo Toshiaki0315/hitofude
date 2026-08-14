@@ -82,6 +82,70 @@ class TestPdf:
         assert write_pdf(tmp_path / "empty.pdf", "").is_file()
 
 
+class TestPrint:
+    """印刷（C-9）。
+
+    **書き出しと同じ `QTextDocument` を通す。** 経路を分けると、印刷だけ
+    画像が出ない・数式が違う、といった食い違いが後から生える。
+    ここはプリンタを PDF に向けて、書き出しと同じものが出ることを見る。
+    """
+
+    def _to_pdf(self, path: Path):
+        from PySide6.QtPrintSupport import QPrinter
+
+        from hitofude.editor.exporter import new_printer
+
+        printer = new_printer()
+        printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+        printer.setOutputFileName(str(path))
+        return printer
+
+    def test_用紙はA4(self, qapp) -> None:
+        from PySide6.QtGui import QPageSize
+
+        from hitofude.editor.exporter import new_printer
+
+        assert new_printer().pageLayout().pageSize().id() == QPageSize.PageSizeId.A4
+
+    def test_余白が付いている(self, qapp) -> None:
+        """余白ゼロで刷ると端が切れる。書き出しと同じ 18mm。"""
+        from hitofude.editor.exporter import PDF_MARGIN_MM, new_printer
+
+        margins = new_printer().pageLayout().margins()
+        assert margins.left() == pytest.approx(PDF_MARGIN_MM)
+
+    def test_プリンタへ流せる(self, qapp, tmp_path: Path) -> None:
+        from hitofude.editor.exporter import print_document
+
+        target = tmp_path / "printed.pdf"
+        print_document(self._to_pdf(target), SOURCE)
+        assert target.read_bytes().startswith(b"%PDF-")
+
+    def test_書き出しと同じ大きさになる(self, qapp, tmp_path: Path) -> None:
+        """同じ道を通っている証拠。片方だけ中身が欠ければ大きさがずれる。"""
+        from hitofude.editor.exporter import print_document
+
+        printed = tmp_path / "printed.pdf"
+        print_document(self._to_pdf(printed), SOURCE)
+        written = write_pdf(tmp_path / "written.pdf", SOURCE)
+        assert printed.stat().st_size == pytest.approx(written.stat().st_size, rel=0.02)
+
+    def test_空でも壊れない(self, qapp, tmp_path: Path) -> None:
+        from hitofude.editor.exporter import print_document
+
+        target = tmp_path / "empty.pdf"
+        print_document(self._to_pdf(target), "")
+        assert target.is_file()
+
+    def test_元の文字列を変えない(self, qapp, tmp_path: Path) -> None:
+        """R1: 印刷も一方通行。"""
+        from hitofude.editor.exporter import print_document
+
+        text = SOURCE
+        print_document(self._to_pdf(tmp_path / "out.pdf"), text)
+        assert text == SOURCE
+
+
 class TestSourceUntouched:
     """R1 / R2: エクスポートは一方通行。ソースへは戻さない。"""
 

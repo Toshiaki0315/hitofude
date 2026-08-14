@@ -21,8 +21,10 @@ from PySide6.QtGui import (
     QDesktopServices,
     QTextCursor,
 )
+from PySide6.QtPrintSupport import QPrintDialog
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QFileDialog,
     QInputDialog,
     QLabel,
@@ -1111,6 +1113,33 @@ class MainWindow(QMainWindow):
 
     def export_pdf(self) -> Path | None:
         return self._export("PDF で書き出す", "PDF (*.pdf)", ".pdf", self._write_pdf)
+
+    def print_note(self) -> bool:
+        """`Cmd+P`。印刷ダイアログを出す（C-9）。
+
+        **macOS では `Cmd+P` は印刷が慣習。** ここは PDF 書き出しに
+        割り当てていたが、印刷パネルから「PDF として保存」も選べるので、
+        慣習に合わせても PDF への道は残る。書き出しはメニューにある。
+
+        刷る前に保存する。書き出しと同じで、打った直後の内容が出ないと
+        「今見えているもの」と違うものが出てしまう。
+        """
+        if self._note is None:
+            return False
+        self.flush()
+        printer = exporter.new_printer()
+        dialog = QPrintDialog(printer, self)
+        dialog.setWindowTitle("印刷")
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return False
+        exporter.print_document(
+            printer,
+            self._editor.toPlainText(),
+            theme=self._theme_watcher.colors,
+            base_point_size=self._config.font_point_size,
+            base_path=self._vault.root,
+        )
+        return True
 
     def _export(self, caption: str, filter_: str, suffix: str, writer) -> Path | None:
         """保存先を尋ねて書き出す。`writer` は `(Path, str) -> Path`。"""

@@ -37,7 +37,11 @@ def build_menus(window) -> None:
     file_menu.addSeparator()
     add(file_menu, "Markdown で書き出す…", "Ctrl+Shift+M", window.export_markdown)
     add(file_menu, "HTML で書き出す…", "Ctrl+Shift+E", window.export_html)
-    add(file_menu, "PDF で書き出す…", "Ctrl+P", window.export_pdf)
+    # **`Cmd+P` は印刷に譲る（C-9）。** macOS では印刷が慣習で、その
+    # パネルから「PDF として保存」も選べる。書き出しの入口はここに残す
+    add(file_menu, "PDF で書き出す…", "", window.export_pdf)
+    file_menu.addSeparator()
+    add(file_menu, "印刷…", QKeySequence.StandardKey.Print, window.print_note)
     file_menu.addSeparator()
     add(file_menu, "ブラウザで確認", "Ctrl+Shift+B", window.preview_in_browser)
     add(file_menu, "HTML をコピー", "", window.copy_as_html)

@@ -236,6 +236,37 @@ def write_markdown(path: Path, text: str, *, keep_front_matter: bool = False) ->
     return path
 
 
+def new_printer() -> QPrinter:
+    """A4 と余白を入れたプリンタ（C-9）。
+
+    **書き出しと印刷で同じ設定から始める。** 印刷ダイアログで用紙を
+    変えられるが、初期値がずれていると「PDF に保存したら書き出しと
+    見た目が違う」が起きる。
+    """
+    printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+    printer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
+    printer.setPageMargins(_margins(), printer.pageLayout().units())
+    return printer
+
+
+def print_document(
+    printer: QPrinter,
+    text: str,
+    *,
+    theme: ThemeColors = LIGHT,
+    base_point_size: float = 15.0,
+    base_path: Path | None = None,
+) -> None:
+    """組んだ本文をプリンタへ流す（C-9）。
+
+    **紙も PDF もここを通る。** 経路を分けると、印刷だけ画像が出ない・
+    数式が違う、といった食い違いが後から生える。用紙の設定は呼ぶ側
+    （`new_printer()` か印刷ダイアログ）が決める。
+    """
+    document = _to_document(text, theme=theme, base_point_size=base_point_size, base_path=base_path)
+    document.print_(printer)
+
+
 def write_pdf(
     path: Path,
     text: str,
@@ -245,14 +276,10 @@ def write_pdf(
     base_path: Path | None = None,
 ) -> Path:
     """`QPrinter` で PDF を書き出す（spec §9 Phase 6）。"""
-    printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+    printer = new_printer()
     printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
     printer.setOutputFileName(str(path))
-    printer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
-    printer.setPageMargins(_margins(), printer.pageLayout().units())
-
-    document = _to_document(text, theme=theme, base_point_size=base_point_size, base_path=base_path)
-    document.print_(printer)
+    print_document(printer, text, theme=theme, base_point_size=base_point_size, base_path=base_path)
     return path
 
 
