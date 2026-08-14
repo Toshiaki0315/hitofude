@@ -29,6 +29,9 @@ _IMAGE_RE = re.compile(r"!\[(?P<text>[^\[\]]*)\]\((?P<url>[^()\s]*)\)")
 # 行まるごとが画像 1 つのときだけ、本文中に絵として描く（タスク A-2）
 _IMAGE_LINE_RE = re.compile(r"\A\s*!\[[^\[\]]*\]\((?P<url>[^()\s]+)\)\s*\Z")
 _LINK_RE = re.compile(r"(?<!!)\[(?P<text>[^\[\]]*)\]\((?P<url>[^()\s]*)\)")
+# ノート間リンク `[[ノート名]]`（E-6）。**`|` を含むものは拾わない。**
+# 別名（`[[名前|表示]]`）は未対応で、中途半端に拾うと名前が壊れる
+_WIKI_LINK_RE = re.compile(r"\[\[(?P<name>[^\[\]|]+)\]\]")
 # 脚注の参照 `[^1]` と定義の頭 `[^1]:`（B-3 / Qiita 記法）。
 # `[1]` は拾わない。ただの角括弧と見分けが付かなくなる
 _FOOTNOTE_RE = re.compile(r"\[\^(?P<label>[^\[\]\s]+)\]")
@@ -212,6 +215,35 @@ def _scan_links(text: str, mask: bytearray, spans: list[InlineSpan]) -> None:
             _mark(mask, bracket_close, end)  # '](url)'
 
 
+def _scan_wiki_links(text: str, mask: bytearray, spans: list[InlineSpan]) -> None:
+    """`[[ノート名]]`（E-6）。
+
+    **ふつうのリンクより先に見る。** `[[a]](b)` のような書き方をされたとき、
+    あとに回すと `[a]` の部分がリンクとして先に確定して範囲がずれる。
+
+    名前の中は**全部マスクする**。`[[a_b_c]]` の `_` は名前の一部であって
+    強調ではない。装飾にすると飛び先が変わって見える。
+    """
+    for match in _WIKI_LINK_RE.finditer(text):
+        start, end = match.span()
+        if not _is_free(mask, start, end):
+            continue
+        name = match.group("name").strip()
+        if not name:
+            continue  # `[[   ]]` は名前が無い。ただの文字として残す
+        spans.append(
+            InlineSpan(
+                type=SpanType.WIKI_LINK,
+                open_start=start,
+                open_end=start + 2,
+                close_start=end - 2,
+                close_end=end,
+                payload=name,
+            )
+        )
+        _mark(mask, start, end)
+
+
 def _scan_autolinks(text: str, mask: bytearray, spans: list[InlineSpan]) -> None:
     for match in _AUTOLINK_RE.finditer(text):
         start, end = match.span()
@@ -319,6 +351,9 @@ def scan(text: str) -> list[InlineSpan]:
     # すると `[^1]: 注釈` の定義行で取り合いになる
     _scan_footnotes(text, mask, spans)
     _scan_math(text, mask, spans)
+    # **ふつうのリンクより先。** `[[名前]]` の内側が `[名前]` として
+    # 先に確定すると、範囲が 1 文字ずれる
+    _scan_wiki_links(text, mask, spans)
     _scan_links(text, mask, spans)
     _scan_autolinks(text, mask, spans)
     _scan_delimited(text, mask, spans)

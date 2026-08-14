@@ -646,6 +646,10 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             SpanType.HIGHLIGHT: highlight,
             SpanType.LINK_TEXT: link,
             SpanType.AUTOLINK: link,
+            # ノート間リンク（E-6）。**行き先があるかで色を変えない。**
+            # 変えると、他のノートを作った / 消しただけで全体を塗り直す
+            # 必要が出て、R7（全体再ハイライトの禁止）と衝突する
+            SpanType.WIKI_LINK: link,
             SpanType.IMAGE: image,
             SpanType.TAG: tag,
             # 脚注の参照（B-3）。リンクと同じ扱いにする。飛び先を持つ印という

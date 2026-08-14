@@ -74,6 +74,10 @@ class MarkdownEditor(QPlainTextEdit):
     tag_activated = Signal(str)
     """`Cmd+クリック` されたタグ（D-2）。一覧の絞り込みは `MainWindow` の仕事。"""
 
+    note_activated = Signal(str)
+    """`Cmd+クリック` された `[[ノート名]]`（E-6）。名前を解決して開く（無ければ
+    作る）のは `MainWindow` の仕事。エディタは vault を知らない。"""
+
     source_mode_changed = Signal(bool)
     """ソースモードが切り替わった。**入口が 2 つある**（`Cmd+/` と Raw ボタン）
     ので、片方で変えたらもう片方も追従させる。"""
@@ -955,10 +959,13 @@ class MarkdownEditor(QPlainTextEdit):
         found = activation_at(data.spans, cursor.positionInBlock())
         if found is None:
             return
-        if found.kind is ActivationKind.LINK:
-            self.link_activated.emit(found.payload)
-        else:
-            self.tag_activated.emit(found.payload)
+        match found.kind:
+            case ActivationKind.LINK:
+                self.link_activated.emit(found.payload)
+            case ActivationKind.NOTE:
+                self.note_activated.emit(found.payload)
+            case _:
+                self.tag_activated.emit(found.payload)
 
     def _maybe_toggle_checkbox(self, point) -> None:
         """印の上を押したらチェックを切り替える（E-1）。

@@ -42,6 +42,7 @@ from hitofude.core.activation import ALLOWED_SCHEMES
 from hitofude.core.document import Note, with_title
 from hitofude.core.outline import headings
 from hitofude.core.stats import count as count_text
+from hitofude.core.wikilink import normalize, resolve
 from hitofude.editor import exporter
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.storage import autosave
@@ -201,6 +202,7 @@ class MainWindow(QMainWindow):
         self._list_pane.sort_order_changed.connect(self.set_sort_order)
         self._editor.link_activated.connect(self.activate_link)
         self._editor.tag_activated.connect(self.activate_tag)
+        self._editor.note_activated.connect(self.activate_note)
         self._list_pane.set_sort_order(self._config.sort_order)
         self._note_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._note_list.customContextMenuRequested.connect(self._show_context_menu)
@@ -1105,6 +1107,38 @@ class MainWindow(QMainWindow):
             logger.warning("開かないスキーム: %s", url)
             return
         QDesktopServices.openUrl(QUrl(url))
+
+    def activate_note(self, name: str) -> Path | None:
+        """`Cmd+クリック` された `[[ノート名]]` を開く（E-6）。
+
+        **無ければ作る**（ADR-0011）。書いた時点ではまだ無いノートを指すのが
+        ふつうで、何も起きないと作るために一覧へ戻る手間が要る。
+
+        同じ題名のノートが 2 つあるときは、一覧で上に来るほう（既定では
+        最近更新したほう）を開く。**選ばせない。** 押した人が期待するのは
+        「飛ぶ」ことで、選択肢を出すと流れが切れる。
+        """
+        target = normalize(name)
+        if not target:
+            return None
+
+        rows = self._db.notes()
+        found = resolve(target, [row.title for row in rows])
+        if found is not None:
+            row = next(row for row in rows if row.title == found)
+            path = self._vault.root / row.path
+            self.open_note(path)
+            self._note_list.select_path(row.path)
+            return path
+
+        self.flush()
+        note = self._vault.create(target, f"# {target}\n\n")
+        self._db.upsert_note(note, self._vault.root)
+        self.refresh()
+        self.open_note(note.path)
+        self._note_list.select_path(note.path.relative_to(self._vault.root))
+        logger.info("リンク先が無かったので作った: %s", note.path.name)
+        return note.path
 
     def activate_tag(self, tag: str) -> None:
         """`Cmd+クリック` されたタグで一覧を絞る（D-2）。

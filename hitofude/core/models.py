@@ -241,6 +241,10 @@ class SpanType(Enum):
     MATH = auto()
     """インライン数式 `$...$`（B-5）。"""
 
+    WIKI_LINK = auto()
+    """ノート間リンク `[[ノート名]]`（E-6）。`payload` は前後の空白を
+    落とした名前。"""
+
 
 @dataclass(frozen=True, slots=True)
 class InlineSpan:

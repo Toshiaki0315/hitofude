@@ -30,12 +30,15 @@ class ActivationKind(Enum):
     TAG = auto()
     """そのタグで一覧を絞り込む。"""
 
+    NOTE = auto()
+    """そのノートを開く（E-6）。無ければ作る（ADR-0011）。"""
+
 
 @dataclass(frozen=True, slots=True)
 class Activation:
     kind: ActivationKind
     payload: str
-    """`LINK` なら URL、`TAG` なら正規化したタグ名。"""
+    """`LINK` なら URL、`TAG` なら正規化したタグ名、`NOTE` ならノート名。"""
 
 
 def activation_at(spans: list[InlineSpan], column: int) -> Activation | None:
@@ -48,6 +51,9 @@ def activation_at(spans: list[InlineSpan], column: int) -> Activation | None:
             continue
         if span.type is SpanType.TAG:
             return Activation(ActivationKind.TAG, span.payload)
+        if span.type is SpanType.WIKI_LINK:
+            # 行き先は vault の中だけ。スキームの検査は要らない（E-6）
+            return Activation(ActivationKind.NOTE, span.payload)
         if span.type in _LINK_TYPES and _is_openable(span.payload):
             return Activation(ActivationKind.LINK, span.payload)
     return None
