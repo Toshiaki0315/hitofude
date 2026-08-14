@@ -26,6 +26,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QListWidget, QPlainTextEdit, QTextEdit, QWidget
 
 from hitofude.core import frontmatter, search, tags
+from hitofude.core.activation import ActivationKind, activation_at
 from hitofude.core.document import plain_text
 from hitofude.core.models import BlockInfo
 from hitofude.editor import attachments, commands, painter_overlay, table
@@ -66,6 +67,13 @@ def _modifies_text(event: QKeyEvent) -> bool:
 
 
 class MarkdownEditor(QPlainTextEdit):
+    link_activated = Signal(str)
+    """`Cmd+クリック` されたリンクの URL（D-1）。**開くのは呼び出し側**。
+    エディタからブラウザを起動すると、判定と副作用が同じ場所に混ざる。"""
+
+    tag_activated = Signal(str)
+    """`Cmd+クリック` されたタグ（D-2）。一覧の絞り込みは `MainWindow` の仕事。"""
+
     source_mode_changed = Signal(bool)
     """ソースモードが切り替わった。**入口が 2 つある**（`Cmd+/` と Raw ボタン）
     ので、片方で変えたらもう片方も追従させる。"""
@@ -928,6 +936,28 @@ class MarkdownEditor(QPlainTextEdit):
         return blocks
 
     # ----------------------------------------------------------- レイアウト
+
+    def mousePressEvent(self, event) -> None:
+        """`Cmd+クリック` でリンクを開き、タグで絞り込む（D-1 / D-2）。
+
+        **キャレットは動かす。** 開いたあとそのまま本文を直せるほうがよい。
+        素のクリックは今まで通り（判定を挟むと編集の邪魔になる）。
+        """
+        super().mousePressEvent(event)
+        if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            return
+        # `pos()` は非推奨。`position()` は QPointF なので整数へ落とす
+        cursor = self.cursorForPosition(event.position().toPoint())
+        data = cursor.block().userData()
+        if data is None:
+            return
+        found = activation_at(data.spans, cursor.positionInBlock())
+        if found is None:
+            return
+        if found.kind is ActivationKind.LINK:
+            self.link_activated.emit(found.payload)
+        else:
+            self.tag_activated.emit(found.payload)
 
     def paintEvent(self, event: QPaintEvent) -> None:
         """本文の下に背景要素を、上にチェックボックス記号を描く（§5.2, ADR-0002）。

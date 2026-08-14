@@ -562,3 +562,50 @@ class TestTagCompletion:
         window.editor.moveCursor(window.editor.textCursor().MoveOperation.End)
         window.editor.update_tag_completion()
         assert window.editor.tag_candidates() == ["日報"]
+
+
+class TestActivation:
+    """`Cmd+クリック` の受け側（D-1 / D-2）。
+
+    **開くのは `MainWindow`。** エディタは「押された」ことだけを知らせる。
+    """
+
+    def test_タグで絞り込む(self, window) -> None:
+        make_note(window, "日報のメモ", "本文\n\n#日報\n")
+        make_note(window, "関係ないノート", "本文\n")
+        window.activate_tag("日報")
+        assert titles(window) == ["日報のメモ"]
+
+    def test_サイドバーの選択も変わる(self, window) -> None:
+        """一覧だけ変わってサイドバーが元のままだと、今の絞り込みが分からない。"""
+        make_note(window, "メモ", "本文\n\n#日報\n")
+        window.activate_tag("日報")
+        assert window.sidebar.current_filter().tag == "日報"
+
+    def test_知らないタグでも落ちない(self, window) -> None:
+        window.activate_tag("存在しないタグ")
+        assert titles(window) == []
+
+    def test_リンクを開く(self, window, monkeypatch) -> None:
+        opened = []
+        monkeypatch.setattr(
+            "hitofude.ui.main_window.QDesktopServices.openUrl", lambda url: opened.append(url)
+        )
+        window.activate_link("https://example.com")
+        assert [url.toString() for url in opened] == ["https://example.com"]
+
+    def test_危ないスキームは開かない(self, window, monkeypatch) -> None:
+        """判定は `core/activation.py` にあるが、受け口でも二重に確かめる。"""
+        opened = []
+        monkeypatch.setattr(
+            "hitofude.ui.main_window.QDesktopServices.openUrl", lambda url: opened.append(url)
+        )
+        window.activate_link("javascript:alert(1)")
+        assert opened == []
+
+    def test_エディタと繋がっている(self, window) -> None:
+        """信号の受け手を数える API は使わない（PySide では扱いが違う）。
+        実際に飛ばして結果を見る。"""
+        make_note(window, "メモ", "本文\n\n#日報\n")
+        window.editor.tag_activated.emit("日報")
+        assert titles(window) == ["メモ"]

@@ -15,9 +15,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import cast
 
-from PySide6.QtCore import Qt, QThreadPool, QTimer, Signal
+from PySide6.QtCore import Qt, QThreadPool, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QCloseEvent,
+    QDesktopServices,
     QTextCursor,
 )
 from PySide6.QtWidgets import (
@@ -35,6 +36,7 @@ from hitofude import APP_NAME, __version__
 from hitofude.app import ThemeWatcher, apply_theme, set_macos_appearance
 from hitofude.config import Config
 from hitofude.core import frontmatter
+from hitofude.core.activation import ALLOWED_SCHEMES
 from hitofude.core.document import Note, with_title
 from hitofude.core.outline import headings
 from hitofude.core.stats import count as count_text
@@ -194,6 +196,8 @@ class MainWindow(QMainWindow):
 
         self._list_pane.new_note_requested.connect(self.new_note)
         self._list_pane.sort_order_changed.connect(self.set_sort_order)
+        self._editor.link_activated.connect(self.activate_link)
+        self._editor.tag_activated.connect(self.activate_tag)
         self._list_pane.set_sort_order(self._config.sort_order)
         self._note_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._note_list.customContextMenuRequested.connect(self._show_context_menu)
@@ -974,6 +978,27 @@ class MainWindow(QMainWindow):
         palette = self._make_palette("ノートを開く…")
         palette.set_provider(self._quick_open_items)
         palette.open_with()
+
+    def activate_link(self, url: str) -> None:
+        """`Cmd+クリック` されたリンクを既定のブラウザで開く（D-1）。
+
+        **開く先はここでも確かめる。** 判定は `core/activation.py` にあるが、
+        外へ出す一歩手前でもう一度見る。増えた入口から素通りするのを防ぐ。
+        """
+        if not url.strip().lower().startswith(ALLOWED_SCHEMES):
+            logger.warning("開かないスキーム: %s", url)
+            return
+        QDesktopServices.openUrl(QUrl(url))
+
+    def activate_tag(self, tag: str) -> None:
+        """`Cmd+クリック` されたタグで一覧を絞る（D-2）。
+
+        サイドバーの選択も動かす。一覧だけ変わると、今どれで絞っているか
+        分からなくなる。
+        """
+        target = Filter(kind=FilterKind.TAG, tag=tag)
+        self._sidebar.select(target)
+        self.set_filter(target)
 
     def open_outline(self) -> None:
         """`Cmd+R`。このノートの見出しへ飛ぶ（C-2）。
