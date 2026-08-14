@@ -441,3 +441,34 @@ class TestCodeColors:
         body = "\n".join(["def f(): pass"] * (MAX_HIGHLIGHT_LINES + 5))
         set_text(document, f"```python\n{body}\n```\n\n末尾")
         assert self.color_at(document, 1, 0) == self.color_at(document, 1, 4)
+
+
+class TestFrontMatterStaysHidden:
+    """front matter は Raw でも出さない（ユーザー要望）。
+
+    `id` や `created` はアプリの管理情報で、**書く人が触るものではない**。
+    Raw は「Markdown の記号を出して直す」ためのモードなので、記法ではない
+    ものまで出す必要がない。誤って消すと復元できない。
+    """
+
+    SOURCE = "---\nid: ABC123\nmodified: 2026-08-14\n---\n\n# 見出し\n\n本文\n"
+
+    def test_通常は隠れている(self, document, highlighter) -> None:
+        set_text(document, self.SOURCE)
+        assert all(is_hidden(document, line, 0) for line in range(4))
+
+    def test_Rawでも隠れている(self, document, highlighter) -> None:
+        highlighter.set_source_mode(True)
+        set_text(document, self.SOURCE)
+        assert all(is_hidden(document, line, 0) for line in range(4))
+
+    def test_Rawでは本文の記号は出る(self, document, highlighter) -> None:
+        """front matter だけを別扱いにする。ほかは今まで通り出す。"""
+        highlighter.set_source_mode(True)
+        set_text(document, self.SOURCE)
+        assert not is_hidden(document, 5, 0)  # `# 見出し` の `#`
+
+    def test_front_matterが無くても壊れない(self, document, highlighter) -> None:
+        highlighter.set_source_mode(True)
+        set_text(document, "# 見出し\n\n本文\n")
+        assert not is_hidden(document, 0, 0)

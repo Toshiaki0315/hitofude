@@ -423,7 +423,15 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             self._hide(span.close_start, span.close_len)
 
     def _hide_block_markers(self, text: str, info: BlockInfo, reveal: _Reveal) -> None:
-        if reveal.block_marker or not text:
+        if not text:
+            return
+        if info.type is BlockType.FRONT_MATTER:
+            # **Raw でも出さない。** `id` や `created` はアプリの管理情報で、
+            # 書く人が触るものではない。Raw は「Markdown の記号を出して直す」
+            # ためのモードなので、記法でないものまで出す必要がない
+            self._hide(0, len(text))
+            return
+        if reveal.block_marker:
             return
         if info.type is BlockType.CODE_FENCE_OPEN and info.code_name:
             # 記号は隠すが、**ファイル名を書く高さだけ残す**（ユーザー要望）。
