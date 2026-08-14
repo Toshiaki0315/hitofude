@@ -180,3 +180,47 @@ class TestSeparation:
         light = pane.toolbar.rule_color()
         pane.set_theme(DARK)
         assert pane.toolbar.rule_color() != light
+
+
+class TestRawToggle:
+    """Raw ボタン（ユーザー要望）。
+
+    Markdown の記号を出して微調整したいときのための切り替え。中身は
+    既にあるソースモード（`Cmd+/`）で、**入口を目に見える場所に置く**。
+    """
+
+    def test_右端にある(self, pane) -> None:
+        """書式のボタンとは役割が違うので、離して置く。"""
+        raw = pane.toolbar.raw_button
+        assert raw.x() > max(b.x() for b in pane.toolbar.buttons())
+
+    def test_押すと切り替わる(self, pane) -> None:
+        pane.toolbar.raw_button.click()
+        assert pane.editor.highlighter.source_mode is True
+
+    def test_もう一度押すと戻る(self, pane) -> None:
+        pane.toolbar.raw_button.click()
+        pane.toolbar.raw_button.click()
+        assert pane.editor.highlighter.source_mode is False
+
+    def test_押された状態が見える(self, pane) -> None:
+        pane.toolbar.raw_button.click()
+        assert pane.toolbar.raw_button.isChecked() is True
+
+    def test_ショートカットで切り替えても追従する(self, pane) -> None:
+        """`Cmd+/` と入口が 2 つある。片方だけ更新されると食い違う。"""
+        pane.editor.toggle_source_mode()
+        assert pane.toolbar.raw_button.isChecked() is True
+
+    def test_ノートを開き直しても食い違わない(self, pane) -> None:
+        pane.editor.set_source_mode(True)
+        pane.editor.setPlainText("# 別のノート\n")
+        assert pane.toolbar.raw_button.isChecked() is True
+
+    def test_何のボタンか分かる(self, pane) -> None:
+        assert "⌘/" in pane.toolbar.raw_button.toolTip()
+
+    def test_記号が出る(self, pane) -> None:
+        pane.editor.setPlainText("**強調**")
+        pane.toolbar.raw_button.click()
+        assert pane.editor.highlighter.source_mode is True

@@ -127,6 +127,12 @@ def visible_decorations(editor) -> list[Decoration]:
     可視ブロックだけを走査するのが要点（§6.6）。5,000 行の文書でも
     毎フレームの仕事量は画面に入る数十行分に収まる。
     """
+    # ソースモード（Raw）では飾りを描かない。記号を見せるモードなのに
+    # 罫線や縦線が残ると、`|` の上に罫線が、`[ ]` の上にチェック記号が重なる。
+    # フォーカスモードの減光だけは残す（記法の飾りではなく読む助け）
+    if editor.highlighter.source_mode:
+        return focus_dim_rects(editor) if editor.focus_mode else []
+
     decorations: list[Decoration] = []
     block = editor.firstVisibleBlock()
     offset = editor.contentOffset()

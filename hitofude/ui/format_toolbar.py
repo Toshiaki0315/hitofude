@@ -25,6 +25,8 @@ from hitofude.ui.icons import Glyph, glyph_icon
 ICON_SIZE = 18
 BUTTON_SIZE = 26
 BAR_MARGIN = 6
+# 生の Markdown を出す切り替え（ユーザー要望）。中身はソースモード
+RAW_LABEL = "Raw"
 # 本文との境目。ペインの区切り（`QSplitter::handle`）と同じ太さに揃える
 RULE_HEIGHT = 1
 
@@ -79,12 +81,28 @@ class FormatToolbar(QWidget):
             layout.addWidget(self._button(action))
         layout.addStretch(1)
 
+        # **右端に離して置く。** 書式を付けるボタンとは役割が違い、
+        # 押しっぱなしにする性質のもの（ユーザー要望）
+        self._raw = QToolButton(self)
+        self._raw.setText(RAW_LABEL)
+        self._raw.setCheckable(True)
+        self._raw.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._raw.setToolTip("Markdown の記号を出して直す（⌘/）")
+        self._raw.setAccessibleName(RAW_LABEL)
+        self._raw.clicked.connect(lambda checked: self._editor.set_source_mode(checked))
+        self._editor.source_mode_changed.connect(self._raw.setChecked)
+        layout.addWidget(self._raw)
+
         self._apply_theme()
 
     # ------------------------------------------------------------------ 参照
 
     def buttons(self) -> list[QToolButton]:
         return list(self._buttons)
+
+    @property
+    def raw_button(self) -> QToolButton:
+        return self._raw
 
     # ------------------------------------------------------------------ 見た目
 
@@ -118,8 +136,11 @@ class FormatToolbar(QWidget):
             line.setStyleSheet(f"color: {self._theme.rule};")
         self.setStyleSheet(
             f"QWidget {{ background: {self._theme.background}; }}"
-            f"QToolButton {{ border: none; border-radius: 5px; }}"
+            f"QToolButton {{ border: none; border-radius: 5px; padding: 2px 6px; }}"
             f"QToolButton:hover {{ background: {self._theme.selection_background}; }}"
+            # 押しっぱなしの状態が見えないと、今どちらのモードか分からない
+            f"QToolButton:checked {{ background: {self._theme.selection_background}; "
+            f"color: {self._theme.foreground}; }}"
         )
 
     # ------------------------------------------------------------------ 組み立て

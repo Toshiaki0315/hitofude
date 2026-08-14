@@ -221,7 +221,7 @@ class TestShortcutRegistration:
             ("Ctrl+,", "環境設定…"),
             ("Ctrl+1", "サイドバー"),
             ("Ctrl+2", "ノートリスト"),
-            ("Ctrl+/", "ソースモード"),
+            ("Ctrl+/", "ソースモード（Raw）"),
         ],
     )
     def test_主要なショートカットが揃っている(self, window, shortcut: str, label: str) -> None:

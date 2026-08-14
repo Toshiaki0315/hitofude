@@ -8,7 +8,7 @@
 import logging
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -66,6 +66,10 @@ def _modifies_text(event: QKeyEvent) -> bool:
 
 
 class MarkdownEditor(QPlainTextEdit):
+    source_mode_changed = Signal(bool)
+    """ソースモードが切り替わった。**入口が 2 つある**（`Cmd+/` と Raw ボタン）
+    ので、片方で変えたらもう片方も追従させる。"""
+
     # spec §5.1: 読みやすさのため本文は中央寄せで最大 720px
     MAX_CONTENT_WIDTH = 720
 
@@ -155,6 +159,8 @@ class MarkdownEditor(QPlainTextEdit):
             return
         self._highlighter.set_source_mode(enabled)
         self._highlighter.rehighlight()
+        self.viewport().update()  # 飾りの有無が変わる（`painter_overlay`）
+        self.source_mode_changed.emit(enabled)
 
     def toggle_source_mode(self) -> None:
         self.set_source_mode(not self._highlighter.source_mode)

@@ -328,3 +328,42 @@ class TestCodeName:
         """潰したままだと 1px 未満で、書いても見えない。"""
         away(editor, "```python:aaa.py\nprint(1)\n```")
         assert of_kind(editor, DecorationKind.CODE_NAME)[0].rect.height() > 8
+
+
+class TestSourceMode:
+    """ソースモード（Raw）では飾りを描かない（ユーザー要望）。
+
+    記号を見せるモードなのに罫線や縦線が残ると、`|` の上に罫線が重なり、
+    `[ ]` の上にチェック記号が重なる。**素の Markdown を見るための
+    モード**なので、描画をやめる。
+    """
+
+    SOURCE = (
+        "| 項目 | 担当 |\n| --- | --- |\n| 設計 | 野村 |\n\n"
+        "- [ ] やること\n\n> 引用\n\n:::note info\n囲み\n:::\n\n```python\nx = 1\n```\n\n末尾\n"
+    )
+
+    def test_通常は描く(self, editor) -> None:
+        away(editor, self.SOURCE)
+        assert visible_decorations(editor)
+
+    def test_ソースモードでは描かない(self, editor) -> None:
+        away(editor, self.SOURCE)
+        editor.set_source_mode(True)
+        assert visible_decorations(editor) == []
+
+    def test_戻すとまた描く(self, editor) -> None:
+        away(editor, self.SOURCE)
+        editor.set_source_mode(True)
+        editor.set_source_mode(False)
+        assert visible_decorations(editor)
+
+    def test_フォーカスモードの減光は残す(self, editor) -> None:
+        """こちらは記法の飾りではなく、読む助け。"""
+        away(editor, self.SOURCE)
+        editor.set_source_mode(True)
+        editor.set_focus_mode(True)
+        assert [d.kind for d in visible_decorations(editor)] == [DecorationKind.FOCUS_DIM] * len(
+            visible_decorations(editor)
+        )
+        assert visible_decorations(editor)
