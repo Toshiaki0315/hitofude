@@ -20,17 +20,13 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from hitofude.storage.vault import (
-    ATTACHMENTS_DIR,
-    MANAGED_DIR,
     MARKDOWN_SUFFIXES,
-    TRASH_DIR,
+    SKIP_DIRS,
     Vault,
 )
 
 SUPPRESS_SECONDS = 1.5
 """spec §7.5: 自分で書いた直後、このあいだは同じパスのイベントを無視する。"""
-
-_SKIP_DIRS = frozenset({TRASH_DIR, MANAGED_DIR, ATTACHMENTS_DIR})
 
 
 class ChangeKind(Enum):
@@ -89,7 +85,7 @@ def classify_event(
         return None
 
     relative = path.relative_to(root)
-    if any(part in _SKIP_DIRS or part.startswith(".") for part in relative.parts[:-1]):
+    if any(part in SKIP_DIRS or part.startswith(".") for part in relative.parts[:-1]):
         return None
 
     match kind:

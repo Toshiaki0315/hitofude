@@ -112,6 +112,22 @@ class TestClassifyEvent:
         path = self.ROOT / "attachments" / "図.md"
         assert classify_event(self.ROOT, "modified", path, False) is None
 
+    def test_雛形のフォルダは無視(self) -> None:
+        """E-4 の回帰。**雛形はノートではない。**
+
+        走査（`Vault.scan`）では除いていたのに、こちらで拾って索引へ
+        入れていた。一覧に雛形が 3 つ並び、開いて書き換えられた。
+        """
+        path = self.ROOT / "templates" / "議事録.md"
+        assert classify_event(self.ROOT, "created", path, False) is None
+
+    def test_除くフォルダの一覧が走査と同じ(self) -> None:
+        """**2 か所に書かない。** 片方だけ直したのが上のバグの原因。"""
+        from hitofude.storage import watcher
+        from hitofude.storage.vault import SKIP_DIRS
+
+        assert watcher.SKIP_DIRS is SKIP_DIRS
+
     def test_vaultの外は無視(self) -> None:
         assert classify_event(self.ROOT, "modified", Path("/other/メモ.md"), False) is None
 

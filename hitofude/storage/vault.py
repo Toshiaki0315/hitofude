@@ -4,28 +4,36 @@
 HitofudeNotes/
 ├── 会議メモ.md          ← ノートは vault 直下のフラット構成
 ├── attachments/         ← 画像等
+├── templates/           ← 雛形（E-4）。ノートとしては読まない
 ├── .trash/              ← 削除したノート（既定 30 日で自動消去）
 └── .hitofude/           ← アプリの管理領域（index.sqlite）
 ```
 
 **フォルダ階層で分類しない。** 分類はタグで行う（§7.1）。ユーザーが手で
 サブフォルダを作った場合は再帰的に読み込むが、アプリからは作らせない。
+
+`attachments/` と `templates/` は**分類ではなく道具の置き場**なので、
+走査から外す（`SKIP_DIRS`）。日次ノートを日付フォルダに分けないのも
+同じ理由で、`2026-08-14.md` として vault 直下に置く。
 """
 
 import re
 import time
 import unicodedata
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum, auto
 from pathlib import Path
 
 from hitofude.core import frontmatter
 from hitofude.core.document import Note, new_id
+from hitofude.core.template import Expanded, daily_title, expand
 from hitofude.storage.autosave import save_atomic, save_bytes_atomic
 
 MARKDOWN_SUFFIXES = (".md", ".markdown")
 ATTACHMENTS_DIR = "attachments"
+TEMPLATES_DIR = "templates"
 TRASH_DIR = ".trash"
 MANAGED_DIR = ".hitofude"
 DEFAULT_TRASH_DAYS = 30
@@ -36,6 +44,12 @@ MANUAL_RESOURCE = "manual.md"
 # 一度置いたら二度と置き直さない印。ユーザーが消したものを復活させない
 SEED_MARKER = "seeded"
 
+# 雛形（E-4）。**ただの `.md`** なので Finder で足しても増やせる
+DAILY_TEMPLATE = "日次.md"
+DEFAULT_TEMPLATES = (DAILY_TEMPLATE, "議事録.md", "日報.md")
+TEMPLATES_RESOURCE = "templates"
+TEMPLATES_MARKER = "templates-seeded"
+
 # ファイル名の上限は 255 バイト。日本語は 1 文字 3 バイトなので余裕を取る
 MAX_FILENAME_BYTES = 200
 
@@ -43,7 +57,10 @@ MAX_FILENAME_BYTES = 200
 _ILLEGAL_RE = re.compile(r"[/:\\]")
 _WHITESPACE_RE = re.compile(r"\s+")
 
-_SKIP_DIRS = frozenset({TRASH_DIR, MANAGED_DIR, ATTACHMENTS_DIR})
+# 走査から外すフォルダ。**`storage/watcher.py` もこれを使う。**
+# 2 か所に書くと、片方だけ直したときに「一覧には出ないのに索引には入る」
+# という食い違いが出る（E-4 で実際に起きた）
+SKIP_DIRS = frozenset({TRASH_DIR, MANAGED_DIR, ATTACHMENTS_DIR, TEMPLATES_DIR})
 
 DEFAULT_ATTACHMENT_SUFFIX = ".png"
 # 拡張子に通す文字。パス区切りや空白を持ち込ませない
@@ -96,6 +113,17 @@ def _read_resource(name: str) -> str | None:
         return None
 
 
+@dataclass(frozen=True, slots=True)
+class NewNote:
+    """作ったノートと、書き始める場所（E-4）。"""
+
+    note: Note
+    cursor: int | None = None
+    """`{{cursor}}` があった位置。**front matter を含む先頭からの文字数**
+    （エディタの位置とソースの位置は 1:1。R4）。既にあるノートを開いた
+    ときは None。"""
+
+
 def _now() -> str:
     return datetime.now(UTC).astimezone().isoformat(timespec="seconds")
 
@@ -122,6 +150,10 @@ class Vault:
     def attachments_dir(self) -> Path:
         return self.root / ATTACHMENTS_DIR
 
+    @property
+    def templates_dir(self) -> Path:
+        return self.root / TEMPLATES_DIR
+
     # ----------------------------------------------------------------- 走査
 
     def scan(self) -> Iterator[Path]:
@@ -138,7 +170,7 @@ class Vault:
             if entry.is_symlink() and not self._inside(entry):
                 continue
             if entry.is_dir():
-                if entry.name in _SKIP_DIRS or entry.name.startswith("."):
+                if entry.name in SKIP_DIRS or entry.name.startswith("."):
                     continue
                 yield from self._walk(entry)
             elif entry.suffix.lower() in MARKDOWN_SUFFIXES:
@@ -266,6 +298,83 @@ class Vault:
         path.replace(target)
         return target
 
+    # ------------------------------------------------------------- テンプレート
+
+    def templates(self) -> list[Path]:
+        """`templates/` にある雛形（E-4）。名前順。
+
+        **走査（`scan`）からは外してある。** 雛形はノートではないので、
+        一覧に出ると本物のノートに混ざる（`attachments/` と同じ扱い）。
+        """
+        if not self.templates_dir.is_dir():
+            return []
+        return sorted(
+            path
+            for path in self.templates_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in MARKDOWN_SUFFIXES
+        )
+
+    def create_from_template(
+        self, path: Path, *, title: str | None = None, now: datetime | None = None
+    ) -> NewNote:
+        """雛形から新しいノートを作る（E-4）。
+
+        **雛形の front matter は持ち込まない。** 写すと `id` が重なり、
+        索引の上では 2 つのノートが同じものになる（片方が消えたように見える）。
+
+        題名を省いたときは雛形の名前を使う。「議事録」から作ったノートが
+        「無題」になるより、あとで直すぶんだけ手が少ない。
+        """
+        if not self._inside_templates(path):
+            # パスは手で編集できる。外のファイルをノートに変えさせない
+            raise ValueError(f"雛形ではないパス: {path}")
+
+        name = title or path.stem
+        body = frontmatter.split(path.read_text(encoding="utf-8")).body
+        filled = expand(body, now=now or datetime.now(), title=name)
+        note = self.create(name, filled.text)
+        return NewNote(note, self._cursor_in(note, filled))
+
+    def daily_note(self, day: datetime | None = None, *, template: str = DAILY_TEMPLATE) -> NewNote:
+        """今日のノートを開く。無ければ作る（E-4）。
+
+        **同じ日に何度呼んでも同じノートを返す。** 2 つできると、どちらに
+        書いたか分からなくなる。`.md` は vault 直下に置く。日付でフォルダを
+        切らないのは spec §7.1（分類はタグで行う）に従うため。
+        """
+        when = day or datetime.now()
+        path = self.root / f"{sanitize_filename(daily_title(when))}.md"
+        if path.is_file():
+            # 既にあるものへ印を埋め直さない。書いた内容が唯一の真実（R1）
+            return NewNote(self.read(path))
+
+        source = self.templates_dir / template
+        body = (
+            frontmatter.split(source.read_text(encoding="utf-8")).body
+            if source.is_file()
+            else f"# {daily_title(when)}\n\n"
+        )
+        filled = expand(body, now=when, title=daily_title(when))
+        note = self.create(daily_title(when), filled.text)
+        return NewNote(note, self._cursor_in(note, filled))
+
+    def _inside_templates(self, path: Path) -> bool:
+        try:
+            return path.resolve().is_relative_to(self.templates_dir.resolve())
+        except OSError:
+            return False
+
+    def _cursor_in(self, note: Note, filled: Expanded) -> int | None:
+        """差し込み後の位置を、ファイルの先頭から数え直す。
+
+        `create()` が front matter を前に足すぶんだけ後ろへずれる。
+        マーカーを隠しても文字は実在するので（R4）、この位置がそのまま
+        エディタのキャレット位置になる。
+        """
+        if filled.cursor is None:
+            return None
+        return len(note.text) - len(filled.text) + filled.cursor
+
     # ----------------------------------------------------------------- 初回
 
     def is_empty(self) -> bool:
@@ -307,6 +416,31 @@ class Vault:
         if text is None:
             return None
         return self.create(MANUAL_TITLE, text)
+
+    def seed_templates(self) -> list[Path]:
+        """初回だけ既定の雛形を置く（E-4）。置いたパスを返す。
+
+        使い方ノートと同じで、**一度置いたら二度と置き直さない**。
+        消したものが起動のたびに戻ってくると、消す手段が無くなる。
+
+        **既にある名前は上書きしない。** 手で直した雛形を消しては困る。
+        """
+        marker = self.managed_dir / TEMPLATES_MARKER
+        if marker.exists():
+            return []
+
+        placed: list[Path] = []
+        for name in DEFAULT_TEMPLATES:
+            target = self.templates_dir / name
+            text = _read_resource(f"{TEMPLATES_RESOURCE}/{name}")
+            if text is None or target.exists():
+                continue
+            save_atomic(target, text)
+            placed.append(target)
+
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(_now(), encoding="utf-8")
+        return placed
 
     def purge_trash(self, days: int = DEFAULT_TRASH_DAYS) -> list[Path]:
         """期限を過ぎたゴミ箱の中身を消す（spec §7.6）。起動時に呼ぶ。"""

@@ -30,6 +30,8 @@ def build_menus(window) -> None:
 
     file_menu = window.menuBar().addMenu("ファイル")
     add(file_menu, "新規ノート", QKeySequence.StandardKey.New, window.new_note)
+    add(file_menu, "テンプレートから新規…", "Ctrl+Shift+N", window.new_from_template)
+    add(file_menu, "今日のノート", "Ctrl+T", window.open_daily_note)
     add(file_menu, "保存", QKeySequence.StandardKey.Save, window.flush)
     file_menu.addSeparator()
     add(file_menu, "ピン留め", "Ctrl+Shift+P", window.toggle_pin_current)

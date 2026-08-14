@@ -144,6 +144,7 @@ class MainWindow(QMainWindow):
         self._stats_timer.timeout.connect(self._update_stats)
 
         self._seed_manual()
+        self._vault.seed_templates()
         self.refresh()  # 前回の索引で先に描く。走査を待たずに操作できる
         self._reopen_last_note()
         self.start_index_sync()
@@ -715,6 +716,94 @@ class MainWindow(QMainWindow):
         self.refresh()
         self.open_note(note.path)
         self._note_list.select_path(note.path.relative_to(self._vault.root))
+
+    # ------------------------------------------------------------- テンプレート
+
+    def new_from_template(self) -> bool:
+        """`Cmd+Shift+N`。雛形を選んで新しいノートを作る（E-4）。
+
+        **題名は聞かない。** 雛形の名前をそのまま題名にして、見出しを
+        直せばファイル名が追いかける（ADR-0005）。ダイアログを 2 枚
+        重ねるより、開いてすぐ書けるほうが速い。
+        """
+        if not self._vault.templates():
+            QMessageBox.information(
+                self,
+                "テンプレートがありません",
+                f"「{self._vault.templates_dir}」に `.md` を置くと、ここから使えます。",
+            )
+            return False
+
+        palette = Palette(self, placeholder="雛形を選ぶ…", theme=self._theme_watcher.colors)
+        palette.set_provider(self._template_items)
+        palette.chosen.connect(lambda item: self.create_from_template(item.path))
+        palette.finished.connect(palette.deleteLater)
+        palette.open_with()
+        return True
+
+    def create_from_template(self, path: Path) -> Note | None:
+        """雛形からノートを作って開く（E-4）。作れなければ None。"""
+        self.flush()
+        try:
+            created = self._vault.create_from_template(path)
+        except (ValueError, OSError):
+            logger.warning("雛形から作れなかった: %s", path)
+            return None
+
+        self._db.upsert_note(created.note, self._vault.root)
+        self.refresh()
+        self.open_note(created.note.path)
+        self._note_list.select_path(created.note.path.relative_to(self._vault.root))
+        self._place_cursor(created.cursor)
+        return created.note
+
+    def open_daily_note(self, day: datetime | None = None) -> Note:
+        """`Cmd+T`。今日のノートを開く。無ければ作る（E-4）。
+
+        **同じ日に何度押しても同じノートを開く。** 増えると、どちらに
+        書いたか分からなくなる。
+        """
+        self.flush()
+        created = self._vault.daily_note(day)
+        self._db.upsert_note(created.note, self._vault.root)
+        self.refresh()
+        self.open_note(created.note.path)
+        self._note_list.select_path(created.note.path.relative_to(self._vault.root))
+        self._place_cursor(created.cursor)
+        return created.note
+
+    def _template_items(self, query: str) -> list[PaletteItem]:
+        items = [
+            PaletteItem(title=path.stem, subtitle=self._template_hint(path), path=path)
+            for path in self._vault.templates()
+        ]
+        return fuzzy_filter(query, items)
+
+    def _template_hint(self, path: Path) -> str:
+        """一覧に出す 1 行。雛形の最初の見出しを使う。
+
+        読めなければ空にする。**候補が出ないより、説明が無いほうがまし**。
+        """
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            return ""
+        for line in text.split("\n"):
+            if line.startswith("#"):
+                return line.lstrip("# ").strip()
+        return ""
+
+    def _place_cursor(self, position: int | None) -> None:
+        """`{{cursor}}` の位置へキャレットを置く（E-4）。
+
+        文字は隠していても実在するので、ソースの位置がそのまま使える（R4）。
+        """
+        if position is None:
+            return
+        cursor = self._editor.textCursor()
+        cursor.setPosition(min(position, len(self._editor.toPlainText())))
+        self._editor.setTextCursor(cursor)
+        self._editor.setFocus()
 
     def trash_current(self) -> bool:
         if self._note is None:
