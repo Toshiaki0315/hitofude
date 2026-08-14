@@ -14,6 +14,7 @@ import base64
 import logging
 import mimetypes
 import re
+import tempfile
 from pathlib import Path
 
 from PySide6.QtGui import QPageSize, QTextDocument
@@ -21,10 +22,15 @@ from PySide6.QtPrintSupport import QPrinter
 
 from hitofude.core import frontmatter
 from hitofude.core import html as markdown_html
+from hitofude.core.document import plain_text
 from hitofude.core.paths import resolve_reference
 from hitofude.theme import LIGHT, ThemeColors
 
 PDF_MARGIN_MM = 18.0
+
+# ブラウザで確認するための一時ファイル（E-2）。毎回同じ名前で上書きする
+PREVIEW_NAME = "hitofude-preview.html"
+PREVIEW_TITLE = "プレビュー"
 
 # 図の置き場（`core/html.py` が出す）と、描くための JavaScript（B-4）
 MERMAID_MARKER = '<pre class="mermaid">'
@@ -177,6 +183,38 @@ def write_html(
         newline="\n",
     )
     return path
+
+
+def write_preview(text: str, *, theme: ThemeColors = LIGHT, base_path: Path | None = None) -> Path:
+    """ブラウザで確認するための一時ファイルを書く（E-2）。
+
+    **保管フォルダは汚さない。** 書き出したいのではなく見たいだけなので、
+    ノートと並べて置く理由がない。同じ場所へ上書きするので、見るたびに
+    ファイルが増えることもない。
+
+    中身は書き出す HTML と同じ。**画面では図にならない Mermaid・数式・
+    コードの色が、ここで確かめられる**。
+    """
+    target = Path(tempfile.gettempdir()) / PREVIEW_NAME
+    return write_html(target, text, title=PREVIEW_TITLE, theme=theme, base_path=base_path)
+
+
+def copy_html(text: str, *, theme: ThemeColors = LIGHT, base_path: Path | None = None) -> None:
+    """書式付きでクリップボードへ入れる（E-3）。
+
+    メールやチャットへ貼るためのもの。**素の文字も一緒に入れる**ので、
+    書式を受け取れない相手にも貼れる。そちらはマーカーを外した文章にする
+    （`**強調**` ではなく `強調`）。
+
+    画像は埋め込む。貼り付け先で絵が出ないと意味がない。
+    """
+    from PySide6.QtCore import QMimeData
+    from PySide6.QtWidgets import QApplication
+
+    payload = QMimeData()
+    payload.setHtml(_rendered_body(text, base_path, dark=theme.is_dark))
+    payload.setText(plain_text(frontmatter.split(text).body))
+    QApplication.clipboard().setMimeData(payload)
 
 
 def write_markdown(path: Path, text: str, *, keep_front_matter: bool = False) -> Path:

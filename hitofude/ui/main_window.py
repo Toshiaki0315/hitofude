@@ -979,6 +979,31 @@ class MainWindow(QMainWindow):
         palette.set_provider(self._quick_open_items)
         palette.open_with()
 
+    def preview_in_browser(self) -> None:
+        """書き出さずに既定のブラウザで確認する（E-2）。
+
+        **画面では図にならない Mermaid・数式・コードの色**が、ここで見える。
+        押した時点の本文を書き出すので、直後の内容がそのまま出る。
+        """
+        if self._note is None:
+            return
+        target = exporter.write_preview(
+            self._editor.toPlainText(),
+            theme=self._theme_watcher.colors,
+            base_path=self._vault.root,
+        )
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+
+    def copy_as_html(self) -> None:
+        """書式付きでクリップボードへ入れる（E-3）。メールやチャットへ貼る用。"""
+        if self._note is None:
+            return
+        exporter.copy_html(
+            self._editor.toPlainText(),
+            theme=self._theme_watcher.colors,
+            base_path=self._vault.root,
+        )
+
     def activate_link(self, url: str) -> None:
         """`Cmd+クリック` されたリンクを既定のブラウザで開く（D-1）。
 

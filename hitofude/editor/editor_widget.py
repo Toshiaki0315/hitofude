@@ -944,10 +944,11 @@ class MarkdownEditor(QPlainTextEdit):
         素のクリックは今まで通り（判定を挟むと編集の邪魔になる）。
         """
         super().mousePressEvent(event)
+        point = event.position().toPoint()
         if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self._maybe_toggle_checkbox(point)
             return
-        # `pos()` は非推奨。`position()` は QPointF なので整数へ落とす
-        cursor = self.cursorForPosition(event.position().toPoint())
+        cursor = self.cursorForPosition(point)
         data = cursor.block().userData()
         if data is None:
             return
@@ -958,6 +959,29 @@ class MarkdownEditor(QPlainTextEdit):
             self.link_activated.emit(found.payload)
         else:
             self.tag_activated.emit(found.payload)
+
+    def _maybe_toggle_checkbox(self, point) -> None:
+        """印の上を押したらチェックを切り替える（E-1）。
+
+        **`Cmd` は要らない。** 押す場所が印の上に限られていて誤爆しにくく、
+        毎回修飾キーを押させるほうが煩わしい。**本文の上では切り替えない。**
+        読んでいるだけで状態が変わっては困る。
+
+        Raw では何もしない。記号を直に触るモードなので、クリックは素の意味
+        （キャレットの移動）のままにする。
+        """
+        if self._highlighter.source_mode:
+            return
+        block = self.cursorForPosition(point).block()
+        data = block.userData()
+        if data is None or data.info.checked is None:
+            return
+
+        geometry = self.blockBoundingGeometry(block).translated(self.contentOffset())
+        box = painter_overlay.checkbox_rect(self, block, data.info, geometry)
+        if box is None or not box.contains(point):
+            return
+        self.toggle_checkbox()
 
     def paintEvent(self, event: QPaintEvent) -> None:
         """本文の下に背景要素を、上にチェックボックス記号を描く（§5.2, ADR-0002）。

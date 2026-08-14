@@ -609,3 +609,57 @@ class TestActivation:
         make_note(window, "メモ", "本文\n\n#日報\n")
         window.editor.tag_activated.emit("日報")
         assert titles(window) == ["メモ"]
+
+
+class TestPreviewAndCopy:
+    """ブラウザで確認（E-2）と HTML をコピー（E-3）。"""
+
+    def test_ブラウザで開く(self, window, monkeypatch) -> None:
+        opened = []
+        monkeypatch.setattr(
+            "hitofude.ui.main_window.QDesktopServices.openUrl", lambda url: opened.append(url)
+        )
+        window.open_note(make_note(window, "メモ", "本文\n"))
+        window.preview_in_browser()
+        assert len(opened) == 1
+        assert opened[0].isLocalFile()
+
+    def test_開く前に書き出す(self, window, monkeypatch) -> None:
+        """開いたときに古い内容が出ないよう、押した時点の本文を書く。"""
+        from pathlib import Path
+
+        monkeypatch.setattr("hitofude.ui.main_window.QDesktopServices.openUrl", lambda url: None)
+        window.open_note(make_note(window, "メモ", "本文\n"))
+        window.editor.textCursor().insertText("追記した")
+        window.preview_in_browser()
+        import tempfile
+
+        from hitofude.editor.exporter import PREVIEW_NAME
+
+        target = Path(tempfile.gettempdir()) / PREVIEW_NAME
+        assert "追記した" in target.read_text(encoding="utf-8")
+
+    def test_ノートが無ければ何もしない(self, window, monkeypatch) -> None:
+        opened = []
+        monkeypatch.setattr(
+            "hitofude.ui.main_window.QDesktopServices.openUrl", lambda url: opened.append(url)
+        )
+        window.preview_in_browser()
+        assert opened == []
+
+    def test_HTMLをコピーする(self, window) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        window.open_note(make_note(window, "メモ", "**強調**\n"))
+        window.copy_as_html()
+        assert "<strong>強調</strong>" in QApplication.clipboard().mimeData().html()
+
+    def test_コピーはノートが無ければ何もしない(self, window) -> None:
+        """**クリップボードを空にして確かめない。** `clear()` のあとの
+        `mimeData()` は None を返すことがある（offscreen で踏んだ）。
+        目印を置いて、消えていないことを見る。"""
+        from PySide6.QtWidgets import QApplication
+
+        QApplication.clipboard().setText("目印")
+        window.copy_as_html()
+        assert QApplication.clipboard().text() == "目印"

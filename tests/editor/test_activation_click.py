@@ -89,3 +89,46 @@ class TestCaret:
         editor.setPlainText("[Qt](https://qt.io) を見る")
         click_at(editor, 2)
         assert editor.textCursor().position() > 0
+
+
+class TestCheckboxClick:
+    """チェックボックスをクリックで切り替える（E-1）。
+
+    他のエディタでは当たり前の操作。今までは `Cmd+Shift+T` しか無かった。
+    **`Cmd` は要らない。** 押す場所が印の上に限られているので誤爆しにくく、
+    毎回修飾キーを押させるほうが煩わしい。
+    """
+
+    def test_印を押すと切り替わる(self, editor) -> None:
+        editor.setPlainText("- [ ] やること\n\n末尾")
+        click_at(editor, 2, modifiers=Qt.KeyboardModifier.NoModifier)
+        assert editor.toPlainText().startswith("- [x] やること")
+
+    def test_もう一度押すと戻る(self, editor) -> None:
+        editor.setPlainText("- [x] 済み\n\n末尾")
+        click_at(editor, 2, modifiers=Qt.KeyboardModifier.NoModifier)
+        assert editor.toPlainText().startswith("- [ ] 済み")
+
+    def test_文字の上では切り替わらない(self, editor) -> None:
+        """本文を押しただけで状態が変わると、読んでいるだけで壊れる。"""
+        editor.setPlainText("- [ ] やること\n\n末尾")
+        click_at(editor, 10, modifiers=Qt.KeyboardModifier.NoModifier)
+        assert editor.toPlainText().startswith("- [ ] やること")
+
+    def test_チェックボックスでない行では何も起きない(self, editor) -> None:
+        editor.setPlainText("- ただの項目\n\n末尾")
+        click_at(editor, 2, modifiers=Qt.KeyboardModifier.NoModifier)
+        assert editor.toPlainText().startswith("- ただの項目")
+
+    def test_Undoは1手で戻る(self, editor) -> None:
+        editor.setPlainText("- [ ] やること\n\n末尾")
+        click_at(editor, 2, modifiers=Qt.KeyboardModifier.NoModifier)
+        editor.undo()
+        assert editor.toPlainText().startswith("- [ ] やること")
+
+    def test_Rawでは切り替えない(self, editor) -> None:
+        """記号を直に触るモードなので、クリックは素の意味（キャレット移動）。"""
+        editor.setPlainText("- [ ] やること\n\n末尾")
+        editor.set_source_mode(True)
+        click_at(editor, 2, modifiers=Qt.KeyboardModifier.NoModifier)
+        assert editor.toPlainText().startswith("- [ ] やること")

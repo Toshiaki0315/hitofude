@@ -320,6 +320,17 @@ def checkbox_size(font: QFont) -> float:
     return QFontMetricsF(font).height() * CHECKBOX_SIZE_RATIO
 
 
+def checkbox_rect(editor, block: QTextBlock, info, geometry: QRectF) -> QRectF | None:
+    """チェックの印を描く矩形。クリック判定にも使う（E-1）。
+
+    **描く側と当たり判定を同じ式にする。** 別々に持つと、片方を直したときに
+    「見えている場所と押せる場所が違う」というずれ方をする。
+    """
+    if info.checked is None:
+        return None
+    return _checkbox(editor, block, info, geometry).rect
+
+
 def _checkbox(editor, block: QTextBlock, info, geometry: QRectF) -> Decoration:
     """潰した `[ ]` の位置に箱を描く（§6.4）。"""
     column = block.text().find("[", 0, info.marker_len)

@@ -426,3 +426,87 @@ class TestMermaid:
 
     def test_図が無ければ表記も要らない(self, qapp) -> None:
         assert "Knut Sveidqvist" not in to_html("# 見出し\n")
+
+
+class TestPreviewFile:
+    """ブラウザで確認するための一時ファイル（E-2）。
+
+    書き出さずに見たいだけなので、保管フォルダは汚さない。同じ場所へ
+    上書きするので、見るたびにファイルが増えることもない。
+    """
+
+    def test_書き出せる(self, qapp) -> None:
+        from hitofude.editor.exporter import write_preview
+
+        target = write_preview("# 見出し\n")
+        assert target.is_file()
+
+    def test_中身は書き出しと同じ(self, qapp) -> None:
+        from hitofude.editor.exporter import write_preview
+
+        target = write_preview("# 見出し\n")
+        assert "<h1>見出し</h1>" in target.read_text(encoding="utf-8")
+
+    def test_保管フォルダを汚さない(self, qapp, tmp_path: Path) -> None:
+        from hitofude.editor.exporter import write_preview
+
+        target = write_preview("# 見出し\n", base_path=tmp_path)
+        assert tmp_path not in target.parents
+
+    def test_同じ場所へ上書きする(self, qapp) -> None:
+        """見るたびにファイルが増えない。"""
+        from hitofude.editor.exporter import write_preview
+
+        assert write_preview("# 一\n") == write_preview("# 二\n")
+
+    def test_図も入る(self, qapp) -> None:
+        from hitofude.editor.exporter import write_preview
+
+        target = write_preview("```mermaid\ngraph TD\n  A --> B\n```\n")
+        assert "mermaid.initialize" in target.read_text(encoding="utf-8")
+
+
+class TestClipboardHtml:
+    """HTML をクリップボードへ（E-3）。"""
+
+    def test_書式付きで入る(self, qapp) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        from hitofude.editor.exporter import copy_html
+
+        copy_html("# 見出し\n\n**強調**\n")
+        data = QApplication.clipboard().mimeData()
+        assert data.hasHtml()
+        assert "<strong>強調</strong>" in data.html()
+
+    def test_素の文字も入れる(self, qapp) -> None:
+        """書式を受け取れない相手（素のテキスト欄）にも貼れるように。"""
+        from PySide6.QtWidgets import QApplication
+
+        from hitofude.editor.exporter import copy_html
+
+        copy_html("# 見出し\n\n**強調**\n")
+        assert "強調" in QApplication.clipboard().mimeData().text()
+
+    def test_記号は素の文字から外す(self, qapp) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        from hitofude.editor.exporter import copy_html
+
+        copy_html("**強調**\n")
+        assert "**" not in QApplication.clipboard().mimeData().text()
+
+    def test_画像は埋め込む(self, qapp, tmp_path: Path) -> None:
+        """貼り付け先で絵が出ないと意味がない。"""
+        from PySide6.QtGui import QImage
+
+        from hitofude.editor.exporter import copy_html
+
+        (tmp_path / "attachments").mkdir()
+        image = QImage(4, 4, QImage.Format.Format_RGB32)
+        image.save(str(tmp_path / "attachments" / "a.png"))
+        copy_html("![](attachments/a.png)\n", base_path=tmp_path)
+
+        from PySide6.QtWidgets import QApplication
+
+        assert "data:image/png;base64," in QApplication.clipboard().mimeData().html()

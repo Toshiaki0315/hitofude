@@ -38,6 +38,9 @@ def build_menus(window) -> None:
     add(file_menu, "Markdown で書き出す…", "Ctrl+Shift+M", window.export_markdown)
     add(file_menu, "HTML で書き出す…", "Ctrl+Shift+E", window.export_html)
     add(file_menu, "PDF で書き出す…", "Ctrl+P", window.export_pdf)
+    file_menu.addSeparator()
+    add(file_menu, "ブラウザで確認", "Ctrl+Shift+B", window.preview_in_browser)
+    add(file_menu, "HTML をコピー", "", window.copy_as_html)
 
     # StandardKey.Preferences はこの環境で空を返し、キーボードから
     # 到達できなくなる。macOS の慣習どおり明示する
