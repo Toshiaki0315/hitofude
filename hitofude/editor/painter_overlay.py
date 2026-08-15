@@ -21,6 +21,7 @@ from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen, QTextBlo
 
 from hitofude.core.inline_scanner import image_only_line
 from hitofude.core.models import BlockType
+from hitofude.editor.table import fits
 from hitofude.theme import ThemeColors
 
 # spec §5.2
@@ -187,11 +188,18 @@ def table_decorations(editor, entries) -> list[Decoration]:
     自動整形が走り、そこで線が現れる（マーカーのリビールと同じ考え方）。
     """
     caret = editor.textCursor().blockNumber()
+    columns = editor.table_columns()
     result: list[Decoration] = []
 
     for run in _table_runs(entries):
         numbers = [block.blockNumber() for block, _info, _rect in run]
         if caret in numbers:
+            continue
+        # **幅に収まらない表は描かない。** 折り返すと「ソースの 1 行 =
+        # 画面の 1 行」が崩れ、`|` の x 座標が折り返し先の行の座標に戻る。
+        # そこへ引いた線は表の形を表さない（ユーザー報告）。ハイライタも
+        # 同じ判定で記号を出すので、生の Markdown として読める
+        if any(not fits(block.text(), columns) for block, _info, _rect in run):
             continue
 
         columns = _pipe_positions(run[0][0], run[0][2])

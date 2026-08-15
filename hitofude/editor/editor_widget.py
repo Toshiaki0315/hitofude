@@ -30,7 +30,7 @@ from hitofude.core.activation import ActivationKind, activation_at
 from hitofude.core.document import plain_text
 from hitofude.core.models import BlockInfo
 from hitofude.editor import attachments, commands, painter_overlay, table
-from hitofude.editor.highlighter import MarkdownHighlighter
+from hitofude.editor.highlighter import TABLE_FAMILIES, MarkdownHighlighter
 from hitofude.editor.image_cache import ImageCache
 from hitofude.editor.input_handler import EnterKind, enter_action, indent_action
 from hitofude.theme import LIGHT, ThemeColors
@@ -114,6 +114,8 @@ class MarkdownEditor(QPlainTextEdit):
         self.setTabChangesFocus(False)
         self._tab_width = DEFAULT_TAB_WIDTH
 
+        # 表 1 行に使える桁数。幅とフォントで決まる（`_update_table_columns`）
+        self._table_columns = 0
         self._images = ImageCache()
         self._highlighter = MarkdownHighlighter(
             self.document(), theme, base_point_size=base_point_size
@@ -139,6 +141,7 @@ class MarkdownEditor(QPlainTextEdit):
         self.selectionChanged.connect(self._sync_reveal)
 
         self._apply_palette()
+        self._update_table_columns()
         self._sync_reveal()
 
     @property
@@ -256,6 +259,8 @@ class MarkdownEditor(QPlainTextEdit):
         font = QFont(self._highlighter.mono_family)
         font.setPointSizeF(self.font().pointSizeF())
         self.setTabStopDistance(QFontMetricsF(font).horizontalAdvance(" " * self._tab_width))
+        # 文字が大きくなれば表に入る桁数も減る
+        self._update_table_columns()
 
     def set_font_family(self, family: str) -> None:
         font = self.font()
@@ -1107,6 +1112,48 @@ class MarkdownEditor(QPlainTextEdit):
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._update_content_margins()
+        self._update_table_columns()
+
+    def table_columns(self) -> int:
+        """表 1 行に使える桁数（半角換算）。**覚えた値を返すだけ**。
+
+        `paintEvent` から毎回呼ばれるので、ここで測り直さない
+        （`QFontMetricsF` を作るコストが描画のたびに乗る）。
+        """
+        return self._table_columns
+
+    def _measure_table_columns(self) -> int:
+        """今の幅とフォントで何桁入るか。
+
+        表は `BIZ UDGothic` で描く。**全角は半角のちょうど 2 倍**（ADR-0003 の
+        実測）なので、桁数で数えれば画面の幅と 1 対 1 で対応する。
+        """
+        available = self.viewport().width() - self.document().documentMargin() * 2
+        font = QFont()
+        font.setFamilies(TABLE_FAMILIES)
+        font.setPointSizeF(self.font().pointSizeF())
+        advance = QFontMetricsF(font).horizontalAdvance("0")
+        if advance <= 0:
+            return 0
+        return int(available / advance)
+
+    def _update_table_columns(self) -> None:
+        """幅が変わったらハイライタへ伝え、表の行だけ掛け直す。
+
+        **全体再ハイライトはしない**（R7）。`|` を含む行だけを見る。
+        本文の大半は表ではないので、これで十分に安い。
+        """
+        columns = self._measure_table_columns()
+        if columns == self._table_columns:
+            return
+        self._table_columns = columns
+        self._highlighter.set_table_columns(columns)
+
+        block = self.document().firstBlock()
+        while block.isValid():
+            if "|" in block.text():
+                self._highlighter.rehighlightBlock(block)
+            block = block.next()
 
     def content_margin(self) -> int:
         """本文の左右に入っている余白（px）。"""

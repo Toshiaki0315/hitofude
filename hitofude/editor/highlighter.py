@@ -40,6 +40,7 @@ from hitofude.editor.painter_overlay import (
     CODE_NAME_SCALE,
     checkbox_size,
 )
+from hitofude.editor.table import fits
 from hitofude.theme import LIGHT, ThemeColors
 
 # 0.5pt にすると 1 文字あたり残る幅は約 0.5px（spec §3.3 の実測）。
@@ -210,6 +211,8 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._reveal_position: int | None = None
         self._image_cache = None
         self._image_width = 0
+        # 表 1 行に使える桁数（半角換算）。0 は「まだ分からない」
+        self._table_columns = 0
         self._selection: tuple[int, int] | None = None
         self._source_mode = False
         self._cell_pad: QTextCharFormat | None = None
@@ -249,6 +252,19 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         """
         self._image_cache = cache
         self._image_width = width
+
+    def set_table_columns(self, columns: int) -> None:
+        """表 1 行に使える桁数を伝える（ユーザー報告 / ADR-0003 追記）。
+
+        **ここでは再ハイライトしない。** 呼び出し側が `|` を含むブロック
+        だけを掛け直す（R7）。幅が変わるのはウィンドウを動かしたときだけで、
+        本文の大半は表ではない。
+        """
+        self._table_columns = max(0, int(columns))
+
+    @property
+    def table_columns(self) -> int:
+        return self._table_columns
 
     def set_reveal(self, position: int | None, selection: tuple[int, int] | None = None) -> None:
         """キャレット位置と選択範囲を伝える。
@@ -442,13 +458,22 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         elif info.type is BlockType.NOTE_DELIMITER:
             if info.note_kind != UNKNOWN_NOTE_KIND:
                 self._hide(0, len(text))
+        elif info.type is BlockType.TABLE_DELIMITER:
+            # 収まらない表は生の Markdown を見せる。区切り行だけ隠すと
+            # 表の形が読めなくなる
+            if fits(text, self._table_columns):
+                self._hide(0, len(text))
         elif info.type in _FULLY_HIDDEN_TYPES:
             self._hide(0, len(text))
         elif info.type in _HIDDEN_MARKER_TYPES:
             self._hide(0, info.marker_len)
         elif info.type is BlockType.TABLE_ROW:
             # `|` は罫線として描く（§5.2 の描画フック）。文字は残すので
-            # キャレット位置とソースのオフセットは 1:1 のまま（R4）
+            # キャレット位置とソースのオフセットは 1:1 のまま（R4）。
+            # **幅に収まらない行では隠さない。** 折り返すと罫線が引けず、
+            # 隠したままだと列の区切りが画面から消える（ユーザー報告）
+            if not fits(text, self._table_columns):
+                return
             for index, character in enumerate(text):
                 if character == "|":
                     self._hide(index, 1)

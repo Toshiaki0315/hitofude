@@ -46,6 +46,22 @@ _WIDE_WIDTHS = "WFA"
 ESCAPED_PIPE = "\\|"
 
 
+def fits(text: str, columns: int) -> bool:
+    """表の行が `columns` 桁（半角換算）に収まるか（ユーザー報告 / ADR-0003 追記）。
+
+    収まらない行は画面で折り返し、**「ソースの 1 行 = 画面の 1 行」が崩れる**。
+    崩れると `|` の x 座標が折り返し先の行の座標に戻るので、そこへ罫線を
+    引いても意味を持たない。描けないときは描かず、記号を出して直せるようにする。
+
+    `|` は隠れていて幅を持たないので数えない。`columns` が 0 以下のとき
+    （幅がまだ分からないとき）は**収まる扱い**にする。起動直後に表が
+    生の Markdown で出てしまうより、そのあと折り返して気づくほうがまし。
+    """
+    if columns <= 0:
+        return True
+    return display_width(text) - text.count("|") <= columns
+
+
 def display_width(text: str) -> int:
     """等幅フォントで占める桁数。全角は 2、半角は 1。
 

@@ -6,7 +6,14 @@ GFM / Qiita と同じ記法。**日本語は等幅フォントで 2 桁ぶんの
 
 import pytest
 
-from hitofude.editor.table import Alignment, _split_row, display_width, find_table, format_table
+from hitofude.editor.table import (
+    Alignment,
+    _split_row,
+    display_width,
+    find_table,
+    fits,
+    format_table,
+)
 
 
 class TestDisplayWidth:
@@ -197,3 +204,35 @@ class TestEscapedPipe:
         """`\\|` は 2 文字だが画面には 1 文字として出る。"""
         formatted = format_table(["| a | b |", "| --- | --- |", r"| x | `\|` |"])
         assert len({display_width(line) for line in formatted}) == 1
+
+
+class TestFits:
+    """画面の幅に収まるか（ユーザー報告 / ADR-0003 追記）。
+
+    収まらない行は折り返し、「ソースの 1 行 = 画面の 1 行」が崩れる。
+    崩れた行に罫線は引けないので、判定をここに置いて描画側と共有する。
+    """
+
+    def test_収まる(self) -> None:
+        assert fits("| a | b |", 20) is True
+
+    def test_収まらない(self) -> None:
+        assert fits("| aaaaaaaaaa | bbbbbbbbbb |", 10) is False
+
+    def test_ちょうどは収まる(self) -> None:
+        # `|` は隠れて幅を持たないので 3 桁ぶん引く
+        assert fits("|ab|cd|", 4) is True
+        assert fits("|ab|cde|", 4) is False
+
+    def test_パイプは数えない(self) -> None:
+        """隠れている記号に幅を持たせると、収まる表まで弾いてしまう。"""
+        assert fits("|" * 10 + "ab", 2) is True
+
+    def test_日本語は2桁(self) -> None:
+        assert fits("|あい|", 4) is True
+        assert fits("|あいう|", 4) is False
+
+    def test_幅が分からないうちは収まる扱い(self) -> None:
+        """起動直後に表が生の Markdown で出るより、あとで気づくほうがまし。"""
+        assert fits("| とても長い行 |", 0) is True
+        assert fits("| とても長い行 |", -1) is True

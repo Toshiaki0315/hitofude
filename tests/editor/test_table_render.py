@@ -431,3 +431,82 @@ class TestColumnAlignment:
         editor.moveCursor(QTextCursor.MoveOperation.End)
         assert editor.toPlainText().count("→") == 1
         assert "①" in editor.toPlainText()
+
+
+WIDE_TABLE = (
+    "| aaa          | bbb                                              | ccc        |\n"
+    "| ------------ | ------------------------------------------------ | ---------- |\n"
+    "| aaaaaaaaaaaa | bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcccccccccccccccccc | vvvvvvvvvv |\n"
+    "\n本文\n"
+)
+
+
+class TestTooWide:
+    """幅に収まらない表は**生の Markdown を見せる**（ユーザー報告 / ADR-0003 追記）。
+
+    行が折り返すと「ソースの 1 行 = 画面の 1 行」が崩れ、`|` の x 座標が
+    折り返し先の行の座標に戻る。実測（viewport 720px）:
+
+        ふつうの行   : 表示 1 行  | の x = [4, 168, 331, 474]
+        長いセルの行 : 表示 3 行  | の x = [4, 168, 766, 126]
+
+    この位置に罫線を引いても意味を持たない。**描けないときは描かない**で、
+    記号を出してソースとして直せるようにする（キャレットを表に入れたときと
+    同じ見え方。覚えることが増えない）。
+    """
+
+    def test_縦線を隠さない(self, editor) -> None:
+        editor.setPlainText(WIDE_TABLE)
+        move_to(editor, 4)
+        assert hidden_ranges(editor, 0) == [], "収まらないのに `|` を隠している"
+
+    def test_区切り行も見せる(self, editor) -> None:
+        """`|---|---|` を隠したままだと、表の形が読めない。"""
+        editor.setPlainText(WIDE_TABLE)
+        move_to(editor, 4)
+        assert hidden_ranges(editor, 1) == []
+
+    def test_罫線を引かない(self, editor) -> None:
+        editor.setPlainText(WIDE_TABLE)
+        move_to(editor, 4)
+        assert DecorationKind.TABLE_RULE not in kinds(editor)
+
+    def test_ヘッダ背景も敷かない(self, editor) -> None:
+        editor.setPlainText(WIDE_TABLE)
+        move_to(editor, 4)
+        assert DecorationKind.TABLE_HEADER not in kinds(editor)
+
+    def test_収まる表は今まで通り(self, editor) -> None:
+        """狭い表を巻き添えにしない。"""
+        editor.setPlainText(TABLE)
+        move_to(editor, 5)
+        assert DecorationKind.TABLE_RULE in kinds(editor)
+        assert hidden_ranges(editor, 0)
+
+    def test_文字は消さない(self, editor) -> None:
+        """R4: 収まらなくてもソースはそのまま。"""
+        editor.setPlainText(WIDE_TABLE)
+        move_to(editor, 4)
+        assert editor.toPlainText() == WIDE_TABLE
+
+    def test_短くすれば表に戻る(self, editor) -> None:
+        """収まる幅まで縮めれば、そのまま表として描かれる。"""
+        editor.setPlainText(WIDE_TABLE)
+        move_to(editor, 4)
+        assert DecorationKind.TABLE_RULE not in kinds(editor)
+
+        editor.setPlainText(TABLE)
+        move_to(editor, 5)
+        assert DecorationKind.TABLE_RULE in kinds(editor)
+        assert hidden_ranges(editor, 0)
+
+    def test_ウィンドウを広げても桁数は増えない(self, editor) -> None:
+        """**本文は最大 720px**（spec §5.1）。広げても本文の幅は変わらない。
+
+        「ウィンドウを広げれば直る」と誤解しないための固定。収まらない表は
+        セルを短くするしかない（実測: 720px = 71 桁）。
+        """
+        before = editor.table_columns()
+        editor.resize(1900, 300)
+        editor.show()
+        assert editor.table_columns() == before
