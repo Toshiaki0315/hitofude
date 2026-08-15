@@ -112,6 +112,15 @@ def _radical_table() -> dict[int, str]:
 # 起動時に 1 回だけ作る（115 回のループ。表を持ち歩くより安い）
 _RADICALS = _radical_table()
 
+# NFKC に触らせない全角の約物。**NFKC は `（）` を `()` に、`！` を `!` にする。**
+# 部首や半角カナを直すために NFKC は要るが、約物まで書き換えると
+# 「取り込んだら句読点が変わった」ことになる（実物の PowerPoint で踏んだ）
+_KEEP_WIDE = "（）！？：；，．「」『』【】〔〕｛｝［］〜・￥"
+# 退避先は私用領域。本文に出てこない符号位置なので取り違えない
+_SHELTER = 0xE000
+_TO_SHELTER = {ord(c): chr(_SHELTER + i) for i, c in enumerate(_KEEP_WIDE)}
+_FROM_SHELTER = {_SHELTER + i: c for i, c in enumerate(_KEEP_WIDE)}
+
 
 def normalize_text(text: str) -> str:
     """取り込んだ文字を揃える。
@@ -124,13 +133,17 @@ def normalize_text(text: str) -> str:
     （U+2E80〜）は 115 字のうち 113 字が NFKC を素通りする。`⻑い資料` が
     そのまま入るので、`_RADICALS` で先に写す。
 
+    **全角の約物は変えない。** NFKC は `（）` を `()` にするが、取り込んだ
+    だけで句読点が変わるのは筋が悪い。退避してから正規化する。
+
     行頭の空白も落とす。**4 つ以上あるとコードブロックになる**ので、
     元の字下げをそのまま持ち込むと本文が化ける。
     """
     if not text:
         return ""
     cleaned = text.replace("\r\n", "\n").replace("\r", "\n").translate(_RADICALS)
-    cleaned = unicodedata.normalize("NFKC", cleaned)
+    # 全角の約物を退避 → NFKC → 戻す
+    cleaned = unicodedata.normalize("NFKC", cleaned.translate(_TO_SHELTER)).translate(_FROM_SHELTER)
     cleaned = _CONTROL_RE.sub("", cleaned)
     lines = [_SPACES_RE.sub(" ", line).strip() for line in cleaned.split("\n")]
     return "\n".join(lines)

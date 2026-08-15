@@ -223,3 +223,30 @@ class TestRadicals:
 
     def test_ふつうの漢字は変わらない(self) -> None:
         assert normalize_text("長い資料の歯車") == "長い資料の歯車"
+
+
+class TestPunctuation:
+    """全角の約物は変えない（F-3 で見つかった）。
+
+    NFKC は `（）` を `()` に、`！` を `!` にする。部首や半角カナを直す
+    ために NFKC は要るが、**約物まで書き換えると「取り込んだら句読点が
+    変わった」**ことになる。実物の PowerPoint を取り込んだとき
+    `実装コードの例（…）` が `実装コードの例(…)` になった。
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        ["実装の例（補足）", "本当ですか！", "そうですか？", "項目：説明", "「引用」", "【重要】"],
+    )
+    def test_全角の約物はそのまま(self, text: str) -> None:
+        assert normalize_text(text) == text
+
+    def test_全角の英数字は今まで通り半角にする(self) -> None:
+        """こちらは直したい。`２０２６年` は `2026年` で検索できるべき。"""
+        assert normalize_text("２０２６年") == "2026年"
+
+    def test_部首も今まで通り直る(self) -> None:
+        assert normalize_text("⻑い（長い）") == "長い（長い）"
+
+    def test_半角カナも今まで通り直る(self) -> None:
+        assert normalize_text("ﾃｽﾄ（試験）") == "テスト（試験）"

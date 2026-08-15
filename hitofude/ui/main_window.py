@@ -1377,7 +1377,7 @@ class MainWindow(QMainWindow):
             return None
 
         source = Path(chosen)
-        text = importer.to_markdown(source)
+        text = importer.to_markdown(source, save_image=self.save_attachment)
         if not text.strip():
             QMessageBox.warning(
                 self,

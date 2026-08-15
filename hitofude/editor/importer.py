@@ -18,13 +18,15 @@ import logging
 from pathlib import Path
 
 from hitofude.core import imported
+from hitofude.editor import pptx_import
 
 logger = logging.getLogger(__name__)
 
 PDF_SUFFIX = ".pdf"
-SUPPORTED_SUFFIXES = (PDF_SUFFIX,)
+PPTX_SUFFIX = ".pptx"
+SUPPORTED_SUFFIXES = (PDF_SUFFIX, PPTX_SUFFIX)
 # ファイル選択に出す絞り込み
-FILE_FILTER = "読み込める資料 (*.pdf)"
+FILE_FILTER = "読み込める資料 (*.pdf *.pptx)"
 
 
 def pdf_pages(path: Path) -> list[str]:
@@ -46,13 +48,19 @@ def pdf_pages(path: Path) -> list[str]:
     return pages
 
 
-def to_markdown(path: Path) -> str:
+def to_markdown(path: Path, *, save_image=None) -> str:
     """資料 1 つを Markdown にする。読めなければ空。
 
     **題名はファイル名**（`講演資料.pdf` → `# 講演資料`）。中身から題を
     推し量る手もあるが、ファイル名は人が付けたもので当てにできる。
+
+    `save_image` は PowerPoint の画像を保管フォルダへ置く関数
+    （`MainWindow.save_attachment`）。PDF では使わない（画像は取らない）。
     """
     suffix = path.suffix.lower()
+    if suffix == PPTX_SUFFIX:
+        # PowerPoint は構造を持っているので、ページの文字に均さず直に組む
+        return pptx_import.to_markdown(path, save_image=save_image)
     if suffix == PDF_SUFFIX:
         pages = pdf_pages(path)
     else:
