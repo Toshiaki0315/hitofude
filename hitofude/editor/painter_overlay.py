@@ -21,7 +21,7 @@ from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen, QTextBlo
 
 from hitofude.core.inline_scanner import image_only_line
 from hitofude.core.models import BlockType
-from hitofude.editor.table import fits
+from hitofude.core.table import fits
 from hitofude.theme import ThemeColors
 
 # spec §5.2

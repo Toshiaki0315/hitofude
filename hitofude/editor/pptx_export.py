@@ -18,7 +18,7 @@ from pathlib import Path
 
 from hitofude.core.paths import resolve_reference
 from hitofude.core.slides import Block, BlockKind, Deck, Slide, split
-from hitofude.editor.table import split_cells
+from hitofude.core.table import split_cells
 
 logger = logging.getLogger(__name__)
 

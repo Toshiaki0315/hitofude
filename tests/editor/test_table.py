@@ -6,7 +6,7 @@ GFM / Qiita と同じ記法。**日本語は等幅フォントで 2 桁ぶんの
 
 import pytest
 
-from hitofude.editor.table import (
+from hitofude.core.table import (
     Alignment,
     _split_row,
     display_width,

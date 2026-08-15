@@ -6,9 +6,9 @@
 
 import pytest
 
+from hitofude.core.table import display_width
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.editor.painter_overlay import DecorationKind, visible_decorations
-from hitofude.editor.table import display_width
 
 pytestmark = pytest.mark.gui
 

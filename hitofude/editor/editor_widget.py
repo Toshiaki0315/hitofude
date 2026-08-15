@@ -25,11 +25,11 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QListWidget, QPlainTextEdit, QTextEdit, QWidget
 
-from hitofude.core import frontmatter, search, tags
+from hitofude.core import frontmatter, search, table, tags
 from hitofude.core.activation import ActivationKind, activation_at
 from hitofude.core.document import plain_text
 from hitofude.core.models import BlockInfo
-from hitofude.editor import attachments, commands, painter_overlay, table
+from hitofude.editor import attachments, commands, painter_overlay
 from hitofude.editor.highlighter import TABLE_FAMILIES, MarkdownHighlighter
 from hitofude.editor.image_cache import ImageCache
 from hitofude.editor.input_handler import EnterKind, enter_action, indent_action

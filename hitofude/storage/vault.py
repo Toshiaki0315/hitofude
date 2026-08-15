@@ -30,6 +30,7 @@ from pathlib import Path
 from hitofude.core import frontmatter
 from hitofude.core.document import Note, new_id
 from hitofude.core.references import attachment_names
+from hitofude.core.table import find_table, format_table
 from hitofude.core.template import Expanded, daily_title, expand
 from hitofude.storage.autosave import save_atomic, save_bytes_atomic
 
@@ -129,6 +130,37 @@ class NewNote:
     """`{{cursor}}` があった位置。**front matter を含む先頭からの文字数**
     （エディタの位置とソースの位置は 1:1。R4）。既にあるノートを開いた
     ときは None。"""
+
+
+def _with_aligned_tables(filled: Expanded) -> Expanded:
+    """作ったノートの表の桁を揃える（ユーザー報告）。
+
+    **雛形が揃っていなくても、できたノートは揃っている**ようにする。
+    罫線は 1 行目の `|` の位置に引くので、揃っていない表は開いた瞬間に
+    ずれて見える（行を離れれば自動整形が走るが、それまで読めない）。
+
+    **雛形そのものは書き換えない**（R1。直すのは作ったノートだけ）。
+    """
+    lines = filled.text.split("\n")
+    number = 0
+    changed = False
+    while number < len(lines):
+        found = find_table(lines, number)
+        if found is None or found[0] != number:
+            number += 1
+            continue
+        start, end = found
+        formatted = format_table(lines[start:end])
+        if formatted != lines[start:end]:
+            lines[start:end] = formatted
+            changed = True
+        number = end
+
+    if not changed:
+        return filled
+    # 桁を揃えると文字数が変わる。**キャレットの位置は捨てる**
+    # （ずれた位置に置くより、本文の頭から書き始めるほうがまし）
+    return Expanded("\n".join(lines), None)
 
 
 def _now() -> str:
@@ -404,6 +436,7 @@ class Vault:
         name = title or path.stem
         body = frontmatter.split(path.read_text(encoding="utf-8")).body
         filled = expand(body, now=now or datetime.now(), title=name)
+        filled = _with_aligned_tables(filled)
         note = self.create(name, filled.text)
         return NewNote(note, self._cursor_in(note, filled))
 
@@ -426,7 +459,7 @@ class Vault:
             if source.is_file()
             else f"# {daily_title(when)}\n\n"
         )
-        filled = expand(body, now=when, title=daily_title(when))
+        filled = _with_aligned_tables(expand(body, now=when, title=daily_title(when)))
         note = self.create(daily_title(when), filled.text)
         return NewNote(note, self._cursor_in(note, filled))
 

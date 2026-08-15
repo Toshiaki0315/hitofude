@@ -137,7 +137,7 @@ class TestTableFormatting:
         self._put_caret(window, 2)
         assert window.editor.format_table() is True
 
-        from hitofude.editor.table import display_width
+        from hitofude.core.table import display_width
 
         lines = window.editor.toPlainText().split("\n")[2:6]
         assert len({display_width(line) for line in lines}) == 1
@@ -248,7 +248,7 @@ class TestShortcutRegistration:
 
     def test_ショートカットで表が整形される(self, window, qtbot) -> None:
         """ユーザーが辿る経路そのものを通す。"""
-        from hitofude.editor.table import display_width
+        from hitofude.core.table import display_width
 
         window.editor.setPlainText("| 名前 | 個数 |\n|---|---:|\n| りんご | 3 |\n")
         cursor = window.editor.textCursor()
@@ -267,7 +267,7 @@ class TestShortcutRegistration:
         """選択の末尾は表の下の空行になる。先頭側を見ないと見つからない。"""
         from PySide6.QtGui import QTextCursor
 
-        from hitofude.editor.table import display_width
+        from hitofude.core.table import display_width
 
         window.editor.setPlainText("| 名前 | 個数 |\n|---|---:|\n| りんご | 3 |\n")
         cursor = window.editor.textCursor()

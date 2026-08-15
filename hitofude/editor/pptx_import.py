@@ -32,7 +32,7 @@ from hitofude.core.imported import (
     looks_like_heading,
     normalize_text,
 )
-from hitofude.editor.table import format_table
+from hitofude.core.table import format_table
 
 logger = logging.getLogger(__name__)
 

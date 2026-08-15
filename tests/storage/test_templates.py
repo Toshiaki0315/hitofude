@@ -323,7 +323,7 @@ class TestSeededTablesAreAligned:
     """
 
     def test_全部の雛形の表が揃っている(self, vault) -> None:
-        from hitofude.editor.table import find_table, format_table
+        from hitofude.core.table import find_table, format_table
 
         vault.seed_templates()
         checked = 0
@@ -341,3 +341,55 @@ class TestSeededTablesAreAligned:
                 checked += 1
                 number = end
         assert checked >= 2, "表を持つ雛形が足りない"
+
+
+class TestTablesInCreatedNotes:
+    """雛形の表が揃っていなくても、**できたノートは揃っている**（ユーザー報告）。
+
+    既定の雛形は置くときに揃えてある（`TestSeededTablesAreAligned`）が、
+    **手で書いた雛形**や、**古い版が置かれたままの保管フォルダ**では
+    揃っていない表が残る。罫線は 1 行目の `|` の位置に引くので、揃って
+    いないと開いた瞬間にずれて見える。
+
+    行を離れれば自動整形が走るが、**開いた直後に読めない**のは筋が悪い。
+    """
+
+    RAGGED = "# {{title}}\n\n| 項目 | 内容 |\n| --- | --- |\n| 期間 | 2026 年 1 月 〜 12 月 |\n"
+
+    def test_できたノートの表は揃っている(self, vault) -> None:
+        from hitofude.core.table import find_table, format_table
+
+        path = put_template(vault, "ばらばら.md", self.RAGGED)
+        note = vault.create_from_template(path, title="提案", now=NOW).note
+
+        lines = note.text.split("\n")
+        found = next(
+            find_table(lines, number) for number in range(len(lines)) if find_table(lines, number)
+        )
+        block = lines[found[0] : found[1]]
+        assert format_table(block) == block
+
+    def test_雛形そのものは書き換えない(self, vault) -> None:
+        """R1: 直すのは作ったノートだけ。"""
+        path = put_template(vault, "ばらばら.md", self.RAGGED)
+        vault.create_from_template(path, title="提案", now=NOW)
+        assert path.read_text(encoding="utf-8") == self.RAGGED
+
+    def test_表が無ければ何も変えない(self, vault) -> None:
+        path = put_template(vault, "素.md", "# {{title}}\n\n本文\n")
+        note = vault.create_from_template(path, title="題", now=NOW).note
+        assert "# 題\n\n本文\n" in note.text
+
+    def test_日次ノートでも効く(self, vault) -> None:
+        from hitofude.core.table import find_table, format_table
+
+        put_template(
+            vault, DAILY_TEMPLATE, "# {{date}}\n\n| a | b |\n| --- | --- |\n| 長い項目 | 2 |\n"
+        )
+        note = vault.daily_note(NOW).note
+
+        lines = note.text.split("\n")
+        found = next(
+            find_table(lines, number) for number in range(len(lines)) if find_table(lines, number)
+        )
+        assert format_table(lines[found[0] : found[1]]) == lines[found[0] : found[1]]

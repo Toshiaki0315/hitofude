@@ -35,12 +35,12 @@ from hitofude.core.models import (
     InlineSpan,
     SpanType,
 )
+from hitofude.core.table import fits
 from hitofude.editor.painter_overlay import (
     CHECKBOX_GAP_RATIO,
     CODE_NAME_SCALE,
     checkbox_size,
 )
-from hitofude.editor.table import fits
 from hitofude.theme import LIGHT, ThemeColors
 
 # 0.5pt にすると 1 文字あたり残る幅は約 0.5px（spec §3.3 の実測）。

@@ -113,7 +113,7 @@ class TestManualContent:
 
     def test_表がすでに揃っている(self, vault) -> None:
         """開いた瞬間に罫線付きで表示されること。"""
-        from hitofude.editor.table import find_table, format_table
+        from hitofude.core.table import find_table, format_table
 
         lines = Note.read(vault.seed_manual().path).text.split("\n")
         checked = 0
