@@ -44,6 +44,7 @@ _SPLITTER = "layout/splitter"
 _SIDEBAR = "layout/sidebar_visible"
 _NOTE_LIST = "layout/note_list_visible"
 _TOOLBAR = "layout/toolbar_visible"
+_BACKLINKS = "layout/backlinks_expanded"
 _TAB_WIDTH = "editor/tab_width"
 _SORT_ORDER = "list/sort_order"
 _GEOMETRY = "layout/geometry"
@@ -196,6 +197,19 @@ class Config:
     @toolbar_visible.setter
     def toolbar_visible(self, value: bool) -> None:
         self.settings.setValue(_TOOLBAR, bool(value))
+
+    @property
+    def backlinks_expanded(self) -> bool:
+        """バックリンクの帯を開いておくか（E-6）。**既定は畳む。**
+
+        帯は本文の下に居続けるので、開きっぱなしは場所を取る。件数だけ
+        見えていれば「繋がりがある」ことは伝わる。
+        """
+        return self.settings.value(_BACKLINKS, False, type=bool)
+
+    @backlinks_expanded.setter
+    def backlinks_expanded(self, value: bool) -> None:
+        self.settings.setValue(_BACKLINKS, bool(value))
 
     @property
     def window_geometry(self) -> QByteArray | None:

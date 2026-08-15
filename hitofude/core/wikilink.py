@@ -69,6 +69,40 @@ def links(text: str) -> list[str]:
     return list(found)
 
 
+def context_line(text: str, name: str) -> str:
+    """`[[name]]` を書いている最初の行（E-6 ③）。無ければ空。
+
+    バックリンクの一覧に「どこで指されているか」を出すためのもの。
+    **ノートの冒頭（`preview`）では足りない。** 長いノートから指されている
+    とき、冒頭を見ても関係が分からない。
+
+    行はそのまま返す。マーカーを外すと、どう書かれているかが見えなくなる。
+    """
+    target = normalize(name)
+    if not target:
+        return ""
+
+    fence: str | None = None
+    for line in frontmatter.split(text).body.split("\n"):
+        fence_match = _FENCE_RE.match(line)
+        if fence_match is not None:
+            marker = fence_match.group("fence")
+            fence = (
+                marker
+                if fence is None
+                else (None if marker[0] == fence[0] and len(marker) >= len(fence) else fence)
+            )
+            continue
+        if fence is not None:
+            continue
+        for span in scan(line):
+            if span.type is SpanType.WIKI_LINK and normalize(span.payload).casefold() == (
+                target.casefold()
+            ):
+                return line.strip()
+    return ""
+
+
 def resolve(name: str, titles: Iterable[str]) -> str | None:
     """名前に対応するタイトルを返す。無ければ None。
 

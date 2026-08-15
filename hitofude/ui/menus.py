@@ -86,6 +86,7 @@ def build_menus(window) -> None:
     add(view_menu, "サイドバー", "Ctrl+1", window.toggle_sidebar)
     add(view_menu, "ノートリスト", "Ctrl+2", window.toggle_note_list)
     add(view_menu, "書式ツールバー", "Ctrl+3", window.toggle_toolbar)
+    add(view_menu, "バックリンク", "Ctrl+4", window.toggle_backlinks)
     view_menu.addSeparator()
     add(view_menu, "ソースモード（Raw）", "Ctrl+/", window._editor.toggle_source_mode)
     add(view_menu, "フォーカスモード", "Ctrl+Shift+D", window._editor.toggle_focus_mode)

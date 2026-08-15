@@ -13,6 +13,7 @@ from hitofude.editor.editor_widget import (
     MarkdownEditor,
 )
 from hitofude.theme import LIGHT, ThemeColors
+from hitofude.ui.backlink_bar import BacklinkBar
 from hitofude.ui.find_bar import FindBar
 from hitofude.ui.format_toolbar import FormatToolbar
 
@@ -33,6 +34,8 @@ class EditorPane(QWidget):
         self._find = FindBar(theme=theme)
         self._find.hide()
         self._toolbar = FormatToolbar(self._editor, theme=theme)
+        # **本文の下**（ADR-0011）。0 件のノートでは自分で隠れる
+        self._backlinks = BacklinkBar(theme=theme)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -41,6 +44,7 @@ class EditorPane(QWidget):
         layout.addWidget(self._toolbar)
         layout.addWidget(self._find)
         layout.addWidget(self._editor, 1)
+        layout.addWidget(self._backlinks)
 
         self._find.query_changed.connect(self._on_query_changed)
         self._find.find_requested.connect(self._on_find)
@@ -61,6 +65,10 @@ class EditorPane(QWidget):
     @property
     def toolbar(self) -> FormatToolbar:
         return self._toolbar
+
+    @property
+    def backlinks(self) -> BacklinkBar:
+        return self._backlinks
 
     # ------------------------------------------------------------------ 操作
 
@@ -108,6 +116,7 @@ class EditorPane(QWidget):
         self._editor.set_theme(theme)
         self._find.set_theme(theme)
         self._toolbar.set_theme(theme)
+        self._backlinks.set_theme(theme)
 
     # ------------------------------------------------------------------ 連携
 

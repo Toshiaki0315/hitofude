@@ -132,3 +132,73 @@ class TestWiring:
         window.activate_note("会議メモ")
         window.open_previous_note()
         assert window.current_note.path == source
+
+
+class TestBacklinkBar:
+    """本文の下の帯（E-6 ③ / ADR-0011）。"""
+
+    def test_指されていれば出る(self, window) -> None:
+        target = make_note(window, "会議メモ")
+        make_note(window, "日報", "詳しくは [[会議メモ]] を見て\n")
+        window.open_note(target)
+
+        bar = window.editor_pane.backlinks
+        assert not bar.isHidden()
+        assert bar.titles() == ["日報"]
+
+    def test_指されていなければ消える(self, window) -> None:
+        target = make_note(window, "会議メモ")
+        window.open_note(target)
+        assert window.editor_pane.backlinks.isHidden()
+
+    def test_指している行が出る(self, window) -> None:
+        target = make_note(window, "会議メモ")
+        make_note(window, "日報", "詳しくは [[会議メモ]] を見て\n")
+        window.open_note(target)
+
+        assert "[[会議メモ]]" in window.editor_pane.backlinks.item_text(0)
+
+    def test_自分自身は数えない(self, window) -> None:
+        """自分の中の `[[自分]]` は繋がりではない。"""
+        path = make_note(window, "会議メモ", "[[会議メモ]] と自分を指す\n")
+        window.open_note(path)
+        assert window.editor_pane.backlinks.isHidden()
+
+    def test_ノートを移ると入れ替わる(self, window) -> None:
+        first = make_note(window, "会議メモ")
+        second = make_note(window, "設計メモ")
+        make_note(window, "日報", "[[会議メモ]]\n")
+        make_note(window, "週報", "[[設計メモ]]\n")
+
+        window.open_note(first)
+        assert window.editor_pane.backlinks.titles() == ["日報"]
+        window.open_note(second)
+        assert window.editor_pane.backlinks.titles() == ["週報"]
+
+    def test_押すとそのノートが開く(self, window) -> None:
+        target = make_note(window, "会議メモ")
+        source = make_note(window, "日報", "[[会議メモ]]\n")
+        window.open_note(target)
+
+        window.editor_pane.backlinks.activate(0)
+        assert window.current_note.path == source
+
+    def test_書いた直後に繋がる(self, window) -> None:
+        """保存してから索引に入るので、開き直すと出る。"""
+        target = make_note(window, "会議メモ")
+        source = make_note(window, "日報")
+        window.open_note(source)
+        window.editor.textCursor().insertText("\n[[会議メモ]]\n")
+        window.flush()
+
+        window.open_note(target)
+        assert window.editor_pane.backlinks.titles() == ["日報"]
+
+    def test_開閉を覚えている(self, window) -> None:
+        target = make_note(window, "会議メモ")
+        make_note(window, "日報", "[[会議メモ]]\n")
+        window.open_note(target)
+
+        window.toggle_backlinks()
+        assert window.config.backlinks_expanded is True
+        assert window.editor_pane.backlinks.expanded() is True

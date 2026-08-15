@@ -42,7 +42,7 @@ from hitofude.core.activation import ALLOWED_SCHEMES
 from hitofude.core.document import Note, with_title
 from hitofude.core.outline import headings
 from hitofude.core.stats import count as count_text
-from hitofude.core.wikilink import normalize, resolve
+from hitofude.core.wikilink import context_line, normalize, resolve
 from hitofude.editor import exporter
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.storage import autosave
@@ -58,6 +58,7 @@ from hitofude.storage.vault import (
 )
 from hitofude.storage.watcher import ChangeKind, VaultWatcher
 from hitofude.theme import ThemeColors
+from hitofude.ui.backlink_bar import Backlink
 from hitofude.ui.conflict_dialog import ConflictDialog, Resolution
 from hitofude.ui.editor_pane import EditorPane
 from hitofude.ui.index_sync import IndexSyncTask, SyncReporter
@@ -90,6 +91,10 @@ DIRTY_MARK = "•"
 # 最後の文字が欠ける（実際に欠けた）
 STATUS_RIGHT_MARGIN = 14
 STATS_TOOLTIP = "文字数と行数。\n装飾の記号（`**` など）と front matter、改行は数えません。"
+
+# 帯に出すバックリンクの上限（E-6）。ここに出る数だけファイルを読むので、
+# 際限なく増えると開くたびに遅くなる。読み切れない数を並べても使えない
+MAX_BACKLINKS = 50
 
 NEW_NOTE_TITLE = "無題"
 PINNED_NOTICE = "ピン留めしているノートは削除できません。先にピン留めを外してください。"
@@ -203,6 +208,9 @@ class MainWindow(QMainWindow):
         self._editor.link_activated.connect(self.activate_link)
         self._editor.tag_activated.connect(self.activate_tag)
         self._editor.note_activated.connect(self.activate_note)
+        self._pane.backlinks.opened.connect(self._on_backlink_opened)
+        self._pane.backlinks.toggled.connect(self._remember_backlinks)
+        self._pane.backlinks.set_expanded(self._config.backlinks_expanded)
         self._list_pane.set_sort_order(self._config.sort_order)
         self._note_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._note_list.customContextMenuRequested.connect(self._show_context_menu)
@@ -270,6 +278,10 @@ class MainWindow(QMainWindow):
     @property
     def vault_index(self) -> IndexDb:
         return self._db
+
+    @property
+    def config(self) -> Config:
+        return self._config
 
     @property
     def theme_watcher(self) -> ThemeWatcher:
@@ -710,6 +722,7 @@ class MainWindow(QMainWindow):
         # 別のノートの保存時刻を出したままにしない（C-5）
         self._show_saved(None)
         self._remember_note(note.path)
+        self._update_backlinks()
 
     def new_note(self) -> None:
         self.flush()
@@ -1139,6 +1152,55 @@ class MainWindow(QMainWindow):
         self._note_list.select_path(note.path.relative_to(self._vault.root))
         logger.info("リンク先が無かったので作った: %s", note.path.name)
         return note.path
+
+    def _remember_backlinks(self, expanded: bool) -> None:
+        self._config.backlinks_expanded = expanded
+
+    def toggle_backlinks(self) -> None:
+        """`Cmd+4`。バックリンクの帯を開閉する（E-6 ③）。"""
+        self._pane.backlinks.toggle()
+
+    def _update_backlinks(self) -> None:
+        """開いているノートを指しているノートを帯に流す（E-6 ③）。
+
+        **自分自身は数えない。** 自分の中の `[[自分]]` は繋がりではない。
+
+        指している行は、そのファイルを読んで取る（`context_line`）。冒頭
+        （索引にある `preview`）では、長いノートから指されたときに関係が
+        分からない。読むのはここに出る数だけなので安い。
+        """
+        bar = self._pane.backlinks
+        if self._note is None:
+            bar.set_links([])
+            return
+
+        relative = self._note.relative_to(self._vault.root)
+        found: list[Backlink] = []
+        for row in self._db.backlinks(self._note.title)[:MAX_BACKLINKS]:
+            if str(row.path) == relative:
+                continue
+            found.append(
+                Backlink(
+                    title=row.title,
+                    context=self._context_for(row.path),
+                    path=row.path,
+                )
+            )
+        bar.set_links(found)
+
+    def _context_for(self, relative: Path) -> str:
+        """そのノートが今のノートを指している行。読めなければ空。"""
+        if self._note is None:
+            return ""
+        try:
+            text = (self._vault.root / relative).read_text(encoding="utf-8")
+        except OSError:
+            return ""
+        return context_line(text, self._note.title)
+
+    def _on_backlink_opened(self, relative: Path) -> None:
+        self.open_note(self._vault.root / relative)
+        self._note_list.select_path(relative)
 
     def activate_tag(self, tag: str) -> None:
         """`Cmd+クリック` されたタグで一覧を絞る（D-2）。
