@@ -57,6 +57,46 @@ class TestPdfPages:
         assert pdf_pages(empty) == []
 
 
+def image_only_pdf(path: Path) -> Path:
+    """文字を持たない PDF（画像を貼っただけ）。
+
+    スクリーンショットを PDF に変換したものがこれにあたる。
+    **ページはあるが文字が 1 つも無い。**
+    """
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QImage, QPageSize, QPainter, QPdfWriter
+
+    writer = QPdfWriter(str(path))
+    writer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
+    painter = QPainter(writer)
+    image = QImage(400, 300, QImage.Format.Format_RGB32)
+    image.fill(Qt.GlobalColor.gray)
+    painter.drawImage(0, 0, image)
+    painter.end()
+    return path
+
+
+class TestImageOnly:
+    """画像だけの PDF（ユーザー報告）。
+
+    **ノートを作ってはいけない。** 題名だけの空のノートができて、
+    読めなかったことも伝わらなかった。
+    """
+
+    @pytest.fixture
+    def image_pdf(self, qapp, tmp_path: Path) -> Path:
+        return image_only_pdf(tmp_path / "スクリーンショット.pdf")
+
+    def test_ページはあるが文字が無い(self, image_pdf) -> None:
+        pages = pdf_pages(image_pdf)
+        assert pages
+        assert all(not page.strip() for page in pages)
+
+    def test_Markdownは空になる(self, image_pdf) -> None:
+        """**題名だけ返さない。** 呼び出し側が「読めた」と誤解する。"""
+        assert to_markdown(image_pdf) == ""
+
+
 class TestToMarkdown:
     def test_題名はファイル名(self, sample) -> None:
         assert to_markdown(sample).startswith("# 四半期資料\n")

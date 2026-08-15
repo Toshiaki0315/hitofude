@@ -105,6 +105,22 @@ class TestImport:
         assert notice
         assert len(titles(window)) == before
 
+    def test_画像だけのPDFではノートを作らない(self, window, notice, monkeypatch, tmp_path) -> None:
+        """ユーザー報告。**題名だけの空のノートができていた。**
+
+        スクリーンショットを PDF にしたものは、ページはあるが文字が
+        1 つも無い。題名は常に付くので「空ではない」と見えてしまった。
+        """
+        from tests.editor.test_importer import image_only_pdf
+
+        source = image_only_pdf(tmp_path / "スクリーンショット.pdf")
+        choose(monkeypatch, source)
+
+        before = len(titles(window))
+        assert window.import_document() is None
+        assert len(titles(window)) == before
+        assert notice, "読めなかったことを知らせていない"
+
     def test_書きかけの内容を保存してから移る(self, window, sample, monkeypatch) -> None:
         note = window.vault.create("元のノート", "# 元のノート\n")
         window.vault_index.upsert_note(note, window.vault.root)

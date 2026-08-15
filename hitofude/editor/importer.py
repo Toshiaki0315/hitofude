@@ -59,4 +59,11 @@ def to_markdown(path: Path) -> str:
         logger.warning("知らない拡張子: %s", path)
         return ""
 
-    return imported.to_markdown(pages, title=path.stem) if pages else ""
+    # **本文が無ければ空を返す。** ページはあっても文字が 1 つも無いことが
+    # ある（画像を PDF にしたもの。ユーザー報告）。題名だけ返すと、
+    # 呼び出し側が「読めた」と誤解して**中身の無いノート**を作ってしまう
+    if not any(page.strip() for page in pages):
+        logger.warning("文字を取り出せなかった（画像だけの資料か）: %s", path)
+        return ""
+
+    return imported.to_markdown(pages, title=path.stem)
