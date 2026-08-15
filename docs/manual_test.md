@@ -90,15 +90,15 @@ NG は直す前に回帰テストを書く（CLAUDE.md §1）。
 | [x] | 表の行にカーソルを戻す                                 | 罫線が消えて `\|` が見え、そのまま編集できる                                                                |
 | [x] | そのときの行の高さ                                     | **変わらない**（下の行が飛ばない）                                                                         |
 | [a] | セルの中身と罫線のあいだ                               | 上下左右に余白がある。文字が線に接しない（自動: tests/editor/test_table_render.py）                        |
-| [ ] | 長いセルを書く                                         | 折り返さず横に伸びる（v1 の制限）                                                                          |
+| [x] | 長いセルを書く                                         | 折り返さず横に伸びる（v1 の制限）                                                                          |
 | [a] | `Cmd+/`（ソースモード）                                | 表も生の Markdown に戻る（自動: tests/editor/test_painter_overlay.py）                                     |
 | [a] | 割り当てていない `Cmd+Option+英字` を選択中に押す      | **何も入らず選択も消えない**（自動: tests/editor/test_editor_commands.py）                                 |
 | [a] | サイドバーの項目                                       | すべて / お気に入り / ゴミ箱 / タグにアイコンが付く（自動: tests/ui/test_sidebar.py）                      |
 | [a] | ノートをピン留めして一覧を見る                         | **黄色い星**が付く。タイトルと重ならない（自動: tests/ui/test_note_list.py）                               |
 | [a] | ダークに切り替える                                     | **アイコンの色も追従する**（黒いまま残らない）（自動: tests/ui/test_icons.py）                             |
-| [ ] | ペインの境界                                           | 1px の線が見える。ダークでも見える                                                                         |
+| [x] | ペインの境界                                           | 1px の線が見える。ダークでも見える                                                                         |
 | [a] | `Cmd+1` で隠す → 再起動 → `Cmd+1` で戻す             | **使える幅で戻る**（線だけにならない）（自動: tests/ui/test_pane_layout.py）                               |
-| [ ] | ペインを目一杯狭める                                   | 一定より細くならない                                                                                       |
+| [x] | ペインを目一杯狭める                                   | 一定より細くならない                                                                                       |
 | [a] | `Cmd+H` でアプリを隠す → `Cmd+Q` → 再起動            | **ペインが出たまま**（真っ白にならない）（自動: tests/ui/test_pane_layout.py）                             |
 | [a] | 幅を変える → `Cmd+1` で隠す → `Cmd+1` で戻す         | 変えた幅で戻る（自動: tests/ui/test_pane_layout.py）                                                       |
 | [a] | ノートを開いて終了 → 再起動                           | **前回のノートが開く**。一覧でも選ばれている（自動: tests/ui/test_last_note.py）                           |
@@ -181,7 +181,7 @@ NG は直す前に回帰テストを書く（CLAUDE.md §1）。
 | [a] | 画像行にカーソルを入れる                               | **高さが変わらない。絵も消えない**（下の行が飛ばない）（自動: tests/editor/test_inline_image.py）          |
 | [a] | `Cmd+/`（ソースモード）                                | 絵が消えて `![](...)` に戻る（自動: tests/editor/test_inline_image.py）                                    |
 | [a] | 画像ファイルを Finder で消してから開き直す             | `![](...)` が文字で見える（空行にならない）（自動: tests/editor/test_inline_image.py）                     |
-| [ ] | 画像を何枚も貼って高速にスクロール                     | 引っかからない                                                                                             |
+| [x] | 画像を何枚も貼って高速にスクロール                     | 引っかからない                                                                                             |
 | [a] | 画像を貼ったノートを PDF で書き出す                    | **画像が出る**（抜け落ちない）（自動: tests/editor/test_exporter.py）                                      |
 | [a] | 同じノートを HTML で書き出し、別の場所へ移して開く     | 画像が出る（埋め込まれている）（自動: tests/editor/test_exporter.py）                                      |
 | [a] | 貼った直後に `Cmd+Z`                                   | 1 回でリンクが消える（自動: tests/editor/test_paste_image.py）                                             |
