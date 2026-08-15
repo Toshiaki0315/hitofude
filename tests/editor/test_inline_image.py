@@ -168,3 +168,54 @@ class TestExternalChange:
         os.utime(path, (0, 0))
         editor.refresh_images()
         assert height_of(editor, 0) > first
+
+
+class TestSlotIsInvisible:
+    """高さを作っている 1 文字が**見えてはいけない**（ユーザー報告）。
+
+    背景が透明な PNG（Mermaid の図など）を貼ると、絵の下から**巨大な
+    `!`** が透けて見えた。行の高さは「1 文字だけ大きくする」ことで作って
+    いる（ADR-0004）が、その文字が黒のまま描かれていた。
+
+    絵が不透明で、かつ文字より大きければ隠れる。**それに頼っていた**のが
+    間違いで、透ける絵でも縦長の絵でも成り立たない。
+    """
+
+    def slot_alpha(self, editor, line: int = 0) -> list[int]:
+        """高さを作っている書式の**文字色の不透明度**。
+
+        `QTextCharFormat` は取り出した瞬間に値を読む（保持すると Qt 側で
+        破棄されて `Internal C++ object already deleted` になる）。
+        """
+        block = editor.document().findBlockByNumber(line)
+        return [
+            entry.format.foreground().color().alpha()
+            for entry in block.layout().formats()
+            if entry.start == 0 and entry.format.fontPointSize() > 1.0
+        ]
+
+    def test_高さを作る文字は透明(self, editor, tmp_path, write_png) -> None:
+        write_png(tmp_path / "図.png", 400, 600)
+        editor.setPlainText("![](図.png)\n")
+
+        found = self.slot_alpha(editor)
+        assert found, "高さを作る書式が無い"
+        assert found[0] == 0, "文字が見える色のまま"
+
+    def test_高さは今まで通り確保する(self, editor, tmp_path, write_png) -> None:
+        """透明にしても高さは変わらない。"""
+        write_png(tmp_path / "図.png", 400, 600)
+        editor.setPlainText("![](図.png)\n\n本文\n")
+        assert height_of(editor, 0) > height_of(editor, 2) * 5
+
+    def test_残りの文字は潰したまま(self, editor, tmp_path, write_png) -> None:
+        write_png(tmp_path / "図.png", 400, 600)
+        editor.setPlainText("![](図.png)\n")
+
+        block = editor.document().findBlockByNumber(0)
+        rest = [
+            entry
+            for entry in block.layout().formats()
+            if entry.start > 0 and entry.format.fontPointSize() > 1.0
+        ]
+        assert rest == []

@@ -358,6 +358,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         「文字の大きさ」というレバーだけで高さを作る。記号は 0.5pt に潰し、
         **1 文字だけ**大きくする。行全体を大きくすると横に伸びて折り返し、
         高さが跳ねる（実測: 240pt で 788px）。
+
+        大きくした 1 文字は**透明にする**。絵が上に描かれるので隠れる、と
+        思っていたが、背景が透けている PNG では下の `!` が見えてしまう。
         """
         url = image_only_line(text) if text else None
         if url is None:
@@ -375,6 +378,10 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
         tall = QTextCharFormat()
         tall.setFontPointSize(self._point_size_for(size[1] + IMAGE_PADDING * 2))
+        # **透明にする。** 絵が上に描かれるので隠れる、と思っていたが、
+        # 背景が透けている PNG（Mermaid の図など）では**巨大な `!` が
+        # 透けて見えた**（ユーザー報告）。絵の不透明さに頼らない
+        tall.setForeground(QColor("transparent"))
         self.setFormat(0, 1, tall)
         return True
 
