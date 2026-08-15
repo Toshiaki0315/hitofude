@@ -47,145 +47,148 @@ NG は直す前に回帰テストを書く（CLAUDE.md §1）。
 
 数値では測れない、目で見るしかない項目。
 
-|     | 確認すること                                           | 期待                                                                                                       |
-| --- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| [x] | `**強調**` の外にカーソルを置く                        | `**` が見えない（潰れた痕跡が気にならない）                                                                |
-| [x] | カーソルを `**強調**` の中に入れる                     | `**` が現れ、行の高さが変わらない                                                                          |
-| [x] | カーソルを出し入れする                                 | 縦方向にガタつかない                                                                                       |
-| [x] | 見出し H1〜H6 を並べる                                 | 大きさの差が自然で、H5/H6 が薄い                                                                           |
-| [x] | 引用・コードブロック・水平線・チェックボックス         | 描画が本文と重ならず、ずれない                                                                             |
-| [x] | ダークモードに切り替える                               | **サイドバー・一覧・エディタが全部暗くなる**。文字が読める                                                 |
-| [x] | 設定でダークを選んだまま再起動                         | 起動した時点で全部暗い（一部だけ明るくならない）                                                           |
-| [x] | ダークのまま `Cmd+,` を開く                            | **「テーマ」欄の文字が読める**。入力欄やボタンも暗い                                                       |
-| [x] | ダークのままスクロールバーやメニューを見る             | ネイティブの部品も暗い（アプリ全体で揃う）                                                                 |
-| [x] | ライトでも `Cmd+,` を開く                              | 同じく読める（暗くしすぎていない）                                                                         |
-| [a] | 段落で Tab を打つ                                      | 4 文字ぶんの幅で送られる（8 文字ぶん空かない）（自動: tests/editor/test_editor_widget.py）                 |
-| [a] | **コードブロックの中**で Tab を打つ                    | **ちょうど 4 文字ぶん**（等幅の字幅で揃う）（自動: tests/editor/test_editor_widget.py）                    |
-| [a] | 字下げした行の末尾で Enter                             | **同じ字下げで次の行が始まる**（自動: tests/editor/test_input_handler.py）                                 |
-| [a] | 字下げの途中（空白の中）で Enter                       | 字下げは足されない（自動: tests/editor/test_input_handler.py）                                             |
-| [a] | 変換中に Enter で確定                                  | 確定するだけ。字下げが増えない（自動: tests/editor/test_editor_input.py）                                  |
-| [a] | 環境設定の「タブ幅」                                   | 数字と「文字」が分かれ、矢印が数字の隣にある（自動: tests/ui/test_preferences.py）                         |
-| [a] | 環境設定でタブ幅を 2 にする                            | すぐ狭くなる。ファイルの中身は変わらない（自動: tests/ui/test_preferences.py）                             |
-| [a] | 文字サイズを大きくする                                 | タブ幅も一緒に広がる（文字数の比が保たれる）（自動: tests/editor/test_editor_widget.py）                   |
-| [a] | 設定を変えてから「デフォルトに戻す」                   | 入力欄が既定に戻る。**保管フォルダはそのまま**（自動: tests/ui/test_preferences.py）                       |
-| [a] | 上の状態で Cancel を押す                               | 変更前の設定のまま（戻した内容は捨てられる）（自動: tests/ui/test_preferences.py）                         |
-| [a] | もう一度戻して OK を押す                               | 本文フォント・テーマ・保持日数が既定に変わる（自動: tests/ui/test_preferences.py）                         |
-| [x] | システムのダークモードを切り替える                     | アプリが追従する（テーマ設定が「システムに合わせる」のとき）                                               |
-| [x] | ウィンドウを最大化する                                 | 本文が中央寄せのまま広がりすぎない                                                                         |
-| [x] | フォーカスモード（`Cmd+Shift+D`）                      | 現在段落以外が沈み、現在段落が読める                                                                       |
-| [ ] | タイプライタモード（`Cmd+Shift+Y`）                    | キャレット行が画面中央付近に保たれる                                                                       |
-| [a] | ツールバーの並び                                       | 11 個のアイコンが読める大きさで出ている（自動: tests/ui/test_format_toolbar.py）                           |
-| [a] | 文字を選んで「太字」を押す                             | `**` で囲まれ、**選択が残る**（続けて押すと外れる）（自動: tests/ui/test_format_toolbar.py）               |
-| [a] | 何も選ばずに「太字」を押す                             | `****` が置かれ、間にカーソルが入る（自動: tests/editor/test_commands.py）                                 |
-| [a] | 3 行選んで「箇条書き」を押す                           | 3 行とも `- ` が付く。`Cmd+Z` **1 回**で戻る（自動: tests/ui/test_format_toolbar.py）                      |
-| [a] | 続けて「番号付き」を押す                               | `- ` が `1. 2. 3.` に入れ替わる（入れ子にならない）（自動: tests/editor/test_commands.py）                 |
-| [a] | 「見出し」を 4 回押す                                  | 段落 → H1 → H2 → H3 → 段落 と一周する（自動: tests/editor/test_commands.py）                           |
-| [a] | 変換中（未確定の文字がある状態）で押す                 | **何も起きない**。プリエディットが壊れない（自動: tests/editor/test_editor_commands.py）                   |
-| [a] | ボタンを押したあとそのまま打つ                         | 本文に入る（フォーカスがボタンに移らない）（自動: tests/ui/test_format_toolbar.py）                        |
-| [x] | ダークモードでツールバーを見る                         | アイコンが明るい色になり、背景から浮かない                                                                 |
-| [a] | `Cmd+3`                                                | ツールバーが隠れる / 出る。終了して起動しても状態が残る（自動: tests/ui/test_pane_layout.py）              |
-| [a] | 表を書いて `Cmd+Shift+L`                               | 縦線が揃う。日本語混じりでもずれない（自動: tests/editor/test_table.py）                                   |
-| [a] | 表全体を選択して `Cmd+Shift+L`                         | 選択したままでも整形される（自動: tests/ui/test_appearance.py）                                            |
-| [a] | 表の 3 行目を打って改行                                | 自動で揃い、罫線とヘッダ背景が現れる（自動: tests/editor/test_table_render.py）                            |
-| [x] | 表の行にカーソルを戻す                                 | 罫線が消えて `\|` が見え、そのまま編集できる                                                                |
-| [x] | そのときの行の高さ                                     | **変わらない**（下の行が飛ばない）                                                                         |
-| [a] | セルの中身と罫線のあいだ                               | 上下左右に余白がある。文字が線に接しない（自動: tests/editor/test_table_render.py）                        |
-| [x] | 長いセルを書く                                         | 折り返さず横に伸びる（v1 の制限）                                                                          |
-| [a] | `Cmd+/`（ソースモード）                                | 表も生の Markdown に戻る（自動: tests/editor/test_painter_overlay.py）                                     |
-| [a] | 割り当てていない `Cmd+Option+英字` を選択中に押す      | **何も入らず選択も消えない**（自動: tests/editor/test_editor_commands.py）                                 |
-| [a] | サイドバーの項目                                       | すべて / お気に入り / ゴミ箱 / タグにアイコンが付く（自動: tests/ui/test_sidebar.py）                      |
-| [a] | ノートをピン留めして一覧を見る                         | **黄色い星**が付く。タイトルと重ならない（自動: tests/ui/test_note_list.py）                               |
-| [a] | ダークに切り替える                                     | **アイコンの色も追従する**（黒いまま残らない）（自動: tests/ui/test_icons.py）                             |
-| [x] | ペインの境界                                           | 1px の線が見える。ダークでも見える                                                                         |
-| [a] | `Cmd+1` で隠す → 再起動 → `Cmd+1` で戻す             | **使える幅で戻る**（線だけにならない）（自動: tests/ui/test_pane_layout.py）                               |
-| [x] | ペインを目一杯狭める                                   | 一定より細くならない                                                                                       |
-| [a] | `Cmd+H` でアプリを隠す → `Cmd+Q` → 再起動            | **ペインが出たまま**（真っ白にならない）（自動: tests/ui/test_pane_layout.py）                             |
-| [a] | 幅を変える → `Cmd+1` で隠す → `Cmd+1` で戻す         | 変えた幅で戻る（自動: tests/ui/test_pane_layout.py）                                                       |
-| [a] | ノートを開いて終了 → 再起動                           | **前回のノートが開く**。一覧でも選ばれている（自動: tests/ui/test_last_note.py）                           |
-| [a] | 再起動直後にそのまま打ち始める                         | front matter が壊れない（カーソルが本文の先頭）（自動: tests/editor/test_front_matter_guard.py）           |
-| [a] | 打っている最中のタイトル                               | `•` が付き、保存されると消える（自動: tests/ui/test_status_and_edit.py）                                  |
-| [a] | 右下の文字数                                           | 打ち終わって少し待つと更新される（自動: tests/ui/test_status_and_edit.py）                                 |
-| [a] | 右下の文字数の右端                                     | **最後の文字が角丸に欠けない**（自動: tests/ui/test_status_and_edit.py）                                   |
-| [a] | `- [ ]` と `- [x]` を並べる                            | **箱の大きさが同じ**。文字と重ならない（自動: tests/editor/test_painter_overlay.py）                       |
-| [a] | チェックの行にカーソルを入れる                         | `[ ]` が現れ、広げた幅が戻る（間延びしない）（自動: tests/editor/test_painter_overlay.py）                 |
-| [x] | 文字サイズを変えてチェックを見る                       | 箱も一緒に大きくなる。重ならない                                                                           |
-| [a] | `→` や `①` を含む表を書く                            | **桁が揃う**（C-1。以前は 20px ずれた）（自動: tests/editor/test_table_render.py）                         |
-| [a] | `Cmd+R` を押す                                         | 見出しの一覧が出る。選ぶとその行へ飛ぶ（自動: tests/ui/test_quick_open.py）                                |
-| [a] | 長い本文のノートを一覧で見る                           | **プレビューの 2 行目が切れない**（自動: tests/ui/test_note_list.py）                                      |
-| [a] | 短い本文のノートと並べる                               | 行の高さが内容に合う（すかすかにならない）（自動: tests/ui/test_note_list.py）                             |
-| [a] | 一覧左上の `⇅` と `＋`                                 | **同じ見た目**（`⇅` だけ枠が出ていない）（自動: tests/ui/test_note_list_pane.py）                          |
-| [a] | ツールバー右端の **Raw** を押す                        | 記号が全部出る。罫線・囲みの線・チェックの印が消える（自動: tests/ui/test_format_toolbar.py）              |
-| [a] | Raw のまま先頭までスクロールする                       | **`id` などが出ない**（管理情報は隠れたまま）（自動: tests/editor/test_highlighter.py）                    |
-| [x] | Raw のまま記号を直す                                   | ふつうに編集できる。もう一度押すと反映される                                                               |
-| [a] | `Cmd+/` で切り替える                                   | **Raw ボタンの見た目も一緒に変わる**（自動: tests/ui/test_format_toolbar.py）                              |
-| [a] | Raw のままノートを切り替える                           | 記号が出たまま（食い違わない）（自動: tests/ui/test_format_toolbar.py）                                    |
-| [a] | ツールバーと本文の境目                                 | 細い線で仕切られている（自動: tests/ui/test_format_toolbar.py）                                            |
-| [a] | 終了して起動し直す                                     | 並び順が残っている（自動: tests/ui/test_note_actions.py）                                                  |
-| [a] | 何か打って 1 秒待つ                                    | 右下に**保存した時刻**が出る（自動: tests/ui/test_status_and_edit.py）                                     |
-| [a] | 続けて打つ                                             | 時刻が消える（今の状態と食い違わない）（自動: tests/ui/test_status_and_edit.py）                           |
-| [a] | ノートを全部ゴミ箱へ入れる                             | 一覧に「＋ で作れます」と出る（自動: tests/ui/test_note_list_pane.py）                                     |
-| [a] | `Cmd+?`                                                | ショートカット一覧が出る。⌘ の記号で書かれている（自動: tests/ui/test_shortcut_sheet.py）                  |
-| [a] | 3 つのノートを順に開いて `Cmd+[` を 2 回               | **1 つ目まで遡る**（往復しない）（自動: tests/ui/test_last_note.py）                                       |
-| [x] | 変換中に `#` を含む文字を確定                          | 候補が変換候補と重ならない                                                                                 |
-| [a] | 置き直したノートを一通り眺める                         | 囲み・脚注・ファイル名付きコードが見本として出ている（自動: tests/storage/test_seed.py）                   |
-| [a] | `:::note info` と `:::` で囲んで本文を書く             | 左に**青い縦線**が出る。`:::` の行は消える（自動: tests/core/test_block_parser.py）                        |
-| [a] | `warn` / `alert` に書き換える                          | 黄 / 赤に変わる。3 つ並べても見分けが付く（自動: tests/editor/test_painter_overlay.py）                    |
-| [x] | `:::` の行にカーソルを入れる                           | 記号が現れる。**行の高さが跳ねない**                                                                       |
-| [a] | `:::note warm` と綴りを間違える                        | **灰色の線**になり、`:::note warm` の行が消えない（自動: tests/core/test_block_parser.py）                 |
-| [a] | 同じノートを HTML で書き出す                           | 書き出しも灰色（画面と食い違わない）（自動: tests/core/test_html.py）                                      |
-| [a] | `:::note warn extra` と語を 2 つ書く                   | 囲みにならず、そのまま文字で出る（画面も書き出しも）（自動: tests/core/test_html.py）                      |
-| [a] | 囲みの中に見出し・箇条書き・引用を書く                 | 今まで通り装飾される。引用の縦線が囲みの線と重ならない（自動: tests/core/test_block_parser.py）            |
-| [a] | 囲みの中でコードフェンスを開いて閉じる                 | フェンスの後も囲みが続いている（自動: tests/core/test_block_parser.py）                                    |
-| [a] | ` ```python ` でコードを書く                           | **予約語・文字列・コメントに色が付く**（自動: tests/editor/test_highlighter.py）                           |
-| [a] | 同じものを HTML / PDF で書き出す                       | 画面と同じ配色で色が付く（自動: tests/core/test_html.py）                                                  |
-| [a] | ダークモードで同じコードを見る                         | 黒地に黒い字にならない（自動: tests/core/test_code_tokens.py）                                             |
-| [a] | 言語を消す（` ``` ` だけにする）                       | 色が消える（自動: tests/editor/test_highlighter.py）                                                       |
-| [a] | 色付きのコードの中で長文を打つ                         | **引っかからない**（200 行までが対象）（自動: tests/editor/test_highlighter.py）                           |
-| [a] | ` ```js:index.js ` と書く                              | **画面でもコードの上にファイル名が出る**（自動: tests/editor/test_painter_overlay.py）                     |
-| [a] | 同じものを書き出す                                     | HTML にもファイル名が出る（自動: tests/core/test_html.py）                                                 |
-| [a] | ` ```python ` とファイル名なしで書く                   | 名前は出ない。フェンスの行は潰れたまま（自動: tests/editor/test_painter_overlay.py）                       |
-| [a] | コードブロックの左                                     | **アクセントバーが無い**（背景だけ。ADR-0008）（自動: tests/editor/test_painter_overlay.py）               |
-| [ ] | ` ```mermaid ` で `graph TD` を書いて HTML に書き出す  | ブラウザで**図になる**                                                                                     |
-| [ ] | その HTML を機内モード（オフライン）で開く             | 図が出る（外部を参照していない）                                                                           |
-| [a] | 図の無いノートを書き出す                               | ファイルが 3.4MB 太っていない（自動: tests/editor/test_exporter.py）                                       |
-| [a] | 図のあるノートを PDF で書き出す                        | 図にはならないが、書いた内容は残る（自動: tests/editor/test_exporter.py）                                  |
-| [a] | `$E = mc^2$` と書く                                    | 画面で等幅になる。HTML に書き出すと**組版される**（自動: tests/core/test_html.py）                         |
-| [a] | 同じものを PDF で書き出す                              | `$E = mc^2$` と書いたまま出る（`E=mc2` にならない）（自動: tests/editor/test_exporter.py）                 |
-| [a] | `$$` で囲んだ式を HTML で書き出す                      | 中央に大きく組まれる（自動: tests/core/test_html.py）                                                      |
-| [a] | `$$` を複数行で書く                                    | 画面でコードと同じ背景になる。`$$` の行は消える（自動: tests/core/test_block_parser.py）                   |
-| [a] | `$$x$$` を 1 行で書く                                  | 画面でも等幅になる（書き出しと食い違わない）（自動: tests/core/test_inline_scanner.py）                    |
-| [a] | `価格は $100 と $200 です。定価 100$ から $200 まで。` | **どこも数式にならない**（画面も書き出しも）（自動: tests/core/test_html.py）                              |
-| [a] | `[^1]` と `[^1]: 注釈` を書く                          | 画面で `[^1]` が色付き。書き出すと本文の下に注釈がまとまる（自動: tests/core/test_html.py）                |
-| [a] | チェックボックス入りのノートを HTML で書き出す         | ブラウザで `☐` / `☑` が出る（以前は印が消えていた）（自動: tests/core/test_html.py）                       |
-| [a] | 同じノートを PDF で書き出す                            | 表に罫線がある。コードブロックに背景がある（自動: tests/editor/test_exporter.py）                          |
-| [a] | 画像入りのノートを HTML で書き出して別の場所へ移す     | 画像が消えない（埋め込まれている）（自動: tests/editor/test_exporter.py）                                  |
-| [x] | 書き出した HTML をブラウザで開く                       | 引用に縦線、表にヘッダの色、リンクが色付き                                                                 |
-| [x] | `[[ノート名]]` を書いて行から離れる                    | `[[` `]]` が消え、名前がリンク色になる                                                                     |
-| [x] | 指されている側のノートを開く                           | 本文の下に「▸ バックリンク N」の帯が出る（0 件なら出ない）                                                 |
-| [x] | `Cmd+P` を押す                                         | **印刷ダイアログ**が出る（PDF 書き出しではない）                                                           |
-| [x] | 印刷ダイアログの「PDF」→「PDF として保存」            | 書き出した PDF と同じものが出る（A4・余白 18mm）                                                           |
-| [a] | 右下の表示                                             | **「N 文字 / N 行」**。単語数は出ない（自動: tests/ui/test_status_and_edit.py）                            |
-| [a] | 右下の文字数にカーソルを乗せる                         | 何を数えているかの説明が出る（自動: tests/ui/test_status_and_edit.py）                                     |
-| [x] | `Cmd+F` の検索欄で `Cmd+A`                             | **検索欄が全選択される**（本文ではない）                                                                   |
-| [a] | 一覧の右上の `＋` を押す                               | 新規ノートができて開く。一覧でも選ばれる（自動: tests/ui/test_note_list_pane.py）                          |
-| [a] | `＋` にカーソルを乗せる                                | 「新規ノート（Cmd+N）」と出る（自動: tests/ui/test_note_list_pane.py）                                     |
-| [a] | 一覧を右クリック                                       | ピン留め / 名前を変更 / ゴミ箱へ移動 が出る（自動: tests/ui/test_note_actions.py）                         |
-| [a] | 「名前を変更」で名前を変える                           | 一覧の表示と本文の見出しが変わり、ファイル名も変わる（自動: tests/ui/test_note_actions.py）                |
-| [a] | 開いているノートの名前を変えて `Cmd+Z`                 | 元の見出しに戻る（自動: tests/ui/test_note_actions.py）                                                    |
-| [a] | 見出しの無いノートの名前を変える                       | 先頭に見出しが足され、元の文章は残る（自動: tests/ui/test_note_actions.py）                                |
-| [a] | ゴミ箱を開いて右クリック                               | 「元に戻す」だけが出る（自動: tests/ui/test_note_actions.py）                                              |
-| [x] | `make run` で起動しメニューバーを見る                  | 先頭が **Hitofude**（Python ではない）                                                                     |
-| [a] | スクリーンショットを撮って `Cmd+V`                     | `![](attachments/...)` が入り、`attachments/` にファイルができる（自動: tests/editor/test_paste_image.py） |
-| [a] | 画像ファイルをウィンドウへドラッグ                     | 同上。拡張子はそのまま（JPEG が PNG にならない）（自動: tests/editor/test_paste_image.py）                 |
-| [a] | 貼った直後の本文                                       | **その場に絵が出る**（リンク文字列ではなく）（自動: tests/editor/test_inline_image.py）                    |
-| [a] | 画像行にカーソルを入れる                               | **高さが変わらない。絵も消えない**（下の行が飛ばない）（自動: tests/editor/test_inline_image.py）          |
-| [a] | `Cmd+/`（ソースモード）                                | 絵が消えて `![](...)` に戻る（自動: tests/editor/test_inline_image.py）                                    |
-| [a] | 画像ファイルを Finder で消してから開き直す             | `![](...)` が文字で見える（空行にならない）（自動: tests/editor/test_inline_image.py）                     |
-| [x] | 画像を何枚も貼って高速にスクロール                     | 引っかからない                                                                                             |
-| [a] | 画像を貼ったノートを PDF で書き出す                    | **画像が出る**（抜け落ちない）（自動: tests/editor/test_exporter.py）                                      |
-| [a] | 同じノートを HTML で書き出し、別の場所へ移して開く     | 画像が出る（埋め込まれている）（自動: tests/editor/test_exporter.py）                                      |
-| [a] | 貼った直後に `Cmd+Z`                                   | 1 回でリンクが消える（自動: tests/editor/test_paste_image.py）                                             |
-| [a] | `Cmd+Shift+M` で書き出し → 他のエディタで開く         | 打った通りの Markdown。front matter は付かない（自動: tests/editor/test_exporter.py）                      |
+|     | 確認すること                                                | 期待                                                                                                       |
+| --- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| [x] | `**強調**` の外にカーソルを置く                             | `**` が見えない（潰れた痕跡が気にならない）                                                                |
+| [x] | カーソルを `**強調**` の中に入れる                          | `**` が現れ、行の高さが変わらない                                                                          |
+| [x] | カーソルを出し入れする                                      | 縦方向にガタつかない                                                                                       |
+| [x] | 見出し H1〜H6 を並べる                                      | 大きさの差が自然で、H5/H6 が薄い                                                                           |
+| [x] | 引用・コードブロック・水平線・チェックボックス              | 描画が本文と重ならず、ずれない                                                                             |
+| [x] | ダークモードに切り替える                                    | **サイドバー・一覧・エディタが全部暗くなる**。文字が読める                                                 |
+| [x] | 設定でダークを選んだまま再起動                              | 起動した時点で全部暗い（一部だけ明るくならない）                                                           |
+| [x] | ダークのまま `Cmd+,` を開く                                 | **「テーマ」欄の文字が読める**。入力欄やボタンも暗い                                                       |
+| [x] | ダークのままスクロールバーやメニューを見る                  | ネイティブの部品も暗い（アプリ全体で揃う）                                                                 |
+| [x] | ライトでも `Cmd+,` を開く                                   | 同じく読める（暗くしすぎていない）                                                                         |
+| [a] | 段落で Tab を打つ                                           | 4 文字ぶんの幅で送られる（8 文字ぶん空かない）（自動: tests/editor/test_editor_widget.py）                 |
+| [a] | **コードブロックの中**で Tab を打つ                         | **ちょうど 4 文字ぶん**（等幅の字幅で揃う）（自動: tests/editor/test_editor_widget.py）                    |
+| [a] | 字下げした行の末尾で Enter                                  | **同じ字下げで次の行が始まる**（自動: tests/editor/test_input_handler.py）                                 |
+| [a] | 字下げの途中（空白の中）で Enter                            | 字下げは足されない（自動: tests/editor/test_input_handler.py）                                             |
+| [a] | 変換中に Enter で確定                                       | 確定するだけ。字下げが増えない（自動: tests/editor/test_editor_input.py）                                  |
+| [a] | 環境設定の「タブ幅」                                        | 数字と「文字」が分かれ、矢印が数字の隣にある（自動: tests/ui/test_preferences.py）                         |
+| [a] | 環境設定でタブ幅を 2 にする                                 | すぐ狭くなる。ファイルの中身は変わらない（自動: tests/ui/test_preferences.py）                             |
+| [a] | 文字サイズを大きくする                                      | タブ幅も一緒に広がる（文字数の比が保たれる）（自動: tests/editor/test_editor_widget.py）                   |
+| [a] | 設定を変えてから「デフォルトに戻す」                        | 入力欄が既定に戻る。**保管フォルダはそのまま**（自動: tests/ui/test_preferences.py）                       |
+| [a] | 上の状態で Cancel を押す                                    | 変更前の設定のまま（戻した内容は捨てられる）（自動: tests/ui/test_preferences.py）                         |
+| [a] | もう一度戻して OK を押す                                    | 本文フォント・テーマ・保持日数が既定に変わる（自動: tests/ui/test_preferences.py）                         |
+| [x] | システムのダークモードを切り替える                          | アプリが追従する（テーマ設定が「システムに合わせる」のとき）                                               |
+| [x] | ウィンドウを最大化する                                      | 本文が中央寄せのまま広がりすぎない                                                                         |
+| [x] | フォーカスモード（`Cmd+Shift+D`）                           | 現在段落以外が沈み、現在段落が読める                                                                       |
+| [ ] | タイプライタモード（`Cmd+Shift+Y`）                         | キャレット行が画面中央付近に保たれる                                                                       |
+| [a] | ツールバーの並び                                            | 11 個のアイコンが読める大きさで出ている（自動: tests/ui/test_format_toolbar.py）                           |
+| [a] | 文字を選んで「太字」を押す                                  | `**` で囲まれ、**選択が残る**（続けて押すと外れる）（自動: tests/ui/test_format_toolbar.py）               |
+| [a] | 何も選ばずに「太字」を押す                                  | `****` が置かれ、間にカーソルが入る（自動: tests/editor/test_commands.py）                                 |
+| [a] | 3 行選んで「箇条書き」を押す                                | 3 行とも `- ` が付く。`Cmd+Z` **1 回**で戻る（自動: tests/ui/test_format_toolbar.py）                      |
+| [a] | 続けて「番号付き」を押す                                    | `- ` が `1. 2. 3.` に入れ替わる（入れ子にならない）（自動: tests/editor/test_commands.py）                 |
+| [a] | 「見出し」を 4 回押す                                       | 段落 → H1 → H2 → H3 → 段落 と一周する（自動: tests/editor/test_commands.py）                           |
+| [a] | 変換中（未確定の文字がある状態）で押す                      | **何も起きない**。プリエディットが壊れない（自動: tests/editor/test_editor_commands.py）                   |
+| [a] | ボタンを押したあとそのまま打つ                              | 本文に入る（フォーカスがボタンに移らない）（自動: tests/ui/test_format_toolbar.py）                        |
+| [x] | ダークモードでツールバーを見る                              | アイコンが明るい色になり、背景から浮かない                                                                 |
+| [a] | `Cmd+3`                                                     | ツールバーが隠れる / 出る。終了して起動しても状態が残る（自動: tests/ui/test_pane_layout.py）              |
+| [a] | 表を書いて `Cmd+Shift+L`                                    | 縦線が揃う。日本語混じりでもずれない（自動: tests/editor/test_table.py）                                   |
+| [a] | 表全体を選択して `Cmd+Shift+L`                              | 選択したままでも整形される（自動: tests/ui/test_appearance.py）                                            |
+| [a] | 表の 3 行目を打って改行                                     | 自動で揃い、罫線とヘッダ背景が現れる（自動: tests/editor/test_table_render.py）                            |
+| [x] | 表の行にカーソルを戻す                                      | 罫線が消えて `\|` が見え、そのまま編集できる                                                                |
+| [x] | そのときの行の高さ                                          | **変わらない**（下の行が飛ばない）                                                                         |
+| [a] | セルの中身と罫線のあいだ                                    | 上下左右に余白がある。文字が線に接しない（自動: tests/editor/test_table_render.py）                        |
+| [x] | 幅に収まらない長いセルを書く                                | **罫線が消えて `\|` が見える**（折り返した行に線を引かない。ADR-0003 追記）                                 |
+| [x] | その表を `Cmd+Shift+B` でブラウザ表示                       | **きちんとした表になる**（画面の幅に関係ない）                                                             |
+| [a] | `Cmd+/`（ソースモード）                                     | 表も生の Markdown に戻る（自動: tests/editor/test_painter_overlay.py）                                     |
+| [a] | 割り当てていない `Cmd+Option+英字` を選択中に押す           | **何も入らず選択も消えない**（自動: tests/editor/test_editor_commands.py）                                 |
+| [a] | サイドバーの項目                                            | すべて / お気に入り / ゴミ箱 / タグにアイコンが付く（自動: tests/ui/test_sidebar.py）                      |
+| [a] | ノートをピン留めして一覧を見る                              | **黄色い星**が付く。タイトルと重ならない（自動: tests/ui/test_note_list.py）                               |
+| [a] | ダークに切り替える                                          | **アイコンの色も追従する**（黒いまま残らない）（自動: tests/ui/test_icons.py）                             |
+| [x] | ペインの境界                                                | 1px の線が見える。ダークでも見える                                                                         |
+| [a] | `Cmd+1` で隠す → 再起動 → `Cmd+1` で戻す                  | **使える幅で戻る**（線だけにならない）（自動: tests/ui/test_pane_layout.py）                               |
+| [x] | ペインを目一杯狭める                                        | 一定より細くならない                                                                                       |
+| [a] | `Cmd+H` でアプリを隠す → `Cmd+Q` → 再起動                 | **ペインが出たまま**（真っ白にならない）（自動: tests/ui/test_pane_layout.py）                             |
+| [a] | 幅を変える → `Cmd+1` で隠す → `Cmd+1` で戻す              | 変えた幅で戻る（自動: tests/ui/test_pane_layout.py）                                                       |
+| [a] | ノートを開いて終了 → 再起動                                | **前回のノートが開く**。一覧でも選ばれている（自動: tests/ui/test_last_note.py）                           |
+| [a] | 再起動直後にそのまま打ち始める                              | front matter が壊れない（カーソルが本文の先頭）（自動: tests/editor/test_front_matter_guard.py）           |
+| [a] | 打っている最中のタイトル                                    | `•` が付き、保存されると消える（自動: tests/ui/test_status_and_edit.py）                                  |
+| [a] | 右下の文字数                                                | 打ち終わって少し待つと更新される（自動: tests/ui/test_status_and_edit.py）                                 |
+| [a] | 右下の文字数の右端                                          | **最後の文字が角丸に欠けない**（自動: tests/ui/test_status_and_edit.py）                                   |
+| [a] | `- [ ]` と `- [x]` を並べる                                 | **箱の大きさが同じ**。文字と重ならない（自動: tests/editor/test_painter_overlay.py）                       |
+| [a] | チェックの行にカーソルを入れる                              | `[ ]` が現れ、広げた幅が戻る（間延びしない）（自動: tests/editor/test_painter_overlay.py）                 |
+| [x] | 文字サイズを変えてチェックを見る                            | 箱も一緒に大きくなる。重ならない                                                                           |
+| [a] | `→` や `①` を含む表を書く                                 | **桁が揃う**（C-1。以前は 20px ずれた）（自動: tests/editor/test_table_render.py）                         |
+| [a] | `Cmd+R` を押す                                              | 見出しの一覧が出る。選ぶとその行へ飛ぶ（自動: tests/ui/test_quick_open.py）                                |
+| [a] | 長い本文のノートを一覧で見る                                | **プレビューの 2 行目が切れない**（自動: tests/ui/test_note_list.py）                                      |
+| [a] | 短い本文のノートと並べる                                    | 行の高さが内容に合う（すかすかにならない）（自動: tests/ui/test_note_list.py）                             |
+| [a] | 一覧左上の `⇅` と `＋`                                      | **同じ見た目**（`⇅` だけ枠が出ていない）（自動: tests/ui/test_note_list_pane.py）                          |
+| [a] | ツールバー右端の **Raw** を押す                             | 記号が全部出る。罫線・囲みの線・チェックの印が消える（自動: tests/ui/test_format_toolbar.py）              |
+| [a] | Raw のまま先頭までスクロールする                            | **`id` などが出ない**（管理情報は隠れたまま）（自動: tests/editor/test_highlighter.py）                    |
+| [x] | Raw のまま記号を直す                                        | ふつうに編集できる。もう一度押すと反映される                                                               |
+| [a] | `Cmd+/` で切り替える                                        | **Raw ボタンの見た目も一緒に変わる**（自動: tests/ui/test_format_toolbar.py）                              |
+| [a] | Raw のままノートを切り替える                                | 記号が出たまま（食い違わない）（自動: tests/ui/test_format_toolbar.py）                                    |
+| [a] | ツールバーと本文の境目                                      | 細い線で仕切られている（自動: tests/ui/test_format_toolbar.py）                                            |
+| [a] | 終了して起動し直す                                          | 並び順が残っている（自動: tests/ui/test_note_actions.py）                                                  |
+| [a] | 何か打って 1 秒待つ                                         | 右下に**保存した時刻**が出る（自動: tests/ui/test_status_and_edit.py）                                     |
+| [a] | 続けて打つ                                                  | 時刻が消える（今の状態と食い違わない）（自動: tests/ui/test_status_and_edit.py）                           |
+| [a] | ノートを全部ゴミ箱へ入れる                                  | 一覧に「＋ で作れます」と出る（自動: tests/ui/test_note_list_pane.py）                                     |
+| [a] | `Cmd+?`                                                     | ショートカット一覧が出る。⌘ の記号で書かれている（自動: tests/ui/test_shortcut_sheet.py）                  |
+| [a] | 3 つのノートを順に開いて `Cmd+[` を 2 回                    | **1 つ目まで遡る**（往復しない）（自動: tests/ui/test_last_note.py）                                       |
+| [x] | 変換中に `#` を含む文字を確定                               | 候補が変換候補と重ならない                                                                                 |
+| [a] | 置き直したノートを一通り眺める                              | 囲み・脚注・ファイル名付きコードが見本として出ている（自動: tests/storage/test_seed.py）                   |
+| [a] | `:::note info` と `:::` で囲んで本文を書く                  | 左に**青い縦線**が出る。`:::` の行は消える（自動: tests/core/test_block_parser.py）                        |
+| [a] | `warn` / `alert` に書き換える                               | 黄 / 赤に変わる。3 つ並べても見分けが付く（自動: tests/editor/test_painter_overlay.py）                    |
+| [x] | `:::` の行にカーソルを入れる                                | 記号が現れる。**行の高さが跳ねない**                                                                       |
+| [a] | `:::note warm` と綴りを間違える                             | **灰色の線**になり、`:::note warm` の行が消えない（自動: tests/core/test_block_parser.py）                 |
+| [a] | 同じノートを HTML で書き出す                                | 書き出しも灰色（画面と食い違わない）（自動: tests/core/test_html.py）                                      |
+| [a] | `:::note warn extra` と語を 2 つ書く                        | 囲みにならず、そのまま文字で出る（画面も書き出しも）（自動: tests/core/test_html.py）                      |
+| [a] | 囲みの中に見出し・箇条書き・引用を書く                      | 今まで通り装飾される。引用の縦線が囲みの線と重ならない（自動: tests/core/test_block_parser.py）            |
+| [a] | 囲みの中でコードフェンスを開いて閉じる                      | フェンスの後も囲みが続いている（自動: tests/core/test_block_parser.py）                                    |
+| [a] | ` ```python ` でコードを書く                                | **予約語・文字列・コメントに色が付く**（自動: tests/editor/test_highlighter.py）                           |
+| [a] | 同じものを HTML / PDF で書き出す                            | 画面と同じ配色で色が付く（自動: tests/core/test_html.py）                                                  |
+| [a] | ダークモードで同じコードを見る                              | 黒地に黒い字にならない（自動: tests/core/test_code_tokens.py）                                             |
+| [a] | 言語を消す（` ``` ` だけにする）                            | 色が消える（自動: tests/editor/test_highlighter.py）                                                       |
+| [a] | 色付きのコードの中で長文を打つ                              | **引っかからない**（200 行までが対象）（自動: tests/editor/test_highlighter.py）                           |
+| [a] | ` ```js:index.js ` と書く                                   | **画面でもコードの上にファイル名が出る**（自動: tests/editor/test_painter_overlay.py）                     |
+| [a] | 同じものを書き出す                                          | HTML にもファイル名が出る（自動: tests/core/test_html.py）                                                 |
+| [a] | ` ```python ` とファイル名なしで書く                        | 名前は出ない。フェンスの行は潰れたまま（自動: tests/editor/test_painter_overlay.py）                       |
+| [a] | コードブロックの左                                          | **アクセントバーが無い**（背景だけ。ADR-0008）（自動: tests/editor/test_painter_overlay.py）               |
+| [ ] | ` ```mermaid ` で `graph TD` を書いて HTML に書き出す       | ブラウザで**図になる**                                                                                     |
+| [ ] | その HTML を機内モード（オフライン）で開く                  | 図が出る（外部を参照していない）                                                                           |
+| [a] | 図の無いノートを書き出す                                    | ファイルが 3.4MB 太っていない（自動: tests/editor/test_exporter.py）                                       |
+| [a] | 図のあるノートを PDF で書き出す                             | 図にはならないが、書いた内容は残る（自動: tests/editor/test_exporter.py）                                  |
+| [a] | `$E = mc^2$` と書く                                         | 画面で等幅になる。HTML に書き出すと**組版される**（自動: tests/core/test_html.py）                         |
+| [a] | 同じものを PDF で書き出す                                   | `$E = mc^2$` と書いたまま出る（`E=mc2` にならない）（自動: tests/editor/test_exporter.py）                 |
+| [a] | `$$` で囲んだ式を HTML で書き出す                           | 中央に大きく組まれる（自動: tests/core/test_html.py）                                                      |
+| [a] | `$$` を複数行で書く                                         | 画面でコードと同じ背景になる。`$$` の行は消える（自動: tests/core/test_block_parser.py）                   |
+| [a] | `$$x$$` を 1 行で書く                                       | 画面でも等幅になる（書き出しと食い違わない）（自動: tests/core/test_inline_scanner.py）                    |
+| [a] | `価格は $100 と $200 です。定価 100$ から $200 まで。`      | **どこも数式にならない**（画面も書き出しも）（自動: tests/core/test_html.py）                              |
+| [a] | `[^1]` と `[^1]: 注釈` を書く                               | 画面で `[^1]` が色付き。書き出すと本文の下に注釈がまとまる（自動: tests/core/test_html.py）                |
+| [a] | チェックボックス入りのノートを HTML で書き出す              | ブラウザで `☐` / `☑` が出る（以前は印が消えていた）（自動: tests/core/test_html.py）                       |
+| [a] | 同じノートを PDF で書き出す                                 | 表に罫線がある。コードブロックに背景がある（自動: tests/editor/test_exporter.py）                          |
+| [a] | 画像入りのノートを HTML で書き出して別の場所へ移す          | 画像が消えない（埋め込まれている）（自動: tests/editor/test_exporter.py）                                  |
+| [x] | 書き出した HTML をブラウザで開く                            | 引用に縦線、表にヘッダの色、リンクが色付き                                                                 |
+| [x] | `[[ノート名]]` を書いて行から離れる                         | `[[` `]]` が消え、名前がリンク色になる                                                                     |
+| [x] | 指されている側のノートを開く                                | 本文の下に「▸ バックリンク N」の帯が出る（0 件なら出ない）                                                 |
+| [x] | `Cmd+P` を押す                                              | **印刷ダイアログ**が出る（PDF 書き出しではない）                                                           |
+| [x] | 印刷ダイアログの「PDF」→「PDF として保存」                 | 書き出した PDF と同じものが出る（A4・余白 18mm）                                                           |
+| [a] | 右下の表示                                                  | **「N 文字 / N 行」**。単語数は出ない（自動: tests/ui/test_status_and_edit.py）                            |
+| [a] | 右下の文字数にカーソルを乗せる                              | 何を数えているかの説明が出る（自動: tests/ui/test_status_and_edit.py）                                     |
+| [x] | `Cmd+F` の検索欄で `Cmd+A`                                  | **検索欄が全選択される**（本文ではない）                                                                   |
+| [a] | 一覧の右上の `＋` を押す                                    | 新規ノートができて開く。一覧でも選ばれる（自動: tests/ui/test_note_list_pane.py）                          |
+| [a] | `＋` にカーソルを乗せる                                     | 「新規ノート（Cmd+N）」と出る（自動: tests/ui/test_note_list_pane.py）                                     |
+| [a] | 一覧を右クリック                                            | ピン留め / 名前を変更 / ゴミ箱へ移動 が出る（自動: tests/ui/test_note_actions.py）                         |
+| [a] | 「名前を変更」で名前を変える                                | 一覧の表示と本文の見出しが変わり、ファイル名も変わる（自動: tests/ui/test_note_actions.py）                |
+| [a] | 開いているノートの名前を変えて `Cmd+Z`                      | 元の見出しに戻る（自動: tests/ui/test_note_actions.py）                                                    |
+| [a] | 見出しの無いノートの名前を変える                            | 先頭に見出しが足され、元の文章は残る（自動: tests/ui/test_note_actions.py）                                |
+| [a] | ゴミ箱を開いて右クリック                                    | 「元に戻す」だけが出る（自動: tests/ui/test_note_actions.py）                                              |
+| [x] | `make run` で起動しメニューバーを見る                       | 先頭が **Hitofude**（Python ではない）                                                                     |
+| [a] | スクリーンショットを撮って `Cmd+V`                          | `![](attachments/...)` が入り、`attachments/` にファイルができる（自動: tests/editor/test_paste_image.py） |
+| [a] | 画像ファイルをウィンドウへドラッグ                          | 同上。拡張子はそのまま（JPEG が PNG にならない）（自動: tests/editor/test_paste_image.py）                 |
+| [a] | 貼った直後の本文                                            | **その場に絵が出る**（リンク文字列ではなく）（自動: tests/editor/test_inline_image.py）                    |
+| [a] | 画像行にカーソルを入れる                                    | **高さが変わらない。絵も消えない**（下の行が飛ばない）（自動: tests/editor/test_inline_image.py）          |
+| [a] | `Cmd+/`（ソースモード）                                     | 絵が消えて `![](...)` に戻る（自動: tests/editor/test_inline_image.py）                                    |
+| [a] | 画像ファイルを Finder で消してから開き直す                  | `![](...)` が文字で見える（空行にならない）（自動: tests/editor/test_inline_image.py）                     |
+| [x] | 画像を何枚も貼って高速にスクロール                          | 引っかからない                                                                                             |
+| [a] | 画像を貼ったノートを PDF で書き出す                         | **画像が出る**（抜け落ちない）（自動: tests/editor/test_exporter.py）                                      |
+| [a] | 同じノートを HTML で書き出し、別の場所へ移して開く          | 画像が出る（埋め込まれている）（自動: tests/editor/test_exporter.py）                                      |
+| [a] | 貼った直後に `Cmd+Z`                                        | 1 回でリンクが消える（自動: tests/editor/test_paste_image.py）                                             |
+| [x] | 本文から `![](…)` を消して「使っていない添付を片づける…」 | 件数と名前が出る。Yes で `.trash/` へ移る（消えない）                                                      |
+| [x] | 使用中の画像があるノートで同じ操作                          | その画像は残る。片づけるものが無ければ知らせが出る                                                         |
+| [a] | `Cmd+Shift+M` で書き出し → 他のエディタで開く              | 打った通りの Markdown。front matter は付かない（自動: tests/editor/test_exporter.py）                      |
 
 ## 3. 外部エディタとの併用
 
