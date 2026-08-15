@@ -17,6 +17,7 @@ HitofudeNotes/
 同じ理由で、`2026-08-14.md` として vault 直下に置く。
 """
 
+import logging
 import re
 import time
 import unicodedata
@@ -28,8 +29,11 @@ from pathlib import Path
 
 from hitofude.core import frontmatter
 from hitofude.core.document import Note, new_id
+from hitofude.core.references import attachment_names
 from hitofude.core.template import Expanded, daily_title, expand
 from hitofude.storage.autosave import save_atomic, save_bytes_atomic
+
+logger = logging.getLogger(__name__)
 
 MARKDOWN_SUFFIXES = (".md", ".markdown")
 ATTACHMENTS_DIR = "attachments"
@@ -297,6 +301,71 @@ class Vault:
         target = unique_path(self.root, path.stem, path.suffix)
         path.replace(target)
         return target
+
+    # --------------------------------------------------------------- 片づけ
+
+    def unused_attachments(self) -> list[Path]:
+        """どのノートからも指されていない添付（E-5）。名前順。
+
+        **広く数える。** 数え漏らしはそのまま画像の消失になるので、
+        ゴミ箱の中のノート（戻したときに絵が要る）も、雛形も、
+        サブフォルダのノートも見る。読めないファイルは飛ばす
+        （1 つのせいで片づけられなくなるほうが困る）。
+
+        `attachments/` 直下のファイルだけを対象にする。人が自分で作った
+        サブフォルダと隠しファイル（`.DS_Store`）は**こちらの持ち物では
+        ないので触らない**。
+        """
+        if not self.attachments_dir.is_dir():
+            return []
+
+        used: set[str] = set()
+        for path in self._all_markdown():
+            try:
+                used |= attachment_names(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError):
+                logger.warning("読めないので参照を数えられなかった: %s", path)
+
+        return sorted(
+            (
+                path
+                for path in self.attachments_dir.iterdir()
+                if path.is_file() and not path.name.startswith(".") and path.name not in used
+            ),
+            key=lambda path: path.name,
+        )
+
+    def _all_markdown(self) -> Iterator[Path]:
+        """参照を数える対象。**走査（`scan`）より広い。**
+
+        `scan()` はノート一覧のためのもので、ゴミ箱と雛形を外している。
+        こちらは「消してよいか」の判定なので、そこも見る必要がある。
+        """
+        yield from self.scan()
+        for directory in (self.trash_dir, self.templates_dir):
+            if not directory.is_dir():
+                continue
+            for path in sorted(directory.rglob("*")):
+                if path.is_file() and path.suffix.lower() in MARKDOWN_SUFFIXES:
+                    yield path
+
+    def trash_attachments(self, paths: list[Path]) -> list[Path]:
+        """添付をゴミ箱へ移す（E-5）。移した先を返す。
+
+        **消さない。** 判定は「本文に名前が出てこない」という消極的なもので、
+        取りこぼせば使用中の画像を片づけてしまう。30 日のあいだは
+        `.trash/` から戻せる（`purge_trash` が期限を見る）。
+
+        **`attachments/` の中のものしか動かさない。** パスは呼び出し側から
+        来るので、ここでもう一度確かめる（ノートを片づけてしまわないため）。
+        """
+        moved: list[Path] = []
+        for path in paths:
+            if path.parent != self.attachments_dir or not path.is_file():
+                logger.warning("添付ではないので動かさない: %s", path)
+                continue
+            moved.append(self.trash(path))
+        return moved
 
     # ------------------------------------------------------------- テンプレート
 

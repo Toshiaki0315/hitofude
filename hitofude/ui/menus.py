@@ -50,6 +50,10 @@ def build_menus(window) -> None:
 
     # StandardKey.Preferences はこの環境で空を返し、キーボードから
     # 到達できなくなる。macOS の慣習どおり明示する
+    file_menu.addSeparator()
+    # **キーを割り当てない。** 押し間違いでファイルが動く操作（E-5）
+    add(file_menu, "使っていない添付を片づける…", "", window.cleanup_attachments)
+
     add(file_menu, "環境設定…", "Ctrl+,", window.open_preferences)
 
     search_menu = window.menuBar().addMenu("検索")

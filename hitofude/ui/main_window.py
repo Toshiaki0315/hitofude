@@ -96,6 +96,9 @@ STATS_TOOLTIP = "文字数と行数。\n装飾の記号（`**` など）と fron
 # 際限なく増えると開くたびに遅くなる。読み切れない数を並べても使えない
 MAX_BACKLINKS = 50
 
+# 片づけの確認に並べる名前の数（E-5）。全部並べるとダイアログが画面を溢れる
+CLEANUP_PREVIEW = 10
+
 NEW_NOTE_TITLE = "無題"
 PINNED_NOTICE = "ピン留めしているノートは削除できません。先にピン留めを外してください。"
 NOTICE_MS = 5000
@@ -1357,6 +1360,44 @@ class MainWindow(QMainWindow):
             base_point_size=self._config.font_point_size,
             base_path=self._vault.root,
         )
+
+    def cleanup_attachments(self) -> int:
+        """使っていない添付をゴミ箱へ移す（E-5）。移した数を返す。
+
+        **手で走らせる。** 起動のたびに動かすと、参照の取りこぼしが
+        「気づかないうちにファイルが動く」に直結する。件数を見せて、
+        押したときだけ動かす。
+
+        **書きかけの本文も数える。** 先に保存しないと、貼ったばかりの
+        画像が「どこからも指されていない」ことになって消える。
+        """
+        self.flush()
+        orphans = self._vault.unused_attachments()
+        if not orphans:
+            QMessageBox.information(
+                self,
+                "片づけるものはありません",
+                "どの添付もノートから使われています。",
+            )
+            return 0
+
+        names = "\n".join(f"・{path.name}" for path in orphans[:CLEANUP_PREVIEW])
+        if len(orphans) > CLEANUP_PREVIEW:
+            names += f"\n…ほか {len(orphans) - CLEANUP_PREVIEW} 件"
+        answer = QMessageBox.question(
+            self,
+            "使っていない添付を片づける",
+            f"どのノートからも使われていない添付が {len(orphans)} 件あります。\n"
+            f"ゴミ箱へ移しますか？（{self._config.trash_days} 日は戻せます）\n\n{names}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return 0
+
+        moved = self._vault.trash_attachments(orphans)
+        self.statusBar().showMessage(f"{len(moved)} 件をゴミ箱へ移しました", NOTICE_MS)
+        logger.info("使っていない添付を片づけた: %d 件", len(moved))
+        return len(moved)
 
     def place_manual(self) -> None:
         """ヘルプ →「使い方のノートを置き直す」。
