@@ -50,7 +50,7 @@ SEED_MARKER = "seeded"
 
 # 雛形（E-4）。**ただの `.md`** なので Finder で足しても増やせる
 DAILY_TEMPLATE = "日次.md"
-DEFAULT_TEMPLATES = (DAILY_TEMPLATE, "議事録.md", "日報.md")
+DEFAULT_TEMPLATES = (DAILY_TEMPLATE, "議事録.md", "日報.md", "PowerPoint下書き.md")
 TEMPLATES_RESOURCE = "templates"
 TEMPLATES_MARKER = "templates-seeded"
 

@@ -209,3 +209,50 @@ class TestSeedTemplates:
         vault.seed_templates()
         assert list(vault.scan()) == []
         assert (vault.root / TEMPLATES_DIR).is_dir()
+
+
+class TestPowerPointTemplate:
+    """PowerPoint の下書き用の雛形（ユーザー要望 / F-5）。
+
+    表紙と各ページの形が入っているので、**書き出しの決まりを覚えなくても
+    書き始められる**。
+    """
+
+    def test_置かれる(self, vault) -> None:
+        vault.seed_templates()
+        assert (vault.templates_dir / "PowerPoint下書き.md").is_file()
+
+    def test_表紙と複数の枚がある(self, vault) -> None:
+        vault.seed_templates()
+        text = (vault.templates_dir / "PowerPoint下書き.md").read_text(encoding="utf-8")
+        assert text.startswith("# ")
+        assert text.count("\n## ") >= 3
+
+    def test_印が埋まる(self, vault) -> None:
+        vault.seed_templates()
+        created = vault.create_from_template(
+            vault.templates_dir / "PowerPoint下書き.md", title="社内提案", now=NOW
+        )
+        assert "# 社内提案" in created.note.text
+        assert "{{" not in created.note.text
+
+    def test_書き出すとスライドになる(self, vault, tmp_path: Path) -> None:
+        """**雛形がそのまま通ること。** 書けても書き出せなければ意味がない。"""
+        import os
+
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication
+
+        from hitofude.editor.pptx_export import write_pptx
+
+        QApplication.instance() or QApplication([])
+        vault.seed_templates()
+        created = vault.create_from_template(
+            vault.templates_dir / "PowerPoint下書き.md", title="社内提案", now=NOW
+        )
+        target = write_pptx(tmp_path / "提案.pptx", created.note.text, base_path=vault.root)
+
+        from pptx import Presentation
+
+        presentation = Presentation(str(target))
+        assert len(presentation.slides) >= 5  # 表紙 + 各ページ

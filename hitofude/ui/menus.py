@@ -45,6 +45,7 @@ def build_menus(window) -> None:
     # **`Cmd+P` は印刷に譲る（C-9）。** macOS では印刷が慣習で、その
     # パネルから「PDF として保存」も選べる。書き出しの入口はここに残す
     add(file_menu, "PDF で書き出す…", "", window.export_pdf)
+    add(file_menu, "PowerPoint で書き出す…", "", window.export_pptx)
     file_menu.addSeparator()
     add(file_menu, "印刷…", QKeySequence.StandardKey.Print, window.print_note)
     file_menu.addSeparator()

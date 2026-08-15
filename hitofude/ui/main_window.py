@@ -43,7 +43,7 @@ from hitofude.core.document import Note, with_title
 from hitofude.core.outline import headings
 from hitofude.core.stats import count as count_text
 from hitofude.core.wikilink import context_line, normalize, resolve
-from hitofude.editor import exporter, importer
+from hitofude.editor import exporter, importer, pptx_export
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.storage import autosave
 from hitofude.storage.autosave import Debouncer
@@ -1302,6 +1302,12 @@ class MainWindow(QMainWindow):
     def export_pdf(self) -> Path | None:
         return self._export("PDF で書き出す", "PDF (*.pdf)", ".pdf", self._write_pdf)
 
+    def export_pptx(self) -> Path | None:
+        """PowerPoint で書き出す（F-5）。**ざっくり作って手で整える**前提。"""
+        return self._export(
+            "PowerPoint で書き出す", "PowerPoint (*.pptx)", ".pptx", self._write_pptx
+        )
+
     def print_note(self) -> bool:
         """`Cmd+P`。印刷ダイアログを出す（C-9）。
 
@@ -1351,6 +1357,9 @@ class MainWindow(QMainWindow):
             theme=self._theme_watcher.colors,
             base_path=self._vault.root,
         )
+
+    def _write_pptx(self, target: Path, text: str) -> Path:
+        return pptx_export.write_pptx(target, text, base_path=self._vault.root)
 
     def _write_pdf(self, target: Path, text: str) -> Path:
         return exporter.write_pdf(
