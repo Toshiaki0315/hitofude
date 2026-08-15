@@ -309,3 +309,35 @@ class TestPowerPointTemplate:
 
         presentation = Presentation(str(target))
         assert len(presentation.slides) >= 5  # 表紙 + 各ページ
+
+
+class TestSeededTablesAreAligned:
+    """既定の雛形に入れる表は**最初から揃っている**（ユーザー報告）。
+
+    表の罫線は 1 行目の `|` の位置に引く。桁が揃っていない表は、行から
+    離れて自動整形が走るまで**罫線と中身がずれて見える**。雛形は置かれた
+    直後に読まれるので、その前に揃えておく必要がある。
+
+    使い方ノートには同じ検査がある（`test_seed.py`）。**雛形にも要る**
+    ことに、`PowerPoint下書き` を足して初めて気づいた。
+    """
+
+    def test_全部の雛形の表が揃っている(self, vault) -> None:
+        from hitofude.editor.table import find_table, format_table
+
+        vault.seed_templates()
+        checked = 0
+        for path in vault.templates():
+            lines = path.read_text(encoding="utf-8").split("\n")
+            number = 0
+            while number < len(lines):
+                found = find_table(lines, number)
+                if found is None or found[0] != number:
+                    number += 1
+                    continue
+                start, end = found
+                block = lines[start:end]
+                assert format_table(block) == block, f"{path.name} の {start + 1} 行目"
+                checked += 1
+                number = end
+        assert checked >= 2, "表を持つ雛形が足りない"
