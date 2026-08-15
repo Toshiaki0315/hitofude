@@ -256,6 +256,62 @@ class TestSync:
         assert opened == []
 
 
+class TestRenameOnDisk:
+    """Finder でファイル名を変えたとき（ユーザーからの指摘）。
+
+    **題名はファイル名ではなく本文から来る**（spec §7.2: 最初の H1 →
+    最初の非空行 → ファイル名）。ファイル名は題名の写しであって、
+    題名の出どころではない（ADR-0005）。
+
+    リネームは索引が壊れやすい操作で、**パスは変わるが `id` は変わらない**。
+    取り違えると旧名の行が残って一覧が二重になる。
+    """
+
+    def test_一覧が二重にならない(self, db, vault) -> None:
+        note = add(vault, db, "会議メモ")
+        note.path.replace(vault.root / "打ち合わせ.md")
+        db.sync(vault)
+        assert len(db.notes()) == 1
+
+    def test_題名は変わらない(self, db, vault) -> None:
+        """本文に見出しがあるかぎり、ファイル名を変えても表示は動かない。"""
+        note = add(vault, db, "会議メモ")
+        note.path.replace(vault.root / "打ち合わせ.md")
+        db.sync(vault)
+        assert db.notes()[0].title == "会議メモ"
+
+    def test_新しいパスを指す(self, db, vault) -> None:
+        note = add(vault, db, "会議メモ")
+        note.path.replace(vault.root / "打ち合わせ.md")
+        db.sync(vault)
+        assert str(db.notes()[0].path) == "打ち合わせ.md"
+
+    def test_同じノートのまま(self, db, vault) -> None:
+        """`id` は front matter にあるので、リネームで別物にならない。"""
+        note = add(vault, db, "会議メモ")
+        before = db.notes()[0].id
+        note.path.replace(vault.root / "打ち合わせ.md")
+        db.sync(vault)
+        assert db.notes()[0].id == before
+
+    def test_見出しの無いノートだけ題名が変わる(self, db, vault) -> None:
+        """本文が空なら題名の出どころがファイル名しか残らない（§7.2）。"""
+        note = vault.create("メモ帳", "")
+        db.upsert_note(note, vault.root)
+        note.path.replace(vault.root / "新しい名前.md")
+        db.sync(vault)
+        assert db.notes()[0].title == "新しい名前"
+
+    def test_タグも繋がりも付いてくる(self, db, vault) -> None:
+        add(vault, db, "会議メモ")
+        note = add(vault, db, "日報", "#仕事 と [[会議メモ]]\n")
+        note.path.replace(vault.root / "きょうの記録.md")
+        db.sync(vault)
+
+        assert [row.title for row in db.notes_with_tag("仕事")] == ["日報"]
+        assert [row.title for row in db.backlinks("会議メモ")] == ["日報"]
+
+
 class TestRebuild:
     """R9 / spec §7.1: 索引は捨ててよいキャッシュ。"""
 
