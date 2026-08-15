@@ -149,12 +149,19 @@ class NoteItemDelegate(QStyledItemDelegate):
         self._theme = theme
 
     def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
+        """**本文で高さを変えない**（ユーザー報告）。
+
+        `NoteListView` は `setUniformItemSizes(True)` で高さの計算を 1 回に
+        まとめている（5,000 件で 29ms。行ごとに測ると 906ms かかり、一覧は
+        保存のたびに引き直すので選べない）。ここが本文の行数で変わると、
+        1 つの高さを全行に当てる前提と食い違い、**背の高い行に次の行が
+        重なる**。実測では 70px 描く行に 34px しか割り当たっていなかった。
+
+        プレビューが 1 行のノートには空きができるが、重なるよりはよい。
+        """
+        del index  # 高さは行の中身に依らない
         metrics = QFontMetrics(option.font)
-        preview = preview_height(
-            option.font,
-            index.data(NoteRole.PREVIEW) or "",
-            option.rect.width() - self._metrics.padding * 2,
-        )
+        preview = metrics.lineSpacing() * PREVIEW_MAX_LINES
         height = self._metrics.padding * 2 + metrics.height() + self._metrics.spacing + preview
         return QSize(option.rect.width(), height)
 

@@ -1,6 +1,7 @@
 """ノートリストのテスト（タスク 5-3 / spec §5.1, §6.6）。"""
 
 from datetime import datetime, timedelta
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -312,3 +313,73 @@ class TestPreviewHeight:
         from hitofude.ui.note_list import _Metrics
 
         assert 8 <= _Metrics().padding <= 10
+
+
+class TestRowHeight:
+    """行の高さは**すべて同じ**（ユーザー報告）。
+
+    新しいノートを足したら、一覧の行が既存のノートに重なった。原因は
+    `setUniformItemSizes(True)`（5,000 件でも高さ計算を 1 回で済ませる
+    ための設定）と、**プレビューの行数で高さが変わる `sizeHint`** の
+    食い違い。実測では、2 行のプレビューを持つ行が 34px しか割り当てられて
+    いないのに 70px 描いていた。
+
+    `uniform` を外すと正しく並ぶが**高くつく**（実測 5,000 件で 906ms /
+    uniform なら 29ms）。一覧は保存のたびに引き直すので、こちらは選べない。
+    そこで**高さのほうを固定する**。プレビューが 1 行のノートには空きが
+    できるが、行が重なるよりはよい。
+    """
+
+    @pytest.fixture
+    def view(self, qtbot) -> NoteListView:
+        widget = NoteListView()
+        qtbot.addWidget(widget)
+        widget.resize(280, 600)
+        widget.show()
+        return widget
+
+    def _hint(self, view, number: int) -> int:
+        from PySide6.QtWidgets import QStyleOptionViewItem
+
+        option = QStyleOptionViewItem()
+        option.initFrom(view)
+        option.font = view.font()
+        index = view.model().index(number)
+        option.rect = view.visualRect(index)
+        return view.itemDelegate().sizeHint(option, index).height()
+
+    def _mixed(self) -> list:
+        return [
+            row("長いノート", preview="ようこそ。" + "あ" * 200),
+            row("短いノート", preview="ひとこと"),
+            row("空のノート", preview=""),
+        ]
+
+    def test_どの行も同じ高さ(self, view) -> None:
+        view.set_rows(self._mixed())
+        heights = {self._hint(view, number) for number in range(3)}
+        assert len(heights) == 1, f"高さがばらついている: {heights}"
+
+    def test_行が重ならない(self, view, qtbot) -> None:
+        """これが実際に起きた不具合。"""
+        view.resize(280, 700)
+        view.show()
+        view.set_rows(self._mixed())
+        view.doItemsLayout()
+
+        rects = [view.visualRect(view.model().index(number)) for number in range(3)]
+        for previous, current in pairwise(rects):
+            assert current.top() >= previous.bottom(), "行が重なっている"
+
+    def test_描くのに要る高さが収まっている(self, view) -> None:
+        """割り当てより大きく描くと、その差がそのまま重なりになる。"""
+        from hitofude.ui.note_list import PREVIEW_MAX_LINES, preview_height
+
+        view.set_rows(self._mixed())
+        needed = preview_height(view.font(), "ようこそ。" + "あ" * 200, 280)
+        assert needed <= self._hint(view, 0)
+        assert PREVIEW_MAX_LINES == 2
+
+    def test_高さを1回で済ませる設定は保つ(self, view) -> None:
+        """**外すと 5,000 件で 906ms**（実測）。一覧は保存のたびに引き直す。"""
+        assert view.uniformItemSizes() is True
