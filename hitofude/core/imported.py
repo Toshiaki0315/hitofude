@@ -51,6 +51,68 @@ _SENTENCE_TAIL_RE = re.compile(r"(です|ます|でした|ました|だった|�
 _CJK_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿ａ-ｚＡ-Ｚ０-９、。「」（）]")
 
 
+# 名前から対応を導けない部首（日本の新字体）。**表は最小限にする。**
+# 導ける 97 字は下の `_radical_table()` が作るので、ここに書かない
+_JAPANESE_RADICALS = {
+    "\u2eeb": "斉",  # CJK RADICAL J-SIMPLIFIED EVEN
+    "\u2eed": "歯",  # CJK RADICAL J-SIMPLIFIED TOOTH
+    "\u2eef": "竜",  # CJK RADICAL J-SIMPLIFIED DRAGON
+    "\u2ef2": "亀",  # CJK RADICAL J-SIMPLIFIED TURTLE
+}
+
+# 変種を表す語。`CJK RADICAL LONG ONE` は `KANGXI RADICAL LONG` と同じ字
+_VARIANT_PREFIXES = ("C-SIMPLIFIED ", "SIMPLIFIED ", "J-SIMPLIFIED ")
+_VARIANT_SUFFIXES = (" ONE", " TWO", " THREE", " FOUR")
+
+
+def _radical_table() -> dict[int, str]:
+    """CJK 部首補助（U+2E80〜）を、ふつうの漢字へ写す表。
+
+    **手で書かない。** Unicode の字の名前から導く（`CJK RADICAL LONG ONE`
+    → `KANGXI RADICAL LONG` → NFKC → 長）。115 字のうち 113 字は NFKC が
+    素通りさせるので、ここが無いと `⻑い資料` のまま入って検索できない
+    （実測。自分で書き出した PDF がこうなる）。
+    """
+    kangxi: dict[str, str] = {}
+    for code in range(0x2F00, 0x2FE0):
+        character = chr(code)
+        try:
+            name = unicodedata.name(character)
+        except ValueError:
+            continue
+        kangxi[name.removeprefix("KANGXI RADICAL ")] = unicodedata.normalize("NFKC", character)
+
+    table: dict[int, str] = {ord(k): v for k, v in _JAPANESE_RADICALS.items()}
+    for code in range(0x2E80, 0x2F00):
+        character = chr(code)
+        if code in table:
+            continue
+        try:
+            name = unicodedata.name(character)
+        except ValueError:
+            continue
+        key = name.removeprefix("CJK RADICAL ")
+        for prefix in _VARIANT_PREFIXES:
+            key = key.replace(prefix, "")
+        found = kangxi.get(key)
+        if found is None:
+            found = next(
+                (
+                    kangxi[key[: -len(tail)]]
+                    for tail in _VARIANT_SUFFIXES
+                    if key.endswith(tail) and key[: -len(tail)] in kangxi
+                ),
+                None,
+            )
+        if found is not None:
+            table[code] = found
+    return table
+
+
+# 起動時に 1 回だけ作る（115 回のループ。表を持ち歩くより安い）
+_RADICALS = _radical_table()
+
+
 def normalize_text(text: str) -> str:
     """取り込んだ文字を揃える。
 
@@ -58,12 +120,17 @@ def normalize_text(text: str) -> str:
     `本⽇`（U+2F47 KANGXI RADICAL SUN）が出てきて、**「本日」では検索に
     掛からない**（実測）。取り込んだ瞬間に揃えないと、あとから気づけない。
 
+    **NFKC だけでは足りない。** 部首には 2 つのブロックがあり、CJK 部首補助
+    （U+2E80〜）は 115 字のうち 113 字が NFKC を素通りする。`⻑い資料` が
+    そのまま入るので、`_RADICALS` で先に写す。
+
     行頭の空白も落とす。**4 つ以上あるとコードブロックになる**ので、
     元の字下げをそのまま持ち込むと本文が化ける。
     """
     if not text:
         return ""
-    cleaned = unicodedata.normalize("NFKC", text.replace("\r\n", "\n").replace("\r", "\n"))
+    cleaned = text.replace("\r\n", "\n").replace("\r", "\n").translate(_RADICALS)
+    cleaned = unicodedata.normalize("NFKC", cleaned)
     cleaned = _CONTROL_RE.sub("", cleaned)
     lines = [_SPACES_RE.sub(" ", line).strip() for line in cleaned.split("\n")]
     return "\n".join(lines)

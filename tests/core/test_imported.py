@@ -186,3 +186,40 @@ class TestRealShape:
 
     def test_ページ番号は残らない(self) -> None:
         assert not to_markdown([self.PAGE]).rstrip().endswith("1")
+
+
+class TestRadicals:
+    """部首の字を、ふつうの漢字に直す（F-2 で見つかった）。
+
+    自分で書き出した PDF を読み戻すと `⻑い資料` になっていた。**NFKC では
+    直らない。** 部首には 2 つのブロックがあり、康熙部首（U+2F00〜）は
+    NFKC が面倒を見るが、CJK 部首補助（U+2E80〜）は **115 字のうち 113 字が
+    素通りする**（実測）。素通りすると「長い」で検索できない。
+
+    対応は Unicode の**字の名前から導く**（`CJK RADICAL LONG ONE` →
+    `KANGXI RADICAL LONG` → NFKC → 長）。表を手で持たないので写し間違いが
+    起きない。名前から導けない日本の新字体だけ、明示の表に置く。
+    """
+
+    @pytest.mark.parametrize(
+        ("radical", "expected"),
+        [("⻑", "長"), ("⻤", "鬼"), ("⺼", "肉"), ("⻂", "衣"), ("⻍", "辵")],
+    )
+    def test_名前から導ける部首(self, radical: str, expected: str) -> None:
+        assert normalize_text(radical) == expected
+
+    @pytest.mark.parametrize(
+        ("radical", "expected"), [("⻭", "歯"), ("⻯", "竜"), ("⻲", "亀"), ("⻫", "斉")]
+    )
+    def test_日本の新字体(self, radical: str, expected: str) -> None:
+        """`J-SIMPLIFIED` は名前が対応しないので表に持つ。"""
+        assert normalize_text(radical) == expected
+
+    def test_康熙部首は今まで通り(self) -> None:
+        assert normalize_text("⽇") == "日"
+
+    def test_文の中でも直る(self) -> None:
+        assert normalize_text("⻑い資料の⻭車") == "長い資料の歯車"
+
+    def test_ふつうの漢字は変わらない(self) -> None:
+        assert normalize_text("長い資料の歯車") == "長い資料の歯車"

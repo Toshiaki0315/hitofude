@@ -37,6 +37,9 @@ def build_menus(window) -> None:
     add(file_menu, "ピン留め", "Ctrl+Shift+P", window.toggle_pin_current)
     add(file_menu, "ゴミ箱へ移動", "Ctrl+Backspace", window.trash_current)
     file_menu.addSeparator()
+    # 取り込み（F-2）。**キーは付けない。** ファイルを選ぶ操作で急がない
+    add(file_menu, "読み込む…", "", window.import_document)
+    file_menu.addSeparator()
     add(file_menu, "Markdown で書き出す…", "Ctrl+Shift+M", window.export_markdown)
     add(file_menu, "HTML で書き出す…", "Ctrl+Shift+E", window.export_html)
     # **`Cmd+P` は印刷に譲る（C-9）。** macOS では印刷が慣習で、その

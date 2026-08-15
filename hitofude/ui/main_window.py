@@ -43,7 +43,7 @@ from hitofude.core.document import Note, with_title
 from hitofude.core.outline import headings
 from hitofude.core.stats import count as count_text
 from hitofude.core.wikilink import context_line, normalize, resolve
-from hitofude.editor import exporter
+from hitofude.editor import exporter, importer
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.storage import autosave
 from hitofude.storage.autosave import Debouncer
@@ -1360,6 +1360,40 @@ class MainWindow(QMainWindow):
             base_point_size=self._config.font_point_size,
             base_path=self._vault.root,
         )
+
+    def import_document(self) -> Path | None:
+        """「ファイル」→「読み込む…」。資料をノートにして開く（F-2）。
+
+        **元のファイルは触らない。** 読むだけで、移動も複製もしない。
+        題名はファイル名を使う（`講演資料.pdf` → `講演資料`）。
+
+        **読めなければノートを作らない。** 空のノートが増えるほうが困る。
+        """
+        self.flush()
+        chosen, _ = QFileDialog.getOpenFileName(
+            self, "読み込む", str(Path.home()), importer.FILE_FILTER
+        )
+        if not chosen:
+            return None
+
+        source = Path(chosen)
+        text = importer.to_markdown(source)
+        if not text.strip():
+            QMessageBox.warning(
+                self,
+                "読み込めませんでした",
+                f"「{source.name}」から文字を取り出せませんでした。\n"
+                "画像だけの資料や、保護されたファイルかもしれません。",
+            )
+            return None
+
+        note = self._vault.create(source.stem, text)
+        self._db.upsert_note(note, self._vault.root)
+        self.refresh()
+        self.open_note(note.path)
+        self._note_list.select_path(note.path.relative_to(self._vault.root))
+        logger.info("取り込んだ: %s → %s", source.name, note.path.name)
+        return note.path
 
     def cleanup_attachments(self) -> int:
         """使っていない添付をゴミ箱へ移す（E-5）。移した数を返す。
