@@ -15,6 +15,7 @@ from enum import Enum
 from pathlib import Path
 
 from hitofude.core import tags as tag_utils
+from hitofude.core import wikilink
 from hitofude.core.document import Note, searchable_text
 
 # trigram は 3 文字単位で索引するため、2 文字以下のクエリは構造上ヒットしない
@@ -24,6 +25,12 @@ MIN_TRIGRAM_QUERY = 3
 # タグとして解釈されるため、表示直前に UI 側が変換する
 HIGHLIGHT_START = "\x02"
 HIGHLIGHT_END = "\x03"
+
+# 索引の作り。**増やしたら上げる。** 上げると次の起動で中身を捨てて
+# 走査し直す（R9: 索引は捨ててよいキャッシュ）。表を足すだけでは、既にある
+# ノートは触られるまで読み直されず（`sync()` は mtime を見る）、新しい列が
+# 黙って空のままになる。2 で `links`（E-6）を足した
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS notes (
@@ -46,6 +53,13 @@ CREATE TABLE IF NOT EXISTS tags (
     PRIMARY KEY (note_id, tag)
 );
 CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag);
+
+CREATE TABLE IF NOT EXISTS links (
+    note_id  TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    target   TEXT NOT NULL,
+    PRIMARY KEY (note_id, target)
+);
+CREATE INDEX IF NOT EXISTS idx_links_target ON links(target);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
     title,
@@ -152,6 +166,30 @@ class IndexDb:
         self._connection.execute("PRAGMA busy_timeout = 5000")
         self._connection.executescript(SCHEMA)
         self._connection.commit()
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """古い作りの索引を捨てて作り直す。
+
+        **中身だけ消して表は残す。** 次の `sync()` が全ファイルを読み直して
+        埋める（R9）。真実はファイル側にあるので、ここで失うものは無い。
+        """
+        if self.schema_version() == SCHEMA_VERSION:
+            return
+        self.reset()
+        self._connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        self._connection.commit()
+
+    def schema_version(self) -> int:
+        return int(self._connection.execute("PRAGMA user_version").fetchone()[0])
+
+    def reset(self) -> None:
+        """索引を空にする。ファイルは触らない（R9）。"""
+        self._connection.execute("DELETE FROM notes")
+        self._connection.execute("DELETE FROM links")
+        self._connection.execute("DELETE FROM tags")
+        self._connection.execute("DELETE FROM notes_fts")
+        self._connection.commit()
 
     def close(self) -> None:
         self._connection.close()
@@ -204,6 +242,14 @@ class IndexDb:
         self._connection.executemany(
             "INSERT OR IGNORE INTO tags (note_id, tag) VALUES (?, ?)",
             [(note_id, tag) for tag in sorted(expanded)],
+        )
+
+        # 指しているノート（E-6）。**行き先の有無は問わない。**
+        # まだ無いノートへのリンクも、作られた瞬間に繋がるべきもの
+        self._connection.execute("DELETE FROM links WHERE note_id = ?", (note_id,))
+        self._connection.executemany(
+            "INSERT OR IGNORE INTO links (note_id, target) VALUES (?, ?)",
+            [(note_id, target) for target in wikilink.links(note.text)],
         )
 
         self._connection.execute("DELETE FROM notes_fts WHERE note_id = ?", (note_id,))
@@ -303,6 +349,27 @@ class IndexDb:
             ORDER BY {_order_by(order, prefix="notes.")}
             """,
             (normalized,),
+        )
+        return [_to_row(row) for row in rows]
+
+    def backlinks(self, title: str, *, order: "SortOrder" = SortOrder.MODIFIED) -> list[NoteRow]:
+        """その題名を `[[...]]` で指しているノート（E-6）。
+
+        **大小は無視する**（`COLLATE NOCASE`）。解決（`wikilink.resolve`）が
+        無視する以上、逆から引くときも同じでないと片道になる。日本語には
+        大小が無いので、効くのは英字だけ。
+        """
+        target = wikilink.normalize(title)
+        if not target:
+            return []
+        rows = self._connection.execute(
+            f"""
+            SELECT notes.* FROM notes
+            JOIN links ON links.note_id = notes.id
+            WHERE links.target = ? COLLATE NOCASE AND notes.trashed = 0
+            ORDER BY {_order_by(order, prefix="notes.")}
+            """,
+            (target,),
         )
         return [_to_row(row) for row in rows]
 

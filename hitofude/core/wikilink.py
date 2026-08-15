@@ -16,7 +16,15 @@ import re
 import unicodedata
 from collections.abc import Iterable
 
+from hitofude.core import frontmatter
+from hitofude.core.inline_scanner import scan
+from hitofude.core.models import SpanType
+
 _WHITESPACE_RE = re.compile(r"\s+")
+
+# コードフェンスの開始/終了。前置の空白は 3 つまで（CommonMark）。
+# `core/tags.py` と同じ規則。**タグと同じく、コードの中は数えない**
+_FENCE_RE = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})")
 
 
 def normalize(name: str) -> str:
@@ -28,6 +36,37 @@ def normalize(name: str) -> str:
     （`か` + 濁点）で来ることがあるため。
     """
     return _WHITESPACE_RE.sub(" ", unicodedata.normalize("NFC", name)).strip()
+
+
+def links(text: str) -> list[str]:
+    """本文が指しているノート名を、重複を除いて出現順に返す（E-6 ②）。
+
+    **コードの中は数えない。** `` ```[[a]]``` `` はリンクではなく、コード例と
+    してそう書いたもの（§6.5 規則 1 と同じ方針で、`tags.find_all()` も同じ形）。
+    インラインコードは走査そのものが弾く（`scan()` がコードを先にマスクする）。
+
+    front matter も見ない。`id` や `created` はアプリの管理情報で、
+    リンクが書かれる場所ではない。
+    """
+    found: dict[str, None] = {}
+    fence: str | None = None
+
+    for line in frontmatter.split(text).body.split("\n"):
+        fence_match = _FENCE_RE.match(line)
+        if fence_match is not None:
+            marker = fence_match.group("fence")
+            if fence is None:
+                fence = marker
+            elif marker[0] == fence[0] and len(marker) >= len(fence):
+                fence = None
+            continue
+        if fence is not None:
+            continue
+        for span in scan(line):
+            if span.type is SpanType.WIKI_LINK:
+                found.setdefault(normalize(span.payload), None)
+
+    return list(found)
 
 
 def resolve(name: str, titles: Iterable[str]) -> str | None:
