@@ -63,6 +63,41 @@ class TestPreview:
         assert preview_of("# 見出しだけ\n") == ""
 
 
+class TestPreviewMarkers:
+    """一覧のプレビューは**記号を外して出す**（ユーザー報告）。
+
+    本文では `**` を隠しているのに、一覧には `**書き方の見本**` と
+    そのまま出ていた。同じ文章の見え方が場所によって変わるのは筋が悪い。
+
+    索引に入れる本文（`searchable_text`）と同じ判断に立つ。
+    装飾は文章の一部ではない。
+    """
+
+    def test_強調の記号を外す(self) -> None:
+        assert preview_of("**書き方の見本**にもなります\n") == "書き方の見本にもなります"
+
+    def test_斜体とコードも外す(self) -> None:
+        assert preview_of("*斜体* と `コード`\n") == "斜体 と コード"
+
+    def test_リンクは文字だけ残す(self) -> None:
+        assert preview_of("[仕様](https://example.com)を見る\n") == "仕様を見る"
+
+    def test_行頭のマーカーも外す(self) -> None:
+        assert preview_of("- 箇条書き\n> 引用\n") == "箇条書き 引用"
+
+    def test_コードブロックは記号ごと残す(self) -> None:
+        """検索と同じ扱い。コードは書いたままが読みたい。"""
+        assert "**" in preview_of("```\n**そのまま**\n```\n")
+
+    def test_H1は今まで通り落とす(self) -> None:
+        assert preview_of("# **見出し**\n\n本文\n") == "本文"
+
+    def test_元の文字列を変えない(self) -> None:
+        text = "**強調**\n"
+        preview_of(text)
+        assert text == "**強調**\n"
+
+
 class TestNote:
     def make(self, text: str, name: str = "メモ.md") -> Note:
         return Note.from_text(Path(f"/vault/{name}"), text, mtime_ns=1, size_bytes=len(text))

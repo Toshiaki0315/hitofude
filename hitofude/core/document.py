@@ -15,7 +15,7 @@ from typing import Any
 from hitofude.core import frontmatter, tags
 from hitofude.core.block_parser import classify_line
 from hitofude.core.inline_scanner import scan
-from hitofude.core.models import BlockState, BlockType
+from hitofude.core.models import BlockInfo, BlockState, BlockType, SpanType
 
 PREVIEW_LENGTH = 200
 
@@ -137,6 +137,11 @@ def preview_of(text: str, limit: int = PREVIEW_LENGTH) -> str:
     """ノート一覧に出す本文の冒頭（spec §7.3）。
 
     front matter と H1 を除いた残りを、改行を空白に潰して切り出す。
+
+    **マーカーは外す**（ユーザー報告）。本文では `**` を隠しているのに、
+    一覧には `**書き方の見本**` とそのまま出ていた。同じ文章の見え方が
+    場所によって変わるのは筋が悪い。索引に入れる写し（`searchable_text`）
+    と同じ判断で、装飾は文章の一部ではない。
     """
     body = _body_of(text)
     state = BlockState()
@@ -148,7 +153,11 @@ def preview_of(text: str, limit: int = PREVIEW_LENGTH) -> str:
         if not skipped_title and info.type is BlockType.HEADING and info.level == 1:
             skipped_title = True
             continue
-        stripped = line.strip()
+        # **分類は生の行で行う。** 先に記号を外すと `# 見出し` が
+        # ただの段落になり、H1 を落とせなくなる。コードは書いたまま
+        # （`plain_text` と同じ扱い）
+        raw = line if info.type in _CODE_TYPES else strip_markers(line, info, drop_urls=True)
+        stripped = raw.strip()
         if stripped:
             parts.append(stripped)
         if sum(len(part) + 1 for part in parts) > limit:
@@ -224,6 +233,26 @@ class Note:
         return os.fspath(self.path.relative_to(root))
 
 
+def strip_markers(line: str, info: BlockInfo, *, drop_urls: bool = False) -> str:
+    """1 行からマーカーを外す。行頭マーカーと、インラインの開き / 閉じ記号。
+
+    **`plain_text` と `preview_of` で共有する。** 別々に書くと、片方だけ
+    記号が残る（一覧のプレビューに `**` が出ていたのがまさにそれ）。
+
+    `drop_urls` はリンク先ごと落とす。**一覧のプレビューだけで使う。**
+    索引（`searchable_text`）では URL も引けたほうがよいので残す。
+    """
+    body = line[info.marker_len :]
+    drop = bytearray(len(body))
+    for span in scan(body):
+        if drop_urls and span.type is SpanType.LINK_URL:
+            drop[span.start : span.end] = b"\x01" * (span.end - span.start)
+            continue
+        drop[span.open_start : span.open_end] = b"\x01" * span.open_len
+        drop[span.close_start : span.close_end] = b"\x01" * span.close_len
+    return "".join(char for index, char in enumerate(body) if not drop[index])
+
+
 def plain_text(text: str) -> str:
     """マーカーを外した本文。
 
@@ -243,12 +272,7 @@ def plain_text(text: str) -> str:
             lines.append(line)
             continue
 
-        body = line[info.marker_len :]
-        drop = bytearray(len(body))
-        for span in scan(body):
-            drop[span.open_start : span.open_end] = b"\x01" * span.open_len
-            drop[span.close_start : span.close_end] = b"\x01" * span.close_len
-        lines.append("".join(char for index, char in enumerate(body) if not drop[index]))
+        lines.append(strip_markers(line, info))
 
     return "\n".join(lines)
 
