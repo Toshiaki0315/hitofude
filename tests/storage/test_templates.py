@@ -211,6 +211,59 @@ class TestSeedTemplates:
         assert (vault.root / TEMPLATES_DIR).is_dir()
 
 
+class TestAddingNewTemplates:
+    """あとから増えた雛形が、既に使っている vault にも届く（ユーザー報告）。
+
+    印（`templates-seeded`）は「一度置いたら二度と置き直さない」ためのもの
+    だが、**印があるだけで新しい雛形まで置かれなくなっていた**。
+    `PowerPoint下書き` を足しても、既存の保管フォルダには現れない。
+
+    印に**置いた名前を記録する**ことにした。名前が無いものだけ置くので、
+    新しい雛形は届き、**手で消したものは復活しない**（名前が残っている）。
+    """
+
+    def test_あとから増えた雛形が置かれる(self, vault) -> None:
+        vault.seed_templates()
+        (vault.templates_dir / "新しい雛形.md").unlink(missing_ok=True)
+
+        # あとから既定が増えた状況を作る
+        import hitofude.storage.vault as module
+
+        original = module.DEFAULT_TEMPLATES
+        module.DEFAULT_TEMPLATES = (*original, "議事録.md")
+        try:
+            again = vault.seed_templates()
+        finally:
+            module.DEFAULT_TEMPLATES = original
+        assert again == []  # 既に置いた名前は増やさない
+
+    def test_置いた名前を印に残す(self, vault) -> None:
+        from hitofude.storage.vault import TEMPLATES_MARKER
+
+        vault.seed_templates()
+        marker = (vault.managed_dir / TEMPLATES_MARKER).read_text(encoding="utf-8")
+        assert "日次.md" in marker
+        assert "PowerPoint下書き.md" in marker
+
+    def test_古い印でも新しい雛形だけ置く(self, vault) -> None:
+        """更新前の印は日時しか持っていない。**そこに何が置かれたかは
+        分かっている**ので、その分は置き直さない。"""
+        from hitofude.storage.vault import TEMPLATES_MARKER
+
+        marker = vault.managed_dir / TEMPLATES_MARKER
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("2026-08-14T09:05:00+09:00", encoding="utf-8")
+
+        placed = vault.seed_templates()
+        assert [path.name for path in placed] == ["PowerPoint下書き.md"]
+
+    def test_手で消した雛形は復活しない(self, vault) -> None:
+        vault.seed_templates()
+        (vault.templates_dir / "日報.md").unlink()
+        assert vault.seed_templates() == []
+        assert not (vault.templates_dir / "日報.md").exists()
+
+
 class TestPowerPointTemplate:
     """PowerPoint の下書き用の雛形（ユーザー要望 / F-5）。
 

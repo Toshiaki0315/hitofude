@@ -53,6 +53,9 @@ DAILY_TEMPLATE = "日次.md"
 DEFAULT_TEMPLATES = (DAILY_TEMPLATE, "議事録.md", "日報.md", "PowerPoint下書き.md")
 TEMPLATES_RESOURCE = "templates"
 TEMPLATES_MARKER = "templates-seeded"
+# 更新前の印は日時しか持っていない。そのとき置かれていた雛形は分かっている
+# ので、その分は置き直さない（**手で消したものを復活させない**）
+LEGACY_TEMPLATES = (DAILY_TEMPLATE, "議事録.md", "日報.md")
 
 # ファイル名の上限は 255 バイト。日本語は 1 文字 3 バイトなので余裕を取る
 MAX_FILENAME_BYTES = 200
@@ -487,19 +490,24 @@ class Vault:
         return self.create(MANUAL_TITLE, text)
 
     def seed_templates(self) -> list[Path]:
-        """初回だけ既定の雛形を置く（E-4）。置いたパスを返す。
+        """まだ置いたことのない既定の雛形を置く（E-4）。置いたパスを返す。
 
-        使い方ノートと同じで、**一度置いたら二度と置き直さない**。
-        消したものが起動のたびに戻ってくると、消す手段が無くなる。
+        **印には置いた名前を残す。** 「一度置いたら二度と置き直さない」を
+        守りつつ、**あとから増えた雛形は届く**ようにするため。日時だけを
+        書いていたときは、印があるだけで新しい雛形が永久に現れなかった
+        （`PowerPoint下書き` を足して気づいた。ユーザー報告）。
 
-        **既にある名前は上書きしない。** 手で直した雛形を消しては困る。
+        名前で覚えているので、**手で消した雛形は復活しない**。
+        **既にある名前は上書きしない**（手で直した雛形を消さない）。
         """
         marker = self.managed_dir / TEMPLATES_MARKER
-        if marker.exists():
-            return []
+        known = self._seeded_templates(marker)
 
         placed: list[Path] = []
         for name in DEFAULT_TEMPLATES:
+            if name in known:
+                continue
+            known.add(name)
             target = self.templates_dir / name
             text = _read_resource(f"{TEMPLATES_RESOURCE}/{name}")
             if text is None or target.exists():
@@ -508,8 +516,22 @@ class Vault:
             placed.append(target)
 
         marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(_now(), encoding="utf-8")
+        marker.write_text("\n".join(sorted(known)) + "\n", encoding="utf-8")
         return placed
+
+    def _seeded_templates(self, marker: Path) -> set[str]:
+        """これまでに置いた雛形の名前。
+
+        印が無ければ空。**日時しか書いていない古い印**のときは、そのとき
+        置かれていたもの（`LEGACY_TEMPLATES`）を置いた扱いにする。
+        """
+        try:
+            content = marker.read_text(encoding="utf-8")
+        except OSError:
+            return set()
+
+        names = {line.strip() for line in content.split("\n") if line.strip().endswith(".md")}
+        return names or set(LEGACY_TEMPLATES)
 
     def purge_trash(self, days: int = DEFAULT_TRASH_DAYS) -> list[Path]:
         """期限を過ぎたゴミ箱の中身を消す（spec §7.6）。起動時に呼ぶ。"""
