@@ -146,8 +146,8 @@ NG は直す前に回帰テストを書く（CLAUDE.md §1）。
 | [a] | 同じものを書き出す                                          | HTML にもファイル名が出る（自動: tests/core/test_html.py）                                                 |
 | [a] | ` ```python ` とファイル名なしで書く                        | 名前は出ない。フェンスの行は潰れたまま（自動: tests/editor/test_painter_overlay.py）                       |
 | [a] | コードブロックの左                                          | **アクセントバーが無い**（背景だけ。ADR-0008）（自動: tests/editor/test_painter_overlay.py）               |
-| [ ] | ` ```mermaid ` で `graph TD` を書いて HTML に書き出す       | ブラウザで**図になる**                                                                                     |
-| [ ] | その HTML を機内モード（オフライン）で開く                  | 図が出る（外部を参照していない）                                                                           |
+| [x] | ` ```mermaid ` で `graph TD` を書いて HTML に書き出す       | ブラウザで**図になる**                                                                                     |
+| [x] | その HTML を機内モード（オフライン）で開く                  | 図が出る（外部を参照していない）                                                                           |
 | [a] | 図の無いノートを書き出す                                    | ファイルが 3.4MB 太っていない（自動: tests/editor/test_exporter.py）                                       |
 | [a] | 図のあるノートを PDF で書き出す                             | 図にはならないが、書いた内容は残る（自動: tests/editor/test_exporter.py）                                  |
 | [a] | `$E = mc^2$` と書く                                         | 画面で等幅になる。HTML に書き出すと**組版される**（自動: tests/core/test_html.py）                         |
