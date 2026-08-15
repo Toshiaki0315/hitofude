@@ -57,7 +57,7 @@ from hitofude.storage.vault import (
     unique_path,
 )
 from hitofude.storage.watcher import ChangeKind, VaultWatcher
-from hitofude.theme import ThemeColors
+from hitofude.theme import ThemeColors, ThemeMode
 from hitofude.ui.backlink_bar import Backlink
 from hitofude.ui.conflict_dialog import ConflictDialog, Resolution
 from hitofude.ui.editor_pane import EditorPane
@@ -1429,8 +1429,12 @@ class MainWindow(QMainWindow):
         application = QApplication.instance()
         if application is not None:
             apply_theme(cast(QApplication, application), colors)
-        # ネイティブの部品はパレットで塗り替えられない。外観そのものを申告する
-        set_macos_appearance(dark=colors.is_dark)
+        # ネイティブの部品はパレットで塗り替えられない。外観そのものを申告する。
+        # **「システムに合わせる」ときは固定しない**（ユーザー報告）。固定すると
+        # Qt が見る配色が自分で入れた値になり、OS を切り替えても
+        # `colorSchemeChanged` が飛ばず、起動中は追従しなくなる
+        following = self._theme_watcher.mode is ThemeMode.SYSTEM
+        set_macos_appearance(dark=None if following else colors.is_dark)
 
     def _on_theme_changed(self, colors: ThemeColors) -> None:
         self._apply_palette(colors)

@@ -309,3 +309,111 @@ class TestMacOSAppearance:
             assert macos_appearance() == "NSAppearanceNameAqua"
         finally:
             window.close()
+
+
+class TestFollowingTheSystem:
+    """システムのダークモード切り替えに追従する（ユーザー報告 / spec §5.3）。
+
+    **起動中は追従せず、再起動するとダークで立ち上がっていた。**
+
+    原因は「アプリの外観を macOS へ伝える」（ADR-0006）のやりすぎ。
+    Qt の `styleHints().colorScheme()` は **OS の設定ではなく NSApp の
+    外観**を読む（実測）:
+
+        起動直後      : Light | NSApp: None
+        ダークに固定後: Dark  | NSApp: NSAppearanceNameDarkAqua
+
+    起動時に外観を固定すると、以後 Qt が見るのは自分で固定した値になり、
+    OS が変わっても `colorSchemeChanged` が飛ばない。再起動したときだけ、
+    まだ固定していない一瞬に正しい値を読めていた。
+
+    **「システムに合わせる」ときは固定しない**のが正しい。固定しなければ
+    ネイティブ部品も OS に付いていくので、ADR-0006 の目的も損なわれない。
+    """
+
+    def test_システムに合わせるときは外観を固定しない(self, qtbot, tmp_path) -> None:
+        from PySide6.QtCore import QSettings
+
+        from hitofude.app import macos_appearance
+        from hitofude.config import Config
+        from hitofude.theme import ThemeMode
+        from hitofude.ui.main_window import MainWindow
+
+        if sys.platform != "darwin":
+            pytest.skip("macOS 専用")
+
+        settings = QSettings(str(tmp_path / "follow.ini"), QSettings.Format.IniFormat)
+        config = Config(settings)
+        config.vault_path = tmp_path / "FollowVault"
+        config.theme_mode = ThemeMode.SYSTEM
+
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+        try:
+            assert macos_appearance() is None
+        finally:
+            window.close()
+
+    def test_明示的に選んだときは固定する(self, qtbot, tmp_path) -> None:
+        """OS と違う外観を選べること（ADR-0006 の本来の目的）。"""
+        from PySide6.QtCore import QSettings
+
+        from hitofude.app import macos_appearance
+        from hitofude.config import Config
+        from hitofude.theme import ThemeMode
+        from hitofude.ui.main_window import MainWindow
+
+        if sys.platform != "darwin":
+            pytest.skip("macOS 専用")
+
+        settings = QSettings(str(tmp_path / "pin.ini"), QSettings.Format.IniFormat)
+        config = Config(settings)
+        config.vault_path = tmp_path / "PinVault"
+        config.theme_mode = ThemeMode.DARK
+
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+        try:
+            assert macos_appearance() == "NSAppearanceNameDarkAqua"
+            # 「システムに合わせる」へ戻したら固定を解く
+            window.theme_watcher.set_mode(ThemeMode.SYSTEM)
+            assert macos_appearance() is None
+        finally:
+            window.close()
+
+    def test_固定を解ける(self, qapp) -> None:
+        from hitofude.app import macos_appearance, set_macos_appearance
+
+        if sys.platform != "darwin":
+            pytest.skip("macOS 専用")
+
+        set_macos_appearance(dark=True)
+        assert set_macos_appearance(dark=None) is True
+        assert macos_appearance() is None
+
+    def test_OSが変わったら配色も変わる(self, qtbot, tmp_path) -> None:
+        """`colorSchemeChanged` の受け口が繋がっていること。
+
+        OS の設定そのものは動かせないので、Qt が出す合図で確かめる。
+        """
+        from PySide6.QtCore import QSettings, Qt
+
+        from hitofude.config import Config
+        from hitofude.theme import ThemeMode
+        from hitofude.ui.main_window import MainWindow
+
+        settings = QSettings(str(tmp_path / "signal.ini"), QSettings.Format.IniFormat)
+        config = Config(settings)
+        config.vault_path = tmp_path / "SignalVault"
+        config.theme_mode = ThemeMode.SYSTEM
+
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+        try:
+            watcher = window.theme_watcher
+            watcher._on_qt_scheme_changed(Qt.ColorScheme.Dark)
+            assert watcher.colors.is_dark is True
+            watcher._on_qt_scheme_changed(Qt.ColorScheme.Light)
+            assert watcher.colors.is_dark is False
+        finally:
+            window.close()

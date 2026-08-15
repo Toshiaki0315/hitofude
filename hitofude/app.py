@@ -194,8 +194,8 @@ def key_repeat_enabled() -> bool:
         return False
 
 
-def set_macos_appearance(*, dark: bool) -> bool:
-    """アプリが明るい/暗いどちらの外観かを macOS へ伝える。
+def set_macos_appearance(*, dark: bool | None) -> bool:
+    """アプリが明るい/暗いどちらの外観かを macOS へ伝える。`None` で解除。
 
     **`QPalette` だけでは足りない。** ネイティブの部品（環境設定の
     ポップアップボタンなど）は OS が chrome を描くので、こちらが背景色を
@@ -204,6 +204,12 @@ def set_macos_appearance(*, dark: bool) -> bool:
 
     塗り替えるのではなく**アプリの外観そのものを申告する**のが筋で、
     ネイティブ部品がまとめて追従する。
+
+    **`None`（＝ OS に任せる）を忘れてはいけない。** Qt の
+    `styleHints().colorScheme()` は OS の設定ではなく **NSApp の外観**を
+    読む（実測）。固定したままだと、以後 Qt が見るのは自分で入れた値に
+    なり、OS を切り替えても `colorSchemeChanged` が飛ばない。
+    「システムに合わせる」ときは固定しないこと。
     """
     if sys.platform != "darwin":
         return False
@@ -214,18 +220,21 @@ def set_macos_appearance(*, dark: bool) -> bool:
         if runtime is None:
             return False
 
-        wanted = _nsstring(runtime, DARK_APPEARANCE if dark else LIGHT_APPEARANCE)
-        appearance = _send(
-            runtime,
-            runtime.objc_getClass(b"NSAppearance"),
-            "appearanceNamed:",
-            wanted,
-            types=(ctypes.c_void_p,),
-        )
-        if not appearance:
-            return False
+        appearance = None
+        if dark is not None:
+            wanted = _nsstring(runtime, DARK_APPEARANCE if dark else LIGHT_APPEARANCE)
+            appearance = _send(
+                runtime,
+                runtime.objc_getClass(b"NSAppearance"),
+                "appearanceNamed:",
+                wanted,
+                types=(ctypes.c_void_p,),
+            )
+            if not appearance:
+                return False
 
         application = _send(runtime, runtime.objc_getClass(b"NSApplication"), "sharedApplication")
+        # nil を渡すと「OS に従う」に戻る
         _send(runtime, application, "setAppearance:", appearance, types=(ctypes.c_void_p,))
         return True
     except Exception:
@@ -414,8 +423,18 @@ class ThemeWatcher(QObject):
         return self._colors
 
     def set_mode(self, mode: ThemeMode) -> None:
+        """テーマの選択を変える。
+
+        **配色が同じでも通知する。** 受け手は macOS への外観の申告を
+        出し直す（`MainWindow._apply_palette`）。「ダーク → システムに
+        合わせる」と戻したとき、OS もダークなら配色は変わらないが、
+        **固定を解かないと OS の切り替えに追従しなくなる**（ユーザー報告）。
+        """
+        if mode is self._mode:
+            return  # 何も変わらない。無駄な rehighlight() を増やさない（R7）
         self._mode = mode
-        self._update(colors_for(mode, system_is_dark=system_is_dark()))
+        self._colors = colors_for(mode, system_is_dark=system_is_dark())
+        self.changed.emit(self._colors)
 
     def _on_qt_scheme_changed(self, scheme: Qt.ColorScheme) -> None:
         self._on_system_scheme_changed(is_dark=scheme == Qt.ColorScheme.Dark)

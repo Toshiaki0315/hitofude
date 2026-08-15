@@ -58,3 +58,40 @@ class TestThemeWatcher:
         watcher._on_system_scheme_changed(is_dark=True)
         assert watcher.colors is LIGHT
         assert emitted == []
+
+
+class TestModeChangeAlwaysNotifies:
+    """モードが変われば、配色が同じでも通知する（ユーザー報告の続き）。
+
+    受け手（`MainWindow._apply_palette`）は、この通知で **macOS への外観の
+    申告を出し直す**。「ダーク → システムに合わせる」と戻したとき、OS も
+    ダークなら配色は同じだが、**固定を解く必要がある**。配色が同じだからと
+    黙っていると、固定されたまま残って OS の切り替えに追従しなくなる。
+    """
+
+    def test_配色が同じでもモードが変われば通知する(self, qapp, monkeypatch) -> None:
+        import hitofude.app as app_module
+
+        monkeypatch.setattr(app_module, "system_is_dark", lambda: True)
+        watcher = ThemeWatcher()
+        watcher.set_mode(ThemeMode.DARK)
+
+        emitted: list = []
+        watcher.changed.connect(emitted.append)
+        watcher.set_mode(ThemeMode.SYSTEM)  # OS もダークなので配色は変わらない
+
+        assert watcher.colors is DARK
+        assert emitted == [DARK], "固定を解く合図が要る"
+
+    def test_同じモードならやはり通知しない(self, qapp, monkeypatch) -> None:
+        """R7: 無駄な rehighlight() は増やさない。"""
+        import hitofude.app as app_module
+
+        monkeypatch.setattr(app_module, "system_is_dark", lambda: True)
+        watcher = ThemeWatcher()
+        watcher.set_mode(ThemeMode.SYSTEM)
+
+        emitted: list = []
+        watcher.changed.connect(emitted.append)
+        watcher.set_mode(ThemeMode.SYSTEM)
+        assert emitted == []
