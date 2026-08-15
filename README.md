@@ -41,12 +41,17 @@ make check
 - 開発の作業規約: [CLAUDE.md](CLAUDE.md)
 - 仕様書（設計判断の根拠）: [docs/spec.md](docs/spec.md)
 - 実装タスクと進捗: [docs/TASKS.md](docs/TASKS.md)
+- 使っているものとライセンス: [docs/licenses.md](docs/licenses.md)
 
 **本プロジェクトはテスト駆動開発で進める。** テストが緑でないコミットは作らない。
 
 ## ライセンス
 
 [MIT](LICENSE)
+
+依存しているライブラリの許諾条件と、配布のときにやることは
+[docs/licenses.md](docs/licenses.md) にまとめてある。**Qt（PySide6）が
+LGPL-3.0 なので、配布は「表示すれば済む」ものではない。**
 
 同梱する PySide6 は LGPLv3 で、**ソースを MIT で配ることには影響しない**。
 ビルドした `.app` を再配布する場合だけ LGPL の条件（Qt を差し替えられること）
