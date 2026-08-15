@@ -31,6 +31,11 @@ from hitofude.theme import LIGHT, ThemeColors
 
 MAX_RESULTS = 50
 
+# 1 行の内側の余白（上下左右）。帯と文字が接しないぶん
+PADDING = 4
+# 一覧の幅が分からないときの代用。ふつうは使われない
+FALLBACK_WIDTH = 480
+
 _CONSECUTIVE_BONUS = 6
 _START_BONUS = 12
 _BOUNDARY_BONUS = 4
@@ -141,11 +146,18 @@ class Palette(QDialog):
         self._provider = provider
 
     def open_with(self, query: str = "") -> None:
+        """**先に出してから候補を入れる。**
+
+        行の高さは幅で決まる（副題が折り返す）。出す前に入れると、一覧が
+        まだ最終的な幅を知らないまま測ることになり、余分な折り返しのぶん
+        行が高くなる。**選択の帯だけが下へ伸びて見えた**のがこれ
+        （実測: 割当 72px に対し中身 46px）。
+        """
+        self.show()
         self._input.setText(query)
         self._refresh(query)
         self._input.setFocus()
         self._input.selectAll()
-        self.show()
 
     @property
     def items(self) -> list[PaletteItem]:
@@ -223,9 +235,31 @@ class _ResultDelegate(QStyledItemDelegate):
         return document
 
     def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
+        """**描くときと同じ幅で測る**（ユーザー報告）。
+
+        `option.rect` はレイアウトの前だと空で来る。決め打ちの幅で代用すると
+        副題が余分に折り返し、**その高さぶんだけ行が高くなる**。中身は下に
+        寄らず上から描くので、選択の帯だけが下へ伸びて見えた
+        （実測: 割当 72px に対し中身 46px）。
+        """
+        width = self._row_width(option)
         document = self._document(index)
-        document.setTextWidth(option.rect.width() or 480)
-        return QSize(int(document.idealWidth()), int(document.size().height()) + 8)
+        document.setTextWidth(width)
+        # **幅も一覧に合わせて返す。** 文字の理想幅（`idealWidth`）を返すと、
+        # Qt がその狭い幅で測り直し、折り返しが増えて行が高くなる
+        return QSize(width, int(document.size().height()) + PADDING * 2)
+
+    def _row_width(self, option: QStyleOptionViewItem) -> int:
+        """1 行に使える幅。**一覧の幅をそのまま使う。**
+
+        `option.rect` は測り直しのたびに変わる（前回返した幅が入ってくる）
+        ので、これを基準にすると幅がじわじわ縮む。
+        """
+        view = self.parent()
+        viewport = getattr(view, "viewport", None)
+        if viewport is not None and viewport().width() > 0:
+            return viewport().width()
+        return option.rect.width() or FALLBACK_WIDTH
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
         from PySide6.QtWidgets import QStyle
@@ -236,7 +270,7 @@ class _ResultDelegate(QStyledItemDelegate):
 
         document = self._document(index)
         document.setTextWidth(option.rect.width())
-        painter.translate(option.rect.topLeft() + type(option.rect.topLeft())(4, 4))
+        painter.translate(option.rect.topLeft() + type(option.rect.topLeft())(PADDING, PADDING))
         document.drawContents(painter)
         painter.restore()
 

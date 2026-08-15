@@ -234,3 +234,58 @@ class TestOutline:
         window.editor.setPlainText(self.SOURCE)
         window.open_outline()
         assert window.findChild(Palette) is not None
+
+
+class TestRowPadding:
+    """選択の帯が中身に沿うこと（ユーザー報告）。
+
+    テンプレートを選ぶパレットで、**水色が下へはみ出して**見えた。
+    実測（幅 544px の一覧）:
+
+        行0（副題が折り返す）: 割当 72px / 中身 46px → 下に 22px の余り
+        行1（折り返さない）  : 割当 49px / 中身 41px → 下に  4px
+
+    原因は `sizeHint` が **`option.rect` の幅が空のときに 480px を仮定**
+    していたこと。実際の幅（544px）より狭いので副題が余分に折り返し、
+    その高さぶんが行に確保されて、帯だけが下に伸びていた。
+    """
+
+    @pytest.fixture
+    def palette(self, qtbot) -> Palette:
+        widget = Palette(placeholder="テスト")
+        qtbot.addWidget(widget)
+        widget.set_provider(
+            lambda q: [
+                PaletteItem(
+                    title="日報",
+                    subtitle="{{date}} の日報。副題が折り返すくらいには長い説明の文字列",
+                    path=Path("日報.md"),
+                ),
+                PaletteItem(title="日次", subtitle="{{date}}", path=Path("日次.md")),
+            ]
+        )
+        widget.open_with()
+        return widget
+
+    def _content_height(self, palette, row: int) -> float:
+        view = palette._results
+        index = view.model().index(row, 0)
+        document = view.itemDelegate()._document(index)
+        document.setTextWidth(view.visualRect(index).width())
+        return document.size().height()
+
+    def test_上下の余白が同じ(self, palette) -> None:
+        view = palette._results
+        for row in range(view.model().rowCount()):
+            index = view.model().index(row, 0)
+            allocated = view.visualRect(index).height()
+            slack = allocated - self._content_height(palette, row)
+            assert slack == pytest.approx(8, abs=1), f"行 {row} の余白が偏っている: {slack}"
+
+    def test_折り返す副題でも高さが合う(self, palette) -> None:
+        """**幅を取り違えると、折り返しの数だけ帯が伸びる。**"""
+        view = palette._results
+        index = view.model().index(0, 0)
+        assert view.visualRect(index).height() == pytest.approx(
+            self._content_height(palette, 0) + 8, abs=1
+        )
