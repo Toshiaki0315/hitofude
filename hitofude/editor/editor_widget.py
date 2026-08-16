@@ -975,11 +975,7 @@ class MarkdownEditor(QPlainTextEdit):
         if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             self._maybe_toggle_checkbox(point)
             return
-        cursor = self.cursorForPosition(point)
-        data = cursor.block().userData()
-        if data is None:
-            return
-        found = activation_at(data.spans, cursor.positionInBlock())
+        found = self._activation_at(point)
         if found is None:
             return
         match found.kind:
@@ -989,6 +985,35 @@ class MarkdownEditor(QPlainTextEdit):
                 self.note_activated.emit(found.payload)
             case _:
                 self.tag_activated.emit(found.payload)
+
+    def mouseMoveEvent(self, event) -> None:
+        """押せるものの上で、カーソルを手の形にする（G-2）。
+
+        **`Cmd` を押している間だけ。** 素の移動で形が変わると、文字を
+        選ぼうとしただけで手になって落ち着かない。開く操作自体が
+        `Cmd+クリック` なので、条件も揃う。
+
+        判定は `activation_at()`（`core/activation.py`）に任せる。
+        **押せないもの（`javascript:` など）は押せそうに見せない。**
+        """
+        super().mouseMoveEvent(event)
+        self._update_hover(event.position().toPoint(), event.modifiers())
+
+    def _update_hover(self, point, modifiers) -> None:
+        clickable = bool(modifiers & Qt.KeyboardModifier.ControlModifier) and self._activation_at(
+            point
+        )
+        shape = Qt.CursorShape.PointingHandCursor if clickable else Qt.CursorShape.IBeamCursor
+        if self.viewport().cursor().shape() is not shape:
+            self.viewport().setCursor(shape)
+
+    def _activation_at(self, point):
+        """その位置で `Cmd+クリック` したときに何か起きるか。"""
+        cursor = self.cursorForPosition(point)
+        data = cursor.block().userData()
+        if data is None:
+            return None
+        return activation_at(data.spans, cursor.positionInBlock())
 
     def _maybe_toggle_checkbox(self, point) -> None:
         """印の上を押したらチェックを切り替える（E-1）。

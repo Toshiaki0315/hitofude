@@ -132,3 +132,83 @@ class TestCheckboxClick:
         editor.set_source_mode(True)
         click_at(editor, 2, modifiers=Qt.KeyboardModifier.NoModifier)
         assert editor.toPlainText().startswith("- [ ] やること")
+
+
+def move_to(editor: MarkdownEditor, column: int, *, modifiers=CMD) -> None:
+    """その桁へマウスを動かす（押さない）。"""
+    cursor = editor.textCursor()
+    cursor.setPosition(column)
+    rect = editor.cursorRect(cursor)
+    point = QPointF(rect.left() + 2, rect.center().y())
+    editor.mouseMoveEvent(
+        QMouseEvent(
+            QEvent.Type.MouseMove,
+            point,
+            editor.viewport().mapToGlobal(point),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.NoButton,
+            modifiers,
+        )
+    )
+
+
+def shape(editor: MarkdownEditor):
+    return editor.viewport().cursor().shape()
+
+
+class TestHoverCursor:
+    """押せるものの上でカーソルの形を変える（G-2）。
+
+    **今までは手掛かりがゼロだった。** リンクもタグも `[[ノート]]` も、
+    見た目は本文と同じ色付きの文字で、`Cmd+クリック` できること自体に
+    気づけない。判定は `activation_at()` が既に持っているので、
+    ここは形を変えるだけ。
+
+    **`Cmd` を押している間だけ。** 素のマウス移動で形が変わると、
+    文字を選ぼうとしただけで手の形になって落ち着かない。
+    """
+
+    def test_リンクの上で手の形になる(self, editor) -> None:
+        editor.setPlainText("[Qt](https://qt.io) を見る")
+        move_to(editor, 2)
+        assert shape(editor) is Qt.CursorShape.PointingHandCursor
+
+    def test_タグの上でも手の形(self, editor) -> None:
+        editor.setPlainText("#仕事 の話")
+        move_to(editor, 1)
+        assert shape(editor) is Qt.CursorShape.PointingHandCursor
+
+    def test_ノートのリンクでも手の形(self, editor) -> None:
+        editor.setPlainText("[[会議メモ]] を見る")
+        move_to(editor, 4)
+        assert shape(editor) is Qt.CursorShape.PointingHandCursor
+
+    def test_本文の上では文字のまま(self, editor) -> None:
+        editor.setPlainText("ただの本文です")
+        move_to(editor, 3)
+        assert shape(editor) is Qt.CursorShape.IBeamCursor
+
+    def test_Cmdを押していなければ変わらない(self, editor) -> None:
+        """素の移動で形が変わると、選ぼうとしただけで落ち着かない。"""
+        editor.setPlainText("[Qt](https://qt.io) を見る")
+        move_to(editor, 2, modifiers=Qt.KeyboardModifier.NoModifier)
+        assert shape(editor) is Qt.CursorShape.IBeamCursor
+
+    def test_離れると戻る(self, editor) -> None:
+        editor.setPlainText("[Qt](https://qt.io) と本文")
+        move_to(editor, 2)
+        move_to(editor, 22)
+        assert shape(editor) is Qt.CursorShape.IBeamCursor
+
+    def test_開けないリンクは変わらない(self, editor) -> None:
+        """`javascript:` は開かない（D-1）。押せないものを押せそうに見せない。"""
+        editor.setPlainText("[危険](javascript:alert(1)) を見る")
+        move_to(editor, 2)
+        assert shape(editor) is Qt.CursorShape.IBeamCursor
+
+    def test_Rawでも効く(self, editor) -> None:
+        """記号が見えていても押せることに変わりはない。"""
+        editor.setPlainText("[Qt](https://qt.io)")
+        editor.set_source_mode(True)
+        move_to(editor, 2)
+        assert shape(editor) is Qt.CursorShape.PointingHandCursor
