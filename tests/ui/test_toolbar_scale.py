@@ -85,3 +85,56 @@ class TestScale:
         assert bar.raw_button.font().pointSizeF() == pytest.approx(base * TOOLBAR_SCALE)
         # 高さは他のボタンと揃える（幅は文字数で決まるので揃えない）
         assert bar.raw_button.height() == BUTTON_SIZE
+
+
+class TestSameHeight:
+    """**一覧側と本文側の上のバーは同じ高さ**（ユーザー要望）。
+
+    左右に並んで見えるので、高さが違うと段差になって目に付く。実測で
+    本文側 42px に対して一覧側は 34px だった。
+    """
+
+    def test_高さが揃っている(self, qtbot) -> None:
+        from hitofude.editor.editor_widget import MarkdownEditor
+        from hitofude.ui.format_toolbar import FormatToolbar
+        from hitofude.ui.note_list_pane import NoteListPane
+
+        editor = MarkdownEditor()
+        qtbot.addWidget(editor)
+        bar = FormatToolbar(editor)
+        qtbot.addWidget(bar)
+        bar.resize(600, bar.sizeHint().height())
+        bar.show()
+
+        pane = NoteListPane()
+        qtbot.addWidget(pane)
+        pane.resize(300, 400)
+        pane.show()
+
+        assert pane.header_height() == bar.height()
+
+    def test_一覧はその下から始まる(self, qtbot) -> None:
+        """バーの高さを決めても、一覧が食い込んでは意味がない。"""
+        from hitofude.ui.note_list_pane import NoteListPane
+
+        pane = NoteListPane()
+        qtbot.addWidget(pane)
+        pane.resize(300, 400)
+        pane.show()
+
+        assert pane.note_list.geometry().top() == pane.header_height()
+
+    def test_記号は上下の真ん中(self, qtbot) -> None:
+        """高さだけ増やして記号が上に張り付くと、ただ余白が空いて見える。"""
+        from hitofude.ui.note_list_pane import NoteListPane
+
+        pane = NoteListPane()
+        qtbot.addWidget(pane)
+        pane.resize(300, 400)
+        pane.show()
+
+        for button in (pane.sort_button, pane.new_button):
+            box = button.geometry()
+            above = box.top()
+            below = pane.header_height() - box.bottom() - 1
+            assert abs(above - below) <= 1, (above, below)

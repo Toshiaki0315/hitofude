@@ -32,6 +32,10 @@ BUTTON_SIZE = round(BASE_BUTTON_SIZE * TOOLBAR_SCALE)
 BAR_MARGIN = round(BASE_BAR_MARGIN * TOOLBAR_SCALE)
 # ボタンの上下。枠だけ広げても見やすくならないので、余白も一緒に伸ばす
 BAR_PADDING = round(3 * TOOLBAR_SCALE)
+
+# バーの高さ。**一覧側の上のバーもこれに揃える**（左右に並んで見えるので、
+# 高さが違うと段差になって目に付く。ユーザー要望）
+BAR_HEIGHT = BUTTON_SIZE + BAR_PADDING * 2
 # 生の Markdown を出す切り替え（ユーザー要望）。中身はソースモード
 RAW_LABEL = "Raw"
 # 本文との境目。ペインの区切り（`QSplitter::handle`）と同じ太さに揃える

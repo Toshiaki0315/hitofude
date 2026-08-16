@@ -217,6 +217,15 @@ class TestEmptyState:
         pane.note_list.set_rows([])
         assert pane.empty_notice_visible() is True
 
+    def test_案内は一覧の背景の上に出る(self, pane) -> None:
+        """**透けるのに任せない。** 上のバーの高さを変えたら、案内の下地が
+        別の色（実測 #303032）で塗られてダークで浮いた。何色の上に出るかを
+        決めておく。"""
+        from hitofude.theme import DARK
+
+        pane.set_theme(DARK)
+        assert DARK.background.lower() in pane._empty.styleSheet().lower()
+
     def test_ゴミ箱が空のときも出る(self, pane) -> None:
         """絞り込んだ結果が 0 件でも、一覧が真っ白なのは同じ。"""
         pane.note_list.set_rows([])

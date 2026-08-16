@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from hitofude.storage.index_db import SortOrder
 from hitofude.theme import LIGHT, ThemeColors
+from hitofude.ui.format_toolbar import BAR_HEIGHT
 from hitofude.ui.icons import TOOLBAR_SCALE
 from hitofude.ui.note_list import NoteListView
 from hitofude.ui.panes import NOTE_LIST_MIN_WIDTH
@@ -99,11 +100,19 @@ class NoteListPane(QWidget):
         self._sort_order = SortOrder.MODIFIED
         self.set_sort_order(self._sort_order)
 
-        header = QHBoxLayout()
-        header.setContentsMargins(HEADER_MARGIN, HEADER_MARGIN, HEADER_MARGIN, 0)
-        header.addWidget(self._sort)
+        # **本文側のツールバーと同じ高さにする**（ユーザー要望）。左右に
+        # 並んで見えるので、高さが違うと段差になる。
+        #
+        # **本文側のツールバーと同じ高さにする**（ユーザー要望）。左右に並んで
+        # 見えるので、高さが違うと段差になって目に付く。高さは入れ物で決め、
+        # 記号は上下の真ん中に置く（上に張り付くと、ただ余白が空いて見える）
+        self._header = QWidget(self)
+        self._header.setFixedHeight(BAR_HEIGHT)
+        header = QHBoxLayout(self._header)
+        header.setContentsMargins(HEADER_MARGIN, 0, HEADER_MARGIN, 0)
+        header.addWidget(self._sort, 0, Qt.AlignmentFlag.AlignVCenter)
         header.addStretch(1)
-        header.addWidget(self._new)
+        header.addWidget(self._new, 0, Qt.AlignmentFlag.AlignVCenter)
 
         # 一覧の上に重ねる。差し替えではなく重ねるのは、一覧の幅や
         # スクロール位置をそのまま保つため（C-6）
@@ -118,11 +127,15 @@ class NoteListPane(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addLayout(header)
+        layout.addWidget(self._header)
         layout.addWidget(self._list, 1)
         self._sync_empty_notice()
 
         self.set_theme(theme)
+
+    def header_height(self) -> int:
+        """上のバーの高さ。本文側のツールバーと同じ。"""
+        return self._header.height()
 
     @property
     def note_list(self) -> NoteListView:
@@ -187,3 +200,9 @@ class NoteListPane(QWidget):
         style = f"QToolButton {{ color: {theme.muted_foreground}; border: none; }}"
         for button in (self._new, self._sort):
             button.setStyleSheet(style)
+        # **案内は一覧の背景の上に描く。** 透けるのに任せていたが、上のバーの
+        # 高さを変えたら別の色（実測 #303032）で塗られた。何色の上に出るかは
+        # ここで決めておく
+        self._empty.setStyleSheet(
+            f"QLabel {{ background: {theme.background}; color: {theme.muted_foreground}; }}"
+        )
