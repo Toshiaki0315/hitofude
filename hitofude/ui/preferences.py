@@ -9,7 +9,8 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -54,6 +55,15 @@ SPACING_LABELS = {
 }
 
 MAX_TRASH_DAYS = 3650
+
+# 行と行、ラベルと入力欄のあいだ（ユーザー指摘）。既定の 6px では詰まって
+# 見えた。項目が 8 つ並ぶので、ここが効く
+FORM_SPACING = 10
+# ダイアログの外周
+DIALOG_MARGIN = 20
+# 保管フォルダの表示幅。**パスの長さでダイアログの形を決めない。**
+# 深い場所を選ぶと窓が横に伸びるか、収まらない文字が潰れる（ユーザー指摘）
+VAULT_LABEL_WIDTH = 260
 # タブ幅の入力欄。1 桁ぶん + 矢印が収まればよい
 TAB_WIDTH_FIELD = 70
 
@@ -69,6 +79,8 @@ class PreferencesDialog(QDialog):
         self.setMinimumWidth(420)
 
         form = QFormLayout()
+        form.setVerticalSpacing(FORM_SPACING)
+        form.setHorizontalSpacing(FORM_SPACING)
 
         self._font = QFontComboBox(self)
         self._font.setCurrentText(config.font_family)
@@ -113,12 +125,18 @@ class PreferencesDialog(QDialog):
         self._theme.setCurrentIndex(self._theme.findData(config.theme_mode))
         form.addRow("テーマ", self._theme)
 
-        self._vault_label = QLabel(str(config.vault_path), self)
-        self._vault_label.setWordWrap(True)
+        self._vault_label = QLabel(self)
+        # **折り返さない。** 折り返すと行の高さが変わり、上下の行に食い込む
+        self._vault_label.setWordWrap(False)
+        self._vault_label.setFixedWidth(VAULT_LABEL_WIDTH)
+        self._show_vault(config.vault_path)
         self._vault_button = QPushButton("変更…", self)
         self._vault_button.clicked.connect(self._choose_vault)
         vault_row = QHBoxLayout()
-        vault_row.addWidget(self._vault_label, 1)
+        vault_row.addWidget(self._vault_label)
+        # **ボタンは他の欄と同じ右端に置く。** 場所の文字数で位置が動くと、
+        # 行ごとに右端がばらついて落ち着かない
+        vault_row.addStretch(1)
         vault_row.addWidget(self._vault_button)
         form.addRow("保管フォルダ", vault_row)
 
@@ -145,6 +163,8 @@ class PreferencesDialog(QDialog):
         self._reset.clicked.connect(self.reset_to_defaults)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(DIALOG_MARGIN, DIALOG_MARGIN, DIALOG_MARGIN, DIALOG_MARGIN)
+        layout.setSpacing(FORM_SPACING + 2)
         layout.addLayout(form)
         layout.addWidget(self._restart_note)
         layout.addWidget(buttons)
@@ -182,8 +202,35 @@ class PreferencesDialog(QDialog):
     def set_vault(self, path: Path) -> None:
         """フォルダ選択の結果を反映する。ダイアログを介さず呼べるようにしてある。"""
         self._pending_vault = path
-        self._vault_label.setText(str(path))
+        self._show_vault(path)
         self._restart_note.setVisible(path != self._config.vault_path)
+
+    def _show_vault(self, path: Path) -> None:
+        """保管フォルダの場所を、決まった幅に収めて出す。
+
+        **ホームは `~` にし、入らないぶんは真ん中を省く。** 末尾を削ると
+        フォルダ名が消えてどこだか分からなくなる。**縮めたぶんは
+        ツールチップで補う**（確かめる手が無くなっては困る）。
+        """
+        full = str(path)
+        try:
+            shown = f"~/{path.relative_to(Path.home())}"
+        except ValueError:
+            shown = full
+        metrics = QFontMetrics(self._vault_label.font())
+        self._vault_label.setText(
+            metrics.elidedText(shown, Qt.TextElideMode.ElideMiddle, VAULT_LABEL_WIDTH)
+        )
+        self._vault_label.setToolTip(full)
+
+    def vault_label_text(self) -> str:
+        return self._vault_label.text()
+
+    def vault_tooltip(self) -> str:
+        return self._vault_label.toolTip()
+
+    def vault_label_wraps(self) -> bool:
+        return self._vault_label.wordWrap()
 
     def reset_to_defaults(self) -> None:
         """入力欄を既定値に戻す。

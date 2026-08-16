@@ -38,7 +38,9 @@ class TestInitialValues:
         assert dialog.selected_theme is config.theme_mode
 
     def test_現在の保管フォルダを出す(self, dialog, config) -> None:
-        assert str(config.vault_path) in dialog._vault_label.text()
+        # 幅に収めるため真ん中を省くことがある。全文はツールチップで見る
+        assert str(config.vault_path) in dialog.vault_tooltip()
+        assert config.vault_path.name in dialog.vault_label_text()
 
     def test_現在の保持日数を出す(self, dialog, config) -> None:
         assert dialog._trash_days.value() == config.trash_days
@@ -324,3 +326,60 @@ class TestTabWidthLayout:
         dialog = PreferencesDialog(config)
         qtbot.addWidget(dialog)
         assert dialog._tab_width.maximumWidth() < 200
+
+
+class TestLayout:
+    """**詰まって見える**（ユーザー指摘）。
+
+    行間が狭いうえ、保管フォルダのパスが行に収まらず潰れていた。
+    """
+
+    def test_行間が詰まりすぎない(self, dialog) -> None:
+        from hitofude.ui.preferences import FORM_SPACING
+
+        form = dialog.layout().itemAt(0).layout()
+        assert form.verticalSpacing() >= FORM_SPACING
+        assert form.horizontalSpacing() >= FORM_SPACING
+
+    def test_外側にも余白がある(self, dialog) -> None:
+        margins = dialog.layout().contentsMargins()
+        assert margins.left() >= 16
+        assert margins.top() >= 16
+
+    def test_長いパスでも幅が広がらない(self, qtbot, config, tmp_path) -> None:
+        """**パスの長さでダイアログの形が決まらない。** 深い場所を選ぶと、
+        窓が横に伸びるか、収まらない文字が潰れる。"""
+        short = PreferencesDialog(config)
+        qtbot.addWidget(short)
+        before = short.sizeHint().width()
+
+        deep = tmp_path
+        for part in ("とても", "深い", "場所", "の", "ノート", "置き場", "その2"):
+            deep = deep / part
+        config.vault_path = deep
+        long = PreferencesDialog(config)
+        qtbot.addWidget(long)
+
+        assert long.sizeHint().width() == before
+
+    def test_ホームは波線で出す(self, qtbot, config, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        config.vault_path = tmp_path / "Documents" / "HitofudeNotes"
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        assert dialog.vault_label_text().startswith("~/")
+
+    def test_省略しても全文は読める(self, qtbot, config, tmp_path) -> None:
+        """縮めたぶんはツールチップで補う。どこに置いたか確かめられなくなる。"""
+        deep = tmp_path
+        for part in ("とても", "深い", "場所", "の", "ノート", "置き場", "その2"):
+            deep = deep / part
+        config.vault_path = deep
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+
+        assert str(deep) in dialog.vault_tooltip()
+
+    def test_折り返さない(self, dialog) -> None:
+        """折り返すと行の高さが変わり、上下の行に食い込む。"""
+        assert dialog.vault_label_wraps() is False
