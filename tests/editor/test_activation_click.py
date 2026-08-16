@@ -6,7 +6,8 @@
 
 import pytest
 from PySide6.QtCore import QEvent, QPointF, Qt
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QKeyEvent, QMouseEvent
+from PySide6.QtWidgets import QApplication
 
 from hitofude.editor.editor_widget import MarkdownEditor
 
@@ -135,12 +136,18 @@ class TestCheckboxClick:
 
 
 def move_to(editor: MarkdownEditor, column: int, *, modifiers=CMD) -> None:
-    """その桁へマウスを動かす（押さない）。"""
+    """その桁へマウスを動かす（押さない）。
+
+    **`mouseMoveEvent()` を直に呼ばない。** 実際の移動は viewport 宛てに
+    届くので、そこへ送る。直に呼ぶと「イベントがそもそも来ていない」
+    （マウス追跡が切れている）状態を見逃す。
+    """
     cursor = editor.textCursor()
     cursor.setPosition(column)
     rect = editor.cursorRect(cursor)
     point = QPointF(rect.left() + 2, rect.center().y())
-    editor.mouseMoveEvent(
+    QApplication.sendEvent(
+        editor.viewport(),
         QMouseEvent(
             QEvent.Type.MouseMove,
             point,
@@ -148,8 +155,15 @@ def move_to(editor: MarkdownEditor, column: int, *, modifiers=CMD) -> None:
             Qt.MouseButton.NoButton,
             Qt.MouseButton.NoButton,
             modifiers,
-        )
+        ),
     )
+
+
+def hold_cmd(editor: MarkdownEditor, *, held: bool = True) -> None:
+    """マウスを動かさずに `Cmd` を押す／離す。"""
+    kind = QEvent.Type.KeyPress if held else QEvent.Type.KeyRelease
+    modifiers = CMD if held else Qt.KeyboardModifier.NoModifier
+    QApplication.sendEvent(editor, QKeyEvent(kind, Qt.Key.Key_Control, modifiers))
 
 
 def shape(editor: MarkdownEditor):
@@ -212,3 +226,30 @@ class TestHoverCursor:
         editor.set_source_mode(True)
         move_to(editor, 2)
         assert shape(editor) is Qt.CursorShape.PointingHandCursor
+
+    def test_マウスを動かさずCmdを押しても手になる(self, editor) -> None:
+        """**押す前に手が出ないと気づけない。** リンクの上にマウスを置いた
+        まま `Cmd` を押すのが自然な順で、そこで形が変わらなければ
+        「押せる」ことは伝わらない。"""
+        editor.setPlainText("[Qt](https://qt.io) を見る")
+        move_to(editor, 2, modifiers=Qt.KeyboardModifier.NoModifier)
+        hold_cmd(editor)
+        assert shape(editor) is Qt.CursorShape.PointingHandCursor
+
+    def test_Cmdを離すと文字に戻る(self, editor) -> None:
+        editor.setPlainText("[Qt](https://qt.io) を見る")
+        move_to(editor, 2)
+        hold_cmd(editor, held=False)
+        assert shape(editor) is Qt.CursorShape.IBeamCursor
+
+    def test_本文の上でCmdを押しても変わらない(self, editor) -> None:
+        editor.setPlainText("ただの本文です")
+        move_to(editor, 3, modifiers=Qt.KeyboardModifier.NoModifier)
+        hold_cmd(editor)
+        assert shape(editor) is Qt.CursorShape.IBeamCursor
+
+    def test_マウスが来ていなければCmdだけでは変わらない(self, editor) -> None:
+        """どこを指しているか分からないうちに形を変えない。"""
+        editor.setPlainText("[Qt](https://qt.io) を見る")
+        hold_cmd(editor)
+        assert shape(editor) is Qt.CursorShape.IBeamCursor

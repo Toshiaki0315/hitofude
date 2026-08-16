@@ -8,7 +8,7 @@
 import logging
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -118,6 +118,9 @@ class MarkdownEditor(QPlainTextEdit):
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self.setFrameShape(QPlainTextEdit.Shape.NoFrame)
         self.setTabChangesFocus(False)
+        # ボタンを押していない移動も受け取る。**これが無いと `mouseMoveEvent`
+        # そのものが来ない**ので、ホバーの判定に一切入らない（G-2）
+        self.viewport().setMouseTracking(True)
         self._tab_width = DEFAULT_TAB_WIDTH
 
         # 表 1 行に使える桁数。幅とフォントで決まる（`_update_table_columns`）
@@ -139,6 +142,9 @@ class MarkdownEditor(QPlainTextEdit):
         # IME のプリエディット中かどうか（R6）
         self._composing = False
         self._focus_mode = False
+        # 最後にマウスが居た場所（viewport 座標）。`Cmd` を押しただけのときに
+        # どこを指しているかを知るために覚える。まだ来ていなければ `None`
+        self._hover_point: QPoint | None = None
         self._typewriter_mode = False
         # 整形が走っている最中に自分自身を呼ばないためのガード
         self._formatting = False
@@ -395,6 +401,11 @@ class MarkdownEditor(QPlainTextEdit):
         super().inputMethodEvent(event)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() == Qt.Key.Key_Control:
+            # **リンクの上にマウスを置いたまま `Cmd` を押す**のが自然な順。
+            # 移動を待っていると、そのとき形が変わらず「押せる」ことが伝わらない
+            self._update_hover(held=True)
+
         if event.key() == Qt.Key.Key_Escape and self._tag_candidates:
             # 候補が出ているときの Esc は「候補を閉じる」。本文には触らない
             self._tag_candidates = []
@@ -964,6 +975,11 @@ class MarkdownEditor(QPlainTextEdit):
 
     # ----------------------------------------------------------- レイアウト
 
+    def keyReleaseEvent(self, event: QKeyEvent) -> None:
+        if event.key() == Qt.Key.Key_Control:
+            self._update_hover(held=False)
+        super().keyReleaseEvent(event)
+
     def mousePressEvent(self, event) -> None:
         """`Cmd+クリック` でリンクを開き、タグで絞り込む（D-1 / D-2）。
 
@@ -997,11 +1013,13 @@ class MarkdownEditor(QPlainTextEdit):
         **押せないもの（`javascript:` など）は押せそうに見せない。**
         """
         super().mouseMoveEvent(event)
-        self._update_hover(event.position().toPoint(), event.modifiers())
+        self._hover_point = event.position().toPoint()
+        self._update_hover(held=bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier))
 
-    def _update_hover(self, point, modifiers) -> None:
-        clickable = bool(modifiers & Qt.KeyboardModifier.ControlModifier) and self._activation_at(
-            point
+    def _update_hover(self, *, held: bool) -> None:
+        """今の位置と `Cmd` の状態から、カーソルの形を決める。"""
+        clickable = (
+            held and self._hover_point is not None and self._activation_at(self._hover_point)
         )
         shape = Qt.CursorShape.PointingHandCursor if clickable else Qt.CursorShape.IBeamCursor
         if self.viewport().cursor().shape() is not shape:
