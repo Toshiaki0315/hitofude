@@ -10,6 +10,7 @@
 """
 
 import logging
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -31,6 +32,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QToolButton,
     QWidget,
 )
 
@@ -104,6 +106,18 @@ CLEANUP_PREVIEW = 10
 NEW_NOTE_TITLE = "無題"
 PINNED_NOTICE = "ピン留めしているノートは削除できません。先にピン留めを外してください。"
 NOTICE_MS = 5000
+
+
+def _short_path(path: Path) -> str:
+    """ステータスバーに収まる長さにする。
+
+    絶対パスはたいてい `/Users/名前/` で始まり、その分だけ肝心の場所が
+    見えなくなる。**見えない知らせは無いのと同じ**なので `~` にする。
+    """
+    try:
+        return f"~/{path.relative_to(Path.home())}"
+    except ValueError:
+        return str(path)
 
 
 def _empty_notice(target: Filter) -> str:
@@ -216,6 +230,20 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(self._splitter)
 
+        # 書き出した直後だけ出す（G-4）。**いちばん左寄り**に置く。
+        # 隣は今のノートの状態を出す場所で、押せるものが混ざると紛らわしい
+        self._reveal_button = QToolButton(self)
+        self._reveal_button.setText("Finder で表示")
+        self._reveal_button.setAutoRaise(True)
+        self._reveal_button.hide()
+        self._reveal_button.clicked.connect(self._reveal_exported)
+        self.statusBar().addPermanentWidget(self._reveal_button)
+        self._exported: Path | None = None
+        self._export_timer = QTimer(self)
+        self._export_timer.setSingleShot(True)
+        self._export_timer.setInterval(NOTICE_MS)
+        self._export_timer.timeout.connect(self.hide_export_notice)
+
         # **文字数より左に置く。** 右端は文字数の場所で、あとから増えたものを
         # 右へ足すと、保存のたびに文字数が横へ動いて見える
         self._mode_label = QLabel("", self)
@@ -314,6 +342,15 @@ class MainWindow(QMainWindow):
     @property
     def config(self) -> Config:
         return self._config
+
+    @property
+    def reveal_button(self) -> QToolButton:
+        """書き出した直後だけ出る「Finder で表示」（G-4）。"""
+        return self._reveal_button
+
+    @property
+    def export_timer(self) -> QTimer:
+        return self._export_timer
 
     @property
     def theme_watcher(self) -> ThemeWatcher:
@@ -1516,7 +1553,44 @@ class MainWindow(QMainWindow):
         chosen, _ = QFileDialog.getSaveFileName(self, caption, suggested, filter_)
         if not chosen:
             return None
-        return writer(Path(chosen), self._editor.toPlainText())
+        target = writer(Path(chosen), self._editor.toPlainText())
+        self._notify_export(target)
+        return target
+
+    def _notify_export(self, target: Path) -> None:
+        """どこへ書いたかを見せ、Finder への道を添える（G-4）。
+
+        **書き出しても画面が変わらなかった。** 保存先を選んだ直後、
+        何も起きないように見えて、書けたのかどうかも分からない。
+
+        知らせは残さない。前のファイルを指すボタンが居座ると、今のノートと
+        関係のないものを開くことになる。
+        """
+        self._exported = target
+        self.statusBar().showMessage(f"{_short_path(target)} に書き出しました", NOTICE_MS)
+        self._reveal_button.show()
+        self._export_timer.start()
+
+    def hide_export_notice(self) -> None:
+        self._reveal_button.hide()
+        self._exported = None
+
+    def _reveal_exported(self) -> None:
+        if self._exported is not None:
+            self.reveal_in_finder(self._exported)
+
+    def reveal_in_finder(self, path: Path) -> None:
+        """Finder で場所を開き、そのファイルを選んだ状態にする（G-4）。
+
+        **フォルダを開くだけにしない。** 同じ名前が並ぶ場所だと、どれを
+        書いたのか分からない。`open -R` は選択まで面倒を見てくれる。
+
+        書き出したあとに消された場合は何もしない（空振りさせない）。
+        """
+        if not path.exists():
+            logger.info("書き出したファイルが見つからない: %s", path)
+            return
+        subprocess.run(["open", "-R", str(path)], check=False)
 
     def _write_markdown(self, target: Path, text: str) -> Path:
         return exporter.write_markdown(target, text)
