@@ -9,8 +9,8 @@
 from dataclasses import dataclass, field
 from enum import Enum, auto
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QStandardItem, QStandardItemModel
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QFontMetrics, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QTreeView, QWidget
 
 from hitofude.core import tags as tag_utils
@@ -21,6 +21,12 @@ from hitofude.ui.icons import Glyph, glyph_icon
 ALL_LABEL = "すべて"
 PINNED_LABEL = "お気に入り"
 TRASH_LABEL = "ゴミ箱"
+
+# 行の上下の余白（ユーザー指摘）。**文字の高さそのままでは詰まって見える。**
+# 比べた相手（Claude Desktop）は 13px の文字に対して行の間隔が約 26px。
+# こちらは 20px しかなく、字が上下でくっついていた。字送り（16px 前後）＋
+# 上下 5px で 26px 前後になり、同じ落ち着きになる
+ROW_PADDING = 5
 TAGS_LABEL = "タグ"
 
 _FILTER_ROLE = int(Qt.ItemDataRole.UserRole) + 1
@@ -165,16 +171,19 @@ class Sidebar(QTreeView):
         root = self._model.invisibleRootItem()
 
         color = self._theme.foreground
+        height = _row_height(self)
         for filter_ in (ALL, PINNED, TRASH):
-            root.appendRow(_make_item(filter_.label, filter_, color))
+            root.appendRow(_sized(_make_item(filter_.label, filter_, color), height))
 
         if counts:
             header = QStandardItem(glyph_icon(Glyph.TAG, color), TAGS_LABEL)
             header.setSelectable(False)
             header.setEditable(False)
-            root.appendRow(header)
+            root.appendRow(_sized(header, height))
             for node in build_tag_tree(counts):
-                header.appendRow(_make_tag_item(node, color))
+                root_item = _sized(_make_tag_item(node, color), height)
+                _size_children(root_item, height)
+                header.appendRow(root_item)
             self.expandAll()
 
     # ------------------------------------------------------------------ 選択
@@ -217,6 +226,30 @@ def _make_item(label: str, target: Filter, color: str) -> QStandardItem:
     item.setEditable(False)
     item.setData(target, _FILTER_ROLE)
     return item
+
+
+def _sized(item: QStandardItem, height: int) -> QStandardItem:
+    """行の高さを与える。幅は 0 のまま（列幅は view が決める）。"""
+    item.setSizeHint(QSize(0, height))
+    return item
+
+
+def _size_children(item: QStandardItem, height: int) -> None:
+    """入れ子のタグにも同じ高さを与える。"""
+    for row in range(item.rowCount()):
+        child = item.child(row)
+        child.setSizeHint(QSize(0, height))
+        _size_children(child, height)
+
+
+def _row_height(widget: QWidget) -> int:
+    """行の高さ。**字送りから決める**（`height()` ではない）。
+
+    `QFontMetrics.height()` は字の高さで、行を積むときの送りは
+    `lineSpacing()`。前者で組むと日本語のように背の高い字で詰まる
+    （一覧のプレビューでも同じ間違いをして 2 行目が切れた）。
+    """
+    return QFontMetrics(widget.font()).lineSpacing() + ROW_PADDING * 2
 
 
 def _make_tag_item(node: TagNode, color: str) -> QStandardItem:

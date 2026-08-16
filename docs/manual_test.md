@@ -95,6 +95,7 @@ NG は直す前に回帰テストを書く（CLAUDE.md §1）。
 | [a] | `Cmd+/`（ソースモード）                                     | 表も生の Markdown に戻る（自動: tests/editor/test_painter_overlay.py）                                     |
 | [a] | 割り当てていない `Cmd+Option+英字` を選択中に押す           | **何も入らず選択も消えない**（自動: tests/editor/test_editor_commands.py）                                 |
 | [a] | サイドバーの項目                                            | すべて / お気に入り / ゴミ箱 / タグにアイコンが付く（自動: tests/ui/test_sidebar.py）                      |
+| [ ] | サイドバーと一覧の行間を見る                                | 字が上下でくっついて見えない（サイドバーの行は 26px 前後）                                                 |
 | [a] | ノートをピン留めして一覧を見る                              | **黄色い星**が付く。タイトルと重ならない（自動: tests/ui/test_note_list.py）                               |
 | [a] | ダークに切り替える                                          | **アイコンの色も追従する**（黒いまま残らない）（自動: tests/ui/test_icons.py）                             |
 | [x] | ペインの境界                                                | 1px の線が見える。ダークでも見える                                                                         |

@@ -138,6 +138,38 @@ class TestSidebar:
             sidebar.set_tags(counts(("private", 1)))
         assert blocker.args[0] != Filter(FilterKind.TAG, "work")
 
+    def test_行に余白がある(self, sidebar) -> None:
+        """**文字の高さそのままでは詰まって見える**（ユーザー指摘）。
+
+        比較対象（Claude Desktop）は 13px の文字に対して行の間隔が
+        約 26px あった。こちらは文字の高さ＋わずかで、字が上下でくっつく。
+        行の高さを字送りから決め、上下に余白を持たせる。
+        """
+        from PySide6.QtGui import QFontMetrics
+
+        from hitofude.ui.sidebar import ROW_PADDING
+
+        sidebar.set_tags(counts(("work", 1)))
+        metrics = QFontMetrics(sidebar.font())
+        model = sidebar.model()
+        heights = {
+            model.item(row).sizeHint().height()
+            for row in range(model.rowCount())
+            if model.item(row).sizeHint().isValid()
+        }
+        assert heights == {metrics.lineSpacing() + ROW_PADDING * 2}
+
+    def test_タグの行にも同じ余白(self, sidebar) -> None:
+        from PySide6.QtGui import QFontMetrics
+
+        from hitofude.ui.sidebar import ROW_PADDING
+
+        sidebar.set_tags(counts(("work", 1)))
+        metrics = QFontMetrics(sidebar.font())
+        header = sidebar.model().item(sidebar.model().rowCount() - 1)
+        child = header.child(0)
+        assert child.sizeHint().height() == metrics.lineSpacing() + ROW_PADDING * 2
+
     def test_見出しは選択できない(self, sidebar) -> None:
         sidebar.set_tags(counts(("work", 1)))
         model = sidebar.model()
