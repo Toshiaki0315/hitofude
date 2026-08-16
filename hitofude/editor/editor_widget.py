@@ -82,6 +82,12 @@ class MarkdownEditor(QPlainTextEdit):
     """ソースモードが切り替わった。**入口が 2 つある**（`Cmd+/` と Raw ボタン）
     ので、片方で変えたらもう片方も追従させる。"""
 
+    modes_changed = Signal()
+    """書き方のモード（Raw / フォーカス / タイプライタ）が変わった。
+
+    **何がどう変わったかは載せない。** 受け手（ステータスバー）は今の状態を
+    見に来ればよく、差分を追う必要がない。"""
+
     # spec §5.1: 読みやすさのため本文は中央寄せで最大 720px
     MAX_CONTENT_WIDTH = 720
 
@@ -176,6 +182,7 @@ class MarkdownEditor(QPlainTextEdit):
         self._highlighter.rehighlight()
         self.viewport().update()  # 飾りの有無が変わる（`painter_overlay`）
         self.source_mode_changed.emit(enabled)
+        self.modes_changed.emit()
 
     def toggle_source_mode(self) -> None:
         self.set_source_mode(not self._highlighter.source_mode)
@@ -184,8 +191,11 @@ class MarkdownEditor(QPlainTextEdit):
 
     def set_focus_mode(self, enabled: bool) -> None:
         """`Cmd+Shift+D`。現在段落以外を減光する。"""
+        if enabled == self._focus_mode:
+            return
         self._focus_mode = enabled
         self.viewport().update()
+        self.modes_changed.emit()
 
     def toggle_focus_mode(self) -> None:
         self.set_focus_mode(not self._focus_mode)
@@ -196,9 +206,12 @@ class MarkdownEditor(QPlainTextEdit):
 
     def set_typewriter_mode(self, enabled: bool) -> None:
         """`Cmd+Shift+Y`。キャレット行を画面中央に保つ。"""
+        if enabled == self._typewriter_mode:
+            return
         self._typewriter_mode = enabled
         if enabled:
             self._center_caret()
+        self.modes_changed.emit()
 
     def toggle_typewriter_mode(self) -> None:
         self.set_typewriter_mode(not self._typewriter_mode)
@@ -206,6 +219,11 @@ class MarkdownEditor(QPlainTextEdit):
     @property
     def typewriter_mode(self) -> bool:
         return self._typewriter_mode
+
+    @property
+    def source_mode(self) -> bool:
+        """生の Markdown を出しているか（`Cmd+/` / Raw ボタン）。"""
+        return self._highlighter.source_mode
 
     def _center_caret(self) -> None:
         """キャレット行が画面中央に来るようスクロールする。"""

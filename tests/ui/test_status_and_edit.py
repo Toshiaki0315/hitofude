@@ -387,3 +387,61 @@ class TestSavedNotice:
         window.editor.textCursor().insertText("追記")
         window.flush()
         assert window._saved_label.x() < window._stats_label.x()
+
+
+class TestModeIndicator:
+    """今どのモードかを右下に出す（ユーザー要望）。
+
+    タイプライタ・フォーカス・Raw は**画面を見ても分かりにくい**。
+    タイプライタは書き進めるまで気づけず、Raw はツールバーを隠していると
+    （`Cmd+3`）押した形跡がどこにも残らない。
+
+    **有効なものだけ出す。** 何も入っていないときに「なし」と出しても、
+    場所を取るだけで読む理由がない。
+    """
+
+    def modes(self, window) -> str:
+        return window.mode_text()
+
+    def test_何も入っていなければ空(self, window) -> None:
+        assert self.modes(window) == ""
+
+    def test_タイプライタが出る(self, window) -> None:
+        window.editor.set_typewriter_mode(True)
+        assert "タイプライタ" in self.modes(window)
+
+    def test_フォーカスが出る(self, window) -> None:
+        window.editor.set_focus_mode(True)
+        assert "フォーカス" in self.modes(window)
+
+    def test_Rawが出る(self, window) -> None:
+        """ツールバーを隠していると、ここでしか分からない。"""
+        window.editor.set_source_mode(True)
+        assert "Raw" in self.modes(window)
+
+    def test_両方入れば並ぶ(self, window) -> None:
+        window.editor.set_focus_mode(True)
+        window.editor.set_typewriter_mode(True)
+        text = self.modes(window)
+        assert "フォーカス" in text
+        assert "タイプライタ" in text
+
+    def test_切ると消える(self, window) -> None:
+        window.editor.set_typewriter_mode(True)
+        window.editor.set_typewriter_mode(False)
+        assert self.modes(window) == ""
+
+    def test_トグルでも出る(self, window) -> None:
+        """メニューとショートカットはトグルを呼ぶ（入口が違っても同じ）。"""
+        window.editor.toggle_focus_mode()
+        assert "フォーカス" in self.modes(window)
+
+    def test_文字数より左に出る(self, window) -> None:
+        """右端は文字数の場所。あとから増えたものを右へ足すと、
+        モードを切り替えるたびに文字数が横へ動いて見える。"""
+        window.editor.set_focus_mode(True)
+        QApplication.processEvents()
+        assert window._mode_label.x() < window._stats_label.x()
+
+    def test_説明が出る(self, window) -> None:
+        assert window._mode_label.toolTip()

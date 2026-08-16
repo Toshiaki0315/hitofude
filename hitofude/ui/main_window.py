@@ -91,6 +91,7 @@ DIRTY_MARK = "•"
 # 最後の文字が欠ける（実際に欠けた）
 STATUS_RIGHT_MARGIN = 14
 STATS_TOOLTIP = "文字数と行数。\n装飾の記号（`**` など）と front matter、改行は数えません。"
+MODE_TOOLTIP = "今入っている書き方のモード。\nRaw（⌘/）／ フォーカス（⇧⌘D）／ タイプライタ（⇧⌘Y）"
 
 # 帯に出すバックリンクの上限（E-6）。ここに出る数だけファイルを読むので、
 # 際限なく増えると開くたびに遅くなる。読み切れない数を並べても使えない
@@ -196,6 +197,10 @@ class MainWindow(QMainWindow):
 
         # **文字数より左に置く。** 右端は文字数の場所で、あとから増えたものを
         # 右へ足すと、保存のたびに文字数が横へ動いて見える
+        self._mode_label = QLabel("", self)
+        self._mode_label.setToolTip(MODE_TOOLTIP)
+        self.statusBar().addPermanentWidget(self._mode_label)
+
         self._saved_label = QLabel("", self)
         self._saved_label.setToolTip("最後に保存した時刻。保存は自動で、打ち始めると消えます。")
         self.statusBar().addPermanentWidget(self._saved_label)
@@ -211,6 +216,7 @@ class MainWindow(QMainWindow):
         self._editor.link_activated.connect(self.activate_link)
         self._editor.tag_activated.connect(self.activate_tag)
         self._editor.note_activated.connect(self.activate_note)
+        self._editor.modes_changed.connect(self._update_modes)
         self._pane.backlinks.opened.connect(self._on_backlink_opened)
         self._pane.backlinks.toggled.connect(self._remember_backlinks)
         self._pane.backlinks.set_expanded(self._config.backlinks_expanded)
@@ -874,6 +880,26 @@ class MainWindow(QMainWindow):
             return
         mark = f"{DIRTY_MARK} " if self._debouncer.pending else ""
         self.setWindowTitle(f"{mark}{self._note.title} — {APP_NAME}")
+
+    def mode_text(self) -> str:
+        """今入っているモードの並び。何も入っていなければ空（ユーザー要望）。
+
+        **有効なものだけ出す。** 「なし」と出しても場所を取るだけで、
+        読む理由がない。Raw はツールバーを隠していると（`Cmd+3`）他に
+        分かる場所が無いので、ここが唯一の手掛かりになる。
+        """
+        found = [name for name, active in self._modes() if active]
+        return " / ".join(found)
+
+    def _modes(self) -> list[tuple[str, bool]]:
+        return [
+            ("Raw", self._editor.source_mode),
+            ("フォーカス", self._editor.focus_mode),
+            ("タイプライタ", self._editor.typewriter_mode),
+        ]
+
+    def _update_modes(self) -> None:
+        self._mode_label.setText(self.mode_text())
 
     def _update_stats(self) -> None:
         if self._note is None:
