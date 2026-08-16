@@ -14,8 +14,8 @@ pytestmark = pytest.mark.gui
 
 class TestScale:
     def test_倍率は1か所(self) -> None:
-        """**各ファイルに 1.5 を散らさない。** 直すときに片方だけ残る。"""
-        assert pytest.approx(1.5) == TOOLBAR_SCALE
+        """**各ファイルに数字を散らさない。** 直すときに片方だけ残る。"""
+        assert pytest.approx(1.3) == TOOLBAR_SCALE
 
     def test_書式ツールバーの寸法が倍率どおり(self) -> None:
         from hitofude.ui import format_toolbar as module
@@ -69,3 +69,19 @@ class TestScale:
         qtbot.addWidget(pane)
         glyph = QFontMetricsF(pane.sort_button.font()).horizontalAdvance(SORT_GLYPH)
         assert pane.sort_button.minimumWidth() >= math.ceil(glyph + SORT_INDICATOR_ROOM)
+
+    def test_Rawも一緒に大きくなる(self, qtbot) -> None:
+        """**Raw だけ取り残さない。** 同じバーに並んでいるので、
+        1 つだけ元の大きさだと不揃いが目に付く（ユーザー指摘）。"""
+        from hitofude.editor.editor_widget import MarkdownEditor
+        from hitofude.ui.format_toolbar import BUTTON_SIZE, FormatToolbar
+
+        editor = MarkdownEditor()
+        qtbot.addWidget(editor)
+        bar = FormatToolbar(editor)
+        qtbot.addWidget(bar)
+
+        base = bar.font().pointSizeF()
+        assert bar.raw_button.font().pointSizeF() == pytest.approx(base * TOOLBAR_SCALE)
+        # 高さは他のボタンと揃える（幅は文字数で決まるので揃えない）
+        assert bar.raw_button.height() == BUTTON_SIZE

@@ -16,7 +16,7 @@
 from dataclasses import dataclass
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtGui import QColor, QFont, QPainter
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QToolButton, QWidget
 
 from hitofude.theme import LIGHT, ThemeColors
@@ -91,6 +91,13 @@ class FormatToolbar(QWidget):
         # **右端に離して置く。** 書式を付けるボタンとは役割が違い、
         # 押しっぱなしにする性質のもの（ユーザー要望）
         self._raw = QToolButton(self)
+        # **Raw だけ取り残さない**（ユーザー指摘）。同じバーに並んでいるので、
+        # 1 つだけ元の大きさだと不揃いが目に付く。こちらは絵ではなく文字なので
+        # 字の大きさで効かせ、高さだけ他のボタンと揃える（幅は文字数で決まる）
+        raw_font = QFont(self.font())
+        raw_font.setPointSizeF(raw_font.pointSizeF() * TOOLBAR_SCALE)
+        self._raw.setFont(raw_font)
+        self._raw.setFixedHeight(BUTTON_SIZE)
         self._raw.setText(RAW_LABEL)
         self._raw.setCheckable(True)
         self._raw.setFocusPolicy(Qt.FocusPolicy.NoFocus)
