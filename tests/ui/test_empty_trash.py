@@ -159,6 +159,19 @@ class TestMenus:
         finally:
             menu.deleteLater()
 
+    def action(self, window: MainWindow):
+        menu = window.sidebar_menu_for(TRASH)
+        return next(a for a in menu.actions() if a.text() == "ゴミ箱を空にする…")
+
+    def test_空のときは押せない(self, window) -> None:
+        """**押してから断らない。** 件数は開く前に分かるので、
+        押せない状態で見せる（一覧の「ゴミ箱へ移動」と同じ作法）。"""
+        assert self.action(window).isEnabled() is False
+
+    def test_中身があれば押せる(self, window) -> None:
+        trashed(window, "あ")
+        assert self.action(window).isEnabled() is True
+
     def test_ゴミ箱以外にはメニューを出さない(self, window) -> None:
         from hitofude.ui.sidebar import ALL
 

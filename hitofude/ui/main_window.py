@@ -522,7 +522,11 @@ class MainWindow(QMainWindow):
         if target.kind is not FilterKind.TRASH:
             return None
         menu = QMenu(self)
-        menu.addAction("ゴミ箱を空にする…").triggered.connect(self.empty_trash)
+        action = menu.addAction("ゴミ箱を空にする…")
+        action.triggered.connect(self.empty_trash)
+        # **押してから断らない。** 件数は開く前に分かるので、押せない状態で
+        # 見せる（一覧の「ゴミ箱へ移動」がピン留め時にそうなっているのと同じ）
+        action.setEnabled(bool(self._trash_entries()))
         return menu
 
     def _show_context_menu(self, point) -> None:
@@ -615,8 +619,9 @@ class MainWindow(QMainWindow):
 
         E-5 の片づけと同じ作法で、**数を見せてから**消す。
         """
-        entries = [path for path in self._vault.trash_dir.glob("*") if path.is_file()]
+        entries = self._trash_entries()
         if not entries:
+            # ここへ来るのは、メニューを開いてから Finder などで空にされたとき
             QMessageBox.information(self, "ゴミ箱は空です", "消すものはありません。")
             return 0
 
@@ -639,6 +644,10 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"{len(removed)} 件を完全に削除しました", NOTICE_MS)
         logger.info("ゴミ箱を空にした: %d 件", len(removed))
         return len(removed)
+
+    def _trash_entries(self) -> list[Path]:
+        """ゴミ箱の中身（ノートも添付も）。"""
+        return [path for path in self._vault.trash_dir.glob("*") if path.is_file()]
 
     def _close_current(self) -> None:
         """開いているノートを閉じる。**保存はしない**（消す直前に呼ぶため）。"""
