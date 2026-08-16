@@ -20,11 +20,18 @@ from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QToolButton, QWidget
 
 from hitofude.theme import LIGHT, ThemeColors
-from hitofude.ui.icons import Glyph, glyph_icon
+from hitofude.ui.icons import TOOLBAR_SCALE, Glyph, glyph_icon
 
-ICON_SIZE = 18
-BUTTON_SIZE = 26
-BAR_MARGIN = 6
+# 元の寸法。実際に使うのは `TOOLBAR_SCALE` を掛けたほう
+BASE_ICON_SIZE = 18
+BASE_BUTTON_SIZE = 26
+BASE_BAR_MARGIN = 6
+
+ICON_SIZE = round(BASE_ICON_SIZE * TOOLBAR_SCALE)
+BUTTON_SIZE = round(BASE_BUTTON_SIZE * TOOLBAR_SCALE)
+BAR_MARGIN = round(BASE_BAR_MARGIN * TOOLBAR_SCALE)
+# ボタンの上下。枠だけ広げても見やすくならないので、余白も一緒に伸ばす
+BAR_PADDING = round(3 * TOOLBAR_SCALE)
 # 生の Markdown を出す切り替え（ユーザー要望）。中身はソースモード
 RAW_LABEL = "Raw"
 # 本文との境目。ペインの区切り（`QSplitter::handle`）と同じ太さに揃える
@@ -72,7 +79,7 @@ class FormatToolbar(QWidget):
         self._separators: list[QFrame] = []
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(BAR_MARGIN, 3, BAR_MARGIN, 3)
+        layout.setContentsMargins(BAR_MARGIN, BAR_PADDING, BAR_MARGIN, BAR_PADDING)
         layout.setSpacing(2)
 
         for index, action in enumerate(self.ACTIONS):

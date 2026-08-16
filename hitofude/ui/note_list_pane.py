@@ -10,7 +10,7 @@
 import math
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction, QFontMetricsF
+from PySide6.QtGui import QAction, QFont, QFontMetricsF
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from hitofude.storage.index_db import SortOrder
 from hitofude.theme import LIGHT, ThemeColors
+from hitofude.ui.icons import TOOLBAR_SCALE
 from hitofude.ui.note_list import NoteListView
 from hitofude.ui.panes import NOTE_LIST_MIN_WIDTH
 
@@ -32,8 +33,9 @@ SORT_GLYPH = "⇅"
 # 実機で重なって見えた（ユーザー報告）。
 #
 # 拡大して並べて選んだ: 14 は接触、20 は際どい、**26 で明確に離れる**
-SORT_INDICATOR_ROOM = 26
-HEADER_MARGIN = 6
+BASE_SORT_INDICATOR_ROOM = 26
+SORT_INDICATOR_ROOM = round(BASE_SORT_INDICATOR_ROOM * TOOLBAR_SCALE)
+HEADER_MARGIN = round(6 * TOOLBAR_SCALE)
 
 # 並び順の選択肢（C-3）。**設定ダイアログには置かない。** 並び替えは
 # 「今そうしたい」操作で、一度決めて忘れる設定とは性質が違う
@@ -44,6 +46,16 @@ SORT_LABELS = {
     SortOrder.CREATED: "作成の新しい順",
     SortOrder.TITLE: "名前順",
 }
+
+
+def _scaled_font(widget: QWidget) -> QFont:
+    """`＋` と `⇅` を大きくする。
+
+    **絵ではなく文字**なので、アイコンの大きさではなく字の大きさで効かせる。
+    """
+    font = QFont(widget.font())
+    font.setPointSizeF(font.pointSizeF() * TOOLBAR_SCALE)
+    return font
 
 
 class NoteListPane(QWidget):
@@ -57,6 +69,7 @@ class NoteListPane(QWidget):
 
         self._list = NoteListView(theme=theme)
         self._new = QToolButton(self)
+        self._new.setFont(_scaled_font(self))
         self._new.setText(NEW_NOTE_GLYPH)
         # 記号だけでは何のボタンか分からない。ショートカットも案内する
         self._new.setToolTip("新規ノート（Cmd+N）")
@@ -65,6 +78,7 @@ class NoteListPane(QWidget):
         self._new.clicked.connect(self.new_note_requested.emit)
 
         self._sort = QToolButton(self)
+        self._sort.setFont(_scaled_font(self))
         self._sort.setText(SORT_GLYPH)
         self._sort.setToolTip("並び順")
         self._sort.setAutoRaise(True)

@@ -16,6 +16,11 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 
 # 描画は倍率をかけた大きさで行い、表示側で縮小する。線が滑らかになる
+# 上部のバー（一覧の並び順・新規、本文の書式ツールバー）の倍率。
+# **1 か所に持つ。** 各ファイルに数字を散らすと、直すときに片方だけ残る。
+# 1.0 が元の大きさ（ユーザー要望で 1.5 倍にした）
+TOOLBAR_SCALE = 1.5
+
 CANVAS = 64
 STROKE = 5.0
 _CACHE: dict[tuple["Glyph", str, bool], QIcon] = {}
