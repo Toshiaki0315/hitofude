@@ -228,6 +228,8 @@ class MainWindow(QMainWindow):
         self._note_list.customContextMenuRequested.connect(self._show_context_menu)
 
         self._sidebar.filter_changed.connect(self._on_filter_changed)
+        self._sidebar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._sidebar.customContextMenuRequested.connect(self._show_sidebar_menu)
         self._note_list.note_activated.connect(self._on_note_activated)
         self._editor.textChanged.connect(self._on_text_changed)
         self._theme_watcher.changed.connect(self._on_theme_changed)
@@ -503,6 +505,26 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------- 一覧からの操作
 
+    def _show_sidebar_menu(self, point) -> None:
+        target = self._sidebar.filter_at(point)
+        menu = self.sidebar_menu_for(target) if target is not None else None
+        if menu is None:
+            return
+        menu.exec(self._sidebar.viewport().mapToGlobal(point))
+        menu.deleteLater()
+
+    def sidebar_menu_for(self, target: Filter) -> QMenu | None:
+        """サイドバーの右クリックメニュー。**今はゴミ箱だけ**（G-3）。
+
+        「すべて」や「お気に入り」に出せる操作が無いのに空のメニューを
+        出すと、押せる何かがあると誤解させる。
+        """
+        if target.kind is not FilterKind.TRASH:
+            return None
+        menu = QMenu(self)
+        menu.addAction("ゴミ箱を空にする…").triggered.connect(self.empty_trash)
+        return menu
+
     def _show_context_menu(self, point) -> None:
         relative = self._note_list.indexAt(point).data(NoteRole.PATH)
         if relative is None:
@@ -521,6 +543,9 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
         if self._filter.kind is FilterKind.TRASH:
             menu.addAction("元に戻す").triggered.connect(lambda: self.restore_note(path))
+            menu.addSeparator()
+            # 「…」は「押すと確認が出る」の合図（他のメニューと揃える）
+            menu.addAction("完全に削除…").triggered.connect(lambda: self.delete_permanently(path))
             return menu
 
         label = "ピン留めを外す" if self._is_pinned(path) else "ピン留め"
@@ -553,6 +578,75 @@ class MainWindow(QMainWindow):
         self.refresh()
         logger.info("ゴミ箱から戻した: %s", target.name)
         return target
+
+    def delete_permanently(self, path: Path) -> bool:
+        """ゴミ箱の 1 件を完全に削除する（G-3）。消したら True。
+
+        **戻せないので必ず名前を見せて確認する。** ゴミ箱へ移すときの
+        「30 日は戻せます」とは別の文面にする。
+        """
+        if not path.is_file():
+            return False
+        answer = QMessageBox.question(
+            self,
+            "完全に削除",
+            f"「{path.stem}」を完全に削除しますか？\nこの操作は取り消せません。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return False
+
+        # **開いたままにしない。** 消えたファイルに向けて自動保存が走ると、
+        # 消したはずのノートが書き戻る
+        if self._note is not None and self._note.path == path:
+            self._close_current()
+        self._watcher.suppress(path)
+        self._vault.delete_permanently(path)
+        self.refresh()
+        self.statusBar().showMessage("完全に削除しました", NOTICE_MS)
+        logger.info("完全に削除した: %s", path.name)
+        return True
+
+    def empty_trash(self) -> int:
+        """ゴミ箱を今すぐ空にする（G-3）。消した数を返す。
+
+        **30 日待たずに消したいことがある。** 見られたくないノートを
+        捨てたとき、残っているのは捨てたことにならない。
+
+        E-5 の片づけと同じ作法で、**数を見せてから**消す。
+        """
+        entries = [path for path in self._vault.trash_dir.glob("*") if path.is_file()]
+        if not entries:
+            QMessageBox.information(self, "ゴミ箱は空です", "消すものはありません。")
+            return 0
+
+        answer = QMessageBox.question(
+            self,
+            "ゴミ箱を空にする",
+            f"ゴミ箱の {len(entries)} 件を完全に削除しますか？\n"
+            "この操作は取り消せません（もう戻せません）。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return 0
+
+        if self._note is not None and self._note.path.parent == self._vault.trash_dir:
+            self._close_current()
+        for path in entries:
+            self._watcher.suppress(path)
+        removed = self._vault.empty_trash()
+        self.refresh()
+        self.statusBar().showMessage(f"{len(removed)} 件を完全に削除しました", NOTICE_MS)
+        logger.info("ゴミ箱を空にした: %d 件", len(removed))
+        return len(removed)
+
+    def _close_current(self) -> None:
+        """開いているノートを閉じる。**保存はしない**（消す直前に呼ぶため）。"""
+        self._note = None
+        self._editor.clear()
+        self._remember_note(None)
+        self._update_title()
+        self._update_stats()
 
     def toggle_pin(self, path: Path) -> bool:
         """ピン留めを反転する。反転後の状態を返す。

@@ -566,6 +566,38 @@ class Vault:
         names = {line.strip() for line in content.split("\n") if line.strip().endswith(".md")}
         return names or set(LEGACY_TEMPLATES)
 
+    def empty_trash(self) -> list[Path]:
+        """ゴミ箱の中身を今すぐ全部消す（G-3）。消したものを返す。
+
+        **期限を待たずに消したいことがある。** 見られたくないノートを
+        捨てたとき、30 日残り続けるのは捨てたことにならない。
+
+        添付も `.trash` に入る（E-5）ので一緒に消える。呼ぶ前に確認を
+        取るのは UI 側の仕事。ここは黙って消す。
+        """
+        if not self.trash_dir.is_dir():
+            return []
+
+        removed: list[Path] = []
+        for entry in sorted(self.trash_dir.iterdir()):
+            if entry.is_file():
+                entry.unlink()
+                removed.append(entry)
+        return removed
+
+    def delete_permanently(self, path: Path) -> None:
+        """ゴミ箱の中の 1 件を完全に消す（G-3）。
+
+        **ゴミ箱の外は消さない。** 保管フォルダのノートを直に消す道を
+        作ると、押し間違いが取り返しのつかない結果になる。渡し間違いは
+        黙って無視せず `ValueError` で止める（呼び出し側の誤りのため）。
+
+        既に無いファイルは何もしない（続けて押したときに落ちない）。
+        """
+        if self.trash_dir not in path.parents:
+            raise ValueError(f"ゴミ箱の外は消せない: {path}")
+        path.unlink(missing_ok=True)
+
     def purge_trash(self, days: int = DEFAULT_TRASH_DAYS) -> list[Path]:
         """期限を過ぎたゴミ箱の中身を消す（spec §7.6）。起動時に呼ぶ。"""
         if not self.trash_dir.is_dir():

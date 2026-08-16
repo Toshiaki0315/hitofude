@@ -133,9 +133,34 @@ class Sidebar(QTreeView):
         self.set_tags(self._counts)
 
     def set_tags(self, counts: list[TagCount]) -> None:
-        """タグ一覧を差し替える。選択中の項目は可能なら保つ。"""
+        """タグ一覧を差し替える。選択中の項目は可能なら保つ。
+
+        **組み直しの途中では通知しない。** 項目を作り直すと選択が先頭
+        （「すべて」）に移るので、そのまま通知すると、ゴミ箱やタグを
+        見ている最中に保存や復元が起きただけで一覧が「すべて」に
+        切り替わってしまう（ユーザー報告の一歩手前で見つけた）。
+
+        **選んでいたものが消えたときだけ通知する。** そのときは実際に
+        見る対象が変わるので、黙って別のものを見せるほうが危ない。
+        """
         self._counts = list(counts)
         keep = self.current_filter()
+
+        self.blockSignals(True)
+        try:
+            self._rebuild(counts)
+            if keep is not None:
+                self.select(keep)
+        finally:
+            self.blockSignals(False)
+
+        current = self.current_filter()
+        if current is None:
+            self.select(ALL)  # 選択が外れたまま置かない
+        elif current != keep:
+            self.filter_changed.emit(current)
+
+    def _rebuild(self, counts: list[TagCount]) -> None:
         self._model.clear()
         root = self._model.invisibleRootItem()
 
@@ -152,10 +177,12 @@ class Sidebar(QTreeView):
                 header.appendRow(_make_tag_item(node, color))
             self.expandAll()
 
-        if keep is not None:
-            self.select(keep)
-
     # ------------------------------------------------------------------ 選択
+
+    def filter_at(self, point) -> Filter | None:
+        """その位置にある項目の `Filter`。無ければ `None`（G-3 の右クリック）。"""
+        item = self._model.itemFromIndex(self.indexAt(point))
+        return item.data(_FILTER_ROLE) if item is not None else None
 
     def current_filter(self) -> Filter | None:
         item = self._model.itemFromIndex(self.currentIndex())

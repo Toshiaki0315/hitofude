@@ -113,6 +113,31 @@ class TestSidebar:
         sidebar.set_tags(counts(("private", 1)))
         assert sidebar.current_filter() != Filter(FilterKind.TAG, "work")
 
+    def test_組み直しただけでは通知しない(self, sidebar, qtbot) -> None:
+        """**索引が更新されるたびに通知すると、見ているものが飛ぶ。**
+
+        `set_tags()` は項目を作り直すので、その途中で選択が先頭
+        （「すべて」）に移る。そのまま通知すると、ゴミ箱やタグを見ている
+        最中に保存や復元が起きただけで「すべて」に戻ってしまう
+        （ユーザーには一覧が勝手に切り替わったように見える）。
+        """
+        sidebar.set_tags(counts(("work", 1)))
+        sidebar.select(TRASH)
+
+        with qtbot.assertNotEmitted(sidebar.filter_changed):
+            sidebar.set_tags(counts(("work", 2)))
+        assert sidebar.current_filter() == TRASH
+
+    def test_選んでいたタグが消えたときは通知する(self, sidebar, qtbot) -> None:
+        """**戻れなくなるのは別。** 見ていたタグが無くなったら、
+        今どこを見ているのかを呼び出し側にも知らせる。"""
+        sidebar.set_tags(counts(("work", 1)))
+        sidebar.select(Filter(FilterKind.TAG, "work"))
+
+        with qtbot.waitSignal(sidebar.filter_changed, timeout=1000) as blocker:
+            sidebar.set_tags(counts(("private", 1)))
+        assert blocker.args[0] != Filter(FilterKind.TAG, "work")
+
     def test_見出しは選択できない(self, sidebar) -> None:
         sidebar.set_tags(counts(("work", 1)))
         model = sidebar.model()

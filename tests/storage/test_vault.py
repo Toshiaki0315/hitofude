@@ -221,6 +221,60 @@ class TestPurgeTrash:
         assert vault.purge_trash(days=30) == []
 
 
+class TestEmptyTrash:
+    """ゴミ箱を今すぐ空にする（G-3）。
+
+    今は 30 日待つしかない。**見られたくないものを捨てたときに困る**ので、
+    自分の意思で今すぐ消せる道を用意する。
+    """
+
+    def test_中身を全部消す(self, vault) -> None:
+        moved = [vault.trash(vault.create(name).path) for name in ("あ", "い")]
+        removed = vault.empty_trash()
+        assert sorted(removed) == sorted(moved)
+        assert not any(path.exists() for path in moved)
+
+    def test_ゴミ箱の外は消さない(self, vault) -> None:
+        note = vault.create("残るメモ")
+        vault.trash(vault.create("消すメモ").path)
+        vault.empty_trash()
+        assert note.path.is_file()
+
+    def test_添付も消える(self, vault) -> None:
+        """添付も `.trash` へ入る（E-5）。空にするなら一緒に消える。"""
+        vault.attachments_dir.mkdir(parents=True, exist_ok=True)
+        image = vault.attachments_dir / "図.png"
+        image.write_bytes(b"png")
+        moved = vault.trash_attachments([image])
+        vault.empty_trash()
+        assert not any(path.exists() for path in moved)
+
+    def test_ゴミ箱が無くても壊れない(self, vault) -> None:
+        assert vault.empty_trash() == []
+
+
+class TestDeletePermanently:
+    """1 件だけ完全に削除する（G-3）。"""
+
+    def test_消える(self, vault) -> None:
+        moved = vault.trash(vault.create("消すメモ").path)
+        vault.delete_permanently(moved)
+        assert not moved.exists()
+
+    def test_ゴミ箱の外は消せない(self, vault) -> None:
+        """**保管フォルダのノートを消す道を作らない。** 誤って渡されたら
+        黙って消さずに止める。ゴミ箱に入れるのは UI 側の仕事。"""
+        note = vault.create("大事なメモ")
+        with pytest.raises(ValueError):
+            vault.delete_permanently(note.path)
+        assert note.path.is_file()
+
+    def test_無いファイルでも壊れない(self, vault) -> None:
+        moved = vault.trash(vault.create("消すメモ").path)
+        vault.delete_permanently(moved)
+        vault.delete_permanently(moved)
+
+
 class TestSetPinned:
     """ピン留め（サイドバーの「お気に入り」に入れる操作）。
 

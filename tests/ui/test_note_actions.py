@@ -293,7 +293,8 @@ class TestPinnedIsProtected:
             a.text()
             for a in window.context_menu_for(trashed.relative_to(window.vault.root)).actions()
         ]
-        assert labels == ["元に戻す"]
+        # ピン留めの類は出さない。出せるのは「元に戻す」と「完全に削除…」（G-3）
+        assert [label for label in labels if label] == ["元に戻す", "完全に削除…"]
 
 
 class TestAttachmentWiring:

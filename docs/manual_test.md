@@ -174,7 +174,10 @@ NG は直す前に回帰テストを書く（CLAUDE.md §1）。
 | [a] | 「名前を変更」で名前を変える                                | 一覧の表示と本文の見出しが変わり、ファイル名も変わる（自動: tests/ui/test_note_actions.py）                |
 | [a] | 開いているノートの名前を変えて `Cmd+Z`                      | 元の見出しに戻る（自動: tests/ui/test_note_actions.py）                                                    |
 | [a] | 見出しの無いノートの名前を変える                            | 先頭に見出しが足され、元の文章は残る（自動: tests/ui/test_note_actions.py）                                |
-| [a] | ゴミ箱を開いて右クリック                                    | 「元に戻す」だけが出る（自動: tests/ui/test_note_actions.py）                                              |
+| [a] | ゴミ箱を開いて右クリック                                    | 「元に戻す」と「完全に削除…」が出る（自動: tests/ui/test_note_actions.py）                                |
+| [ ] | ゴミ箱で「完全に削除…」を押す                              | 名前を見せて確認し、Yes で消える。`.trash` からも無くなる                                                  |
+| [ ] | 左の「ゴミ箱」を右クリック → 空にする                      | 件数を見せて確認し、Yes で全部消える。空なら知らせが出る                                                   |
+| [ ] | ゴミ箱を見たままノートを復元する                            | 一覧が「すべて」に戻らない（ゴミ箱を見続ける）                                                             |
 | [x] | `make run` で起動しメニューバーを見る                       | 先頭が **Hitofude**（Python ではない）                                                                     |
 | [a] | スクリーンショットを撮って `Cmd+V`                          | `![](attachments/...)` が入り、`attachments/` にファイルができる（自動: tests/editor/test_paste_image.py） |
 | [a] | 画像ファイルをウィンドウへドラッグ                          | 同上。拡張子はそのまま（JPEG が PNG にならない）（自動: tests/editor/test_paste_image.py）                 |
