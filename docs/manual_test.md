@@ -192,7 +192,7 @@ NG は直す前に回帰テストを書く（CLAUDE.md §1）。
 | [x] | 「読み込む…」で `.pptx` を選ぶ                             | スライドごとに `##`。表・コード・画像・ノートが入る                                                        |
 | [x] | `Cmd+Shift+N` →「PowerPoint下書き」                        | 候補に出る。作ったノートの**表が揃っている**                                                               |
 | [x] | 「PowerPoint で書き出す…」→ PowerPoint で開く             | 表紙・箇条書き・表・コード・**右側の画像**・発表者ノート                                                   |
-| [ ] | 書き出した `.pptx` を「読み込む…」で読み戻す               | 見出しと箇条書きが戻る（自動: tests/editor/test_pptx_export.py）                                           |
+| [x] | 書き出した `.pptx` を「読み込む…」で読み戻す               | 見出しと箇条書きが戻る（自動: tests/editor/test_pptx_export.py）                                           |
 | [x] | 使用中の画像があるノートで同じ操作                          | その画像は残る。片づけるものが無ければ知らせが出る                                                         |
 | [a] | `Cmd+Shift+M` で書き出し → 他のエディタで開く              | 打った通りの Markdown。front matter は付かない（自動: tests/editor/test_exporter.py）                      |
 
