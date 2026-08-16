@@ -21,6 +21,16 @@ def config(tmp_path: Path, qapp) -> Config:
 
 
 @pytest.fixture
+def warned(monkeypatch) -> list[str]:
+    """打ち間違いの知らせ。出しっぱなしだとテストが固まる。"""
+    from PySide6.QtWidgets import QMessageBox
+
+    shown: list[str] = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda _p, _t, text, *a, **k: shown.append(text))
+    return shown
+
+
+@pytest.fixture
 def dialog(qtbot, config: Config) -> PreferencesDialog:
     widget = PreferencesDialog(config)
     qtbot.addWidget(widget)
@@ -362,12 +372,13 @@ class TestLayout:
 
         assert long.sizeHint().width() == before
 
-    def test_ホームは波線で出す(self, qtbot, config, tmp_path, monkeypatch) -> None:
-        monkeypatch.setenv("HOME", str(tmp_path))
+    def test_全文を見せる(self, qtbot, config, tmp_path) -> None:
+        """**打ち直す欄なので省略しない。** 読めないと直せない。
+        長い場所は欄の中で横に流れる（窓は広がらない）。"""
         config.vault_path = tmp_path / "Documents" / "HitofudeNotes"
         dialog = PreferencesDialog(config)
         qtbot.addWidget(dialog)
-        assert dialog.vault_label_text().startswith("~/")
+        assert dialog.vault_label_text() == str(config.vault_path)
 
     def test_省略しても全文は読める(self, qtbot, config, tmp_path) -> None:
         """縮めたぶんはツールチップで補う。どこに置いたか確かめられなくなる。"""
@@ -380,6 +391,84 @@ class TestLayout:
 
         assert str(deep) in dialog.vault_tooltip()
 
-    def test_折り返さない(self, dialog) -> None:
-        """折り返すと行の高さが変わり、上下の行に食い込む。"""
-        assert dialog.vault_label_wraps() is False
+
+class TestTypedVault:
+    """保管フォルダは**打ち込んでも変えられる**（ユーザー要望）。
+
+    「変更…」だけだと、パスを貼り付けたい・別のマシンと同じ場所を書きたい
+    ときに遠回りになる。**打ち間違いは受け取らない**（存在しない親、
+    ファイル、相対パス）。取り違えると、ノートが空のフォルダに見える。
+    """
+
+    def test_打ち込んだ場所が入る(self, qtbot, config, tmp_path) -> None:
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        target = tmp_path / "別の置き場"
+        dialog.set_vault_text(str(target))
+        assert dialog.apply() is True
+        assert config.vault_path == target
+
+    def test_波線はホームに直す(self, qtbot, config, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        dialog.set_vault_text("~/メモ置き場")
+        dialog.apply()
+        assert config.vault_path == tmp_path / "メモ置き場"
+
+    def test_前後の空白は落とす(self, qtbot, config, tmp_path) -> None:
+        """Finder からパスを貼ると空白や改行が付いてくることがある。"""
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        target = tmp_path / "貼り付け"
+        dialog.set_vault_text(f"  {target}\n")
+        dialog.apply()
+        assert config.vault_path == target
+
+    def test_相対パスは受け取らない(self, qtbot, config, warned) -> None:
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        before = config.vault_path
+        dialog.set_vault_text("メモ")
+        assert dialog.apply() is False
+        assert config.vault_path == before
+        assert warned
+
+    def test_ファイルは受け取らない(self, qtbot, config, tmp_path, warned) -> None:
+        target = tmp_path / "これはファイル.txt"
+        target.write_text("x", encoding="utf-8")
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        dialog.set_vault_text(str(target))
+        assert dialog.apply() is False
+        assert warned
+
+    def test_親が無い場所は受け取らない(self, qtbot, config, tmp_path, warned) -> None:
+        """**作るのは 1 階層まで。** 打ち間違えた深い道を黙って掘らない。"""
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        dialog.set_vault_text(str(tmp_path / "無い" / "場所" / "ノート"))
+        assert dialog.apply() is False
+        assert warned
+
+    def test_空なら変えない(self, qtbot, config, warned) -> None:
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        before = config.vault_path
+        dialog.set_vault_text("   ")
+        assert dialog.apply() is False
+        assert config.vault_path == before
+
+    def test_OKでも閉じない(self, qtbot, config, warned) -> None:
+        """直せる場所を開いたままにする。閉じると打ち直しからになる。"""
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        dialog.set_vault_text("メモ")
+        dialog.accept()
+        assert dialog.isVisible() is False or dialog.result() == 0
+
+    def test_変更ボタンは入力欄を埋める(self, qtbot, config, tmp_path) -> None:
+        dialog = PreferencesDialog(config)
+        qtbot.addWidget(dialog)
+        dialog.set_vault(tmp_path / "選んだ場所")
+        assert str(tmp_path / "選んだ場所") in dialog.vault_label_text()

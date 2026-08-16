@@ -9,8 +9,7 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFontMetrics
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -21,6 +20,8 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
@@ -66,6 +67,30 @@ DIALOG_MARGIN = 20
 VAULT_LABEL_WIDTH = 260
 # タブ幅の入力欄。1 桁ぶん + 矢印が収まればよい
 TAB_WIDTH_FIELD = 70
+
+
+def _resolve_vault(text: str) -> Path | None:
+    """打ち込まれた場所を `Path` にする。使えないなら `None`。
+
+    - 前後の空白は落とす（Finder から貼ると付いてくる）
+    - `~` はホームに直す
+    - **相対パスは受け取らない。** どこを基準にするかが人によって違う
+    - **ファイルは受け取らない**
+    - **作るのは 1 階層まで。** 打ち間違えた深い道を黙って掘らない
+      （フォルダ自体はアプリの起動時に作られる）
+    """
+    cleaned = text.strip()
+    if not cleaned:
+        return None
+
+    path = Path(cleaned).expanduser()
+    if not path.is_absolute():
+        return None
+    if path.is_file():
+        return None
+    if not path.exists() and not path.parent.is_dir():
+        return None
+    return path
 
 
 class PreferencesDialog(QDialog):
@@ -125,10 +150,13 @@ class PreferencesDialog(QDialog):
         self._theme.setCurrentIndex(self._theme.findData(config.theme_mode))
         form.addRow("テーマ", self._theme)
 
-        self._vault_label = QLabel(self)
-        # **折り返さない。** 折り返すと行の高さが変わり、上下の行に食い込む
-        self._vault_label.setWordWrap(False)
+        # **打ち込んでも変えられる**（ユーザー要望）。「変更…」だけだと、
+        # パスを貼り付けたいときに遠回りになる。入力欄なら長い場所でも
+        # 窓が広がらない（中で横に流れる）
+        self._vault_label = QLineEdit(self)
         self._vault_label.setFixedWidth(VAULT_LABEL_WIDTH)
+        self._vault_label.setPlaceholderText("~/Documents/HitofudeNotes")
+        self._vault_label.textChanged.connect(self._on_vault_typed)
         self._show_vault(config.vault_path)
         self._vault_button = QPushButton("変更…", self)
         self._vault_button.clicked.connect(self._choose_vault)
@@ -206,22 +234,18 @@ class PreferencesDialog(QDialog):
         self._restart_note.setVisible(path != self._config.vault_path)
 
     def _show_vault(self, path: Path) -> None:
-        """保管フォルダの場所を、決まった幅に収めて出す。
+        """入力欄に場所を入れる。全文を入れ、先頭を見せる。
 
-        **ホームは `~` にし、入らないぶんは真ん中を省く。** 末尾を削ると
-        フォルダ名が消えてどこだか分からなくなる。**縮めたぶんは
-        ツールチップで補う**（確かめる手が無くなっては困る）。
+        **省略しない。** 打ち直す人が全部を読めないと直せない。長い場所は
+        欄の中で横に流れる（窓は広がらない）。
         """
-        full = str(path)
-        try:
-            shown = f"~/{path.relative_to(Path.home())}"
-        except ValueError:
-            shown = full
-        metrics = QFontMetrics(self._vault_label.font())
-        self._vault_label.setText(
-            metrics.elidedText(shown, Qt.TextElideMode.ElideMiddle, VAULT_LABEL_WIDTH)
-        )
-        self._vault_label.setToolTip(full)
+        self._vault_label.setText(str(path))
+        self._vault_label.setToolTip(str(path))
+        self._vault_label.setCursorPosition(0)
+
+    def set_vault_text(self, text: str) -> None:
+        """入力欄へ直に入れる（打ち込みと同じ）。"""
+        self._vault_label.setText(text)
 
     def vault_label_text(self) -> str:
         return self._vault_label.text()
@@ -229,8 +253,31 @@ class PreferencesDialog(QDialog):
     def vault_tooltip(self) -> str:
         return self._vault_label.toolTip()
 
-    def vault_label_wraps(self) -> bool:
-        return self._vault_label.wordWrap()
+    def _on_vault_typed(self, text: str) -> None:
+        self._vault_label.setToolTip(text)
+        if not hasattr(self, "_restart_note"):
+            return  # 組み立て中（入力欄のほうが先にできる）
+        resolved = _resolve_vault(text)
+        self._restart_note.setVisible(resolved is not None and resolved != self._config.vault_path)
+
+    def _accept_typed_vault(self) -> Path | None:
+        """入力欄の内容を場所として受け取る。駄目なら知らせて `None`。
+
+        **打ち間違いを受け取らない。** 取り違えると、ノートが 1 つも無い
+        フォルダを指してしまい、消えたように見える。
+        """
+        resolved = _resolve_vault(self._vault_label.text())
+        if resolved is None:
+            QMessageBox.warning(
+                self,
+                "保管フォルダ",
+                "その場所は使えません。\n\n"
+                "・`/` から始まる場所か `~/` で書いてください\n"
+                "・ファイルではなくフォルダを指してください\n"
+                "・作れるのは 1 階層までです（親のフォルダは先に作ってください）",
+            )
+            return None
+        return resolved
 
     def reset_to_defaults(self) -> None:
         """入力欄を既定値に戻す。
@@ -250,11 +297,13 @@ class PreferencesDialog(QDialog):
         self._spacing.setCurrentIndex(self._spacing.findData(LineSpacing.NORMAL))
 
     def accept(self) -> None:
-        self.apply()
+        """OK。**受け取れない場所なら閉じない。** 閉じると打ち直しからになる。"""
+        if not self.apply():
+            return
         super().accept()
 
-    def apply(self) -> None:
-        """入力内容を設定へ書き込む。"""
+    def apply(self) -> bool:
+        """入力内容を設定へ書き込む。書けたら True。"""
         self._config.font_family = self._font.currentText()
         self._config.font_point_size = self._size.value()
         self._config.mono_family = self._mono.currentText()
@@ -262,7 +311,11 @@ class PreferencesDialog(QDialog):
         self._config.tab_width = self._tab_width.value()
         self._config.line_spacing = self.line_spacing
         self._config.trash_days = self._trash_days.value()
-        if self._pending_vault is not None:
-            self._config.vault_path = self._pending_vault
+        vault = self._accept_typed_vault()
+        if vault is None:
+            return False
+        if vault != self._config.vault_path:
+            self._config.vault_path = vault
         self._config.sync()
         self.applied.emit()
+        return True
