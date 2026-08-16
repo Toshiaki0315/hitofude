@@ -407,3 +407,45 @@ class TestThemeReachesEveryPane:
             assert palette.color(QPalette.ColorRole.Base).name() == DARK.background.lower()
         finally:
             window.close()
+
+
+class TestNestedThemeChange:
+    """**当てている最中に次の配色が来る**（ユーザー報告）。
+
+    「ダーク → システムに合わせる」（OS はライト）で、サイドバーと一覧は
+    明るいのに本文とツールバーだけ暗いままになった。
+
+    macOS へ「暗い外観」を申告したまま配色を決めるので、まず**古い暗い色**が
+    流れる。その適用の途中で申告を解くと、Qt が `colorSchemeChanged` を
+    **その場で**投げ、明るい配色が入れ子で当たる。入れ子が終わると外側の
+    処理が続きを進めるので、**古い暗い色が上書きし直す**。
+
+    アプリのパレットは入れ子側（明るい）で決まり、本文とツールバーは
+    外側（暗い）で決まる。これが食い違いの正体。
+    """
+
+    def test_入れ子で来た新しい配色が最後に残る(self, window) -> None:
+        from PySide6.QtGui import QPalette
+
+        from hitofude.theme import DARK, LIGHT
+
+        original = window._apply_palette
+        fired: list[object] = []
+
+        def apply_and_interrupt(colors):
+            original(colors)
+            # 申告を解いた瞬間に Qt が投げてくるのと同じ形（その場で届く）
+            if not fired:
+                fired.append(colors)
+                window._on_theme_changed(LIGHT)
+
+        window._apply_palette = apply_and_interrupt
+        try:
+            window._on_theme_changed(DARK)
+        finally:
+            window._apply_palette = original
+
+        assert window.editor.palette().color(QPalette.ColorRole.Base).name() == (
+            LIGHT.background.lower()
+        ), "本文だけ古い配色のまま残っている"
+        assert window.editor_pane.toolbar.rule_color() == LIGHT.rule

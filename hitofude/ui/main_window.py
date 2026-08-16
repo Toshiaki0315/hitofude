@@ -211,6 +211,9 @@ class MainWindow(QMainWindow):
         self.resize(*DEFAULT_SIZE)
         self.setMinimumSize(*MINIMUM_SIZE)
 
+        # 配色を当てている最中に次が来ることがある（`_on_theme_changed`）
+        self._applying_theme = False
+        self._pending_theme: ThemeColors | None = None
         self._theme_watcher = ThemeWatcher(self._config.theme_mode, parent=self)
         theme = self._theme_watcher.colors
         # **起動時にも当てる。** `create_application()` は「システムのテーマ」で
@@ -1812,6 +1815,30 @@ class MainWindow(QMainWindow):
         set_macos_appearance(dark=None if following else colors.is_dark)
 
     def _on_theme_changed(self, colors: ThemeColors) -> None:
+        """配色を当てる。**当てている最中に次が来たら、そちらを最後に残す。**
+
+        「ダーク → システムに合わせる」（OS はライト）で踏んだ（ユーザー報告）。
+        macOS へ「暗い外観」を申告したまま配色を決めるので、まず古い暗い色が
+        流れる。その適用の途中で申告を解くと、Qt が `colorSchemeChanged` を
+        **その場で**投げ、明るい配色が入れ子で当たる。入れ子が終わると外側が
+        続きを進めるので、古い暗い色が上書きし直していた。
+
+        結果、アプリのパレットは入れ子側（明るい）、本文とツールバーは
+        外側（暗い）になり、画面の中で配色が食い違った。
+        """
+        self._pending_theme = colors
+        if self._applying_theme:
+            return  # 外側の処理が、いま入れた色で仕上げてくれる
+
+        self._applying_theme = True
+        try:
+            while self._pending_theme is not None:
+                current, self._pending_theme = self._pending_theme, None
+                self._apply_theme_now(current)
+        finally:
+            self._applying_theme = False
+
+    def _apply_theme_now(self, colors: ThemeColors) -> None:
         self._apply_palette(colors)
         self._pane.set_theme(colors)
         self._list_pane.set_theme(colors)
