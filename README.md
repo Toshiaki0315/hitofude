@@ -8,7 +8,7 @@ Markdown のマーカー（`**`, `#`, `- ` など）はキャレットが要素�
 
 | | |
 |---|---|
-| 対象 OS | macOS 13 Ventura 以降（Apple Silicon / Intel） |
+| 対象 OS | macOS 13 Ventura 以降（Apple Silicon）        |
 | 言語 | Python 3.12+ |
 | GUI | PySide6（Qt 6.8 LTS / 6.9） |
 | 保存形式 | ローカルの `.md` プレーンテキスト |

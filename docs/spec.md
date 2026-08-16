@@ -1,7 +1,7 @@
 # ライブプレビュー型 Markdownエディタ 仕様書
 
 **プロジェクト名（仮）**: `Hitofude`
-**対象OS**: macOS 13 Ventura 以降（Apple Silicon / Intel）
+**対象OS**: macOS 13 Ventura 以降（Apple Silicon。~~Intel~~ → **ADR-0012 で対象外**）
 **開発言語**: Python 3.12+
 **GUIフレームワーク**: PySide6（Qt 6.8 LTS 系 / 6.9系）
 **保存先**: ローカルファイルシステム（`.md` プレーンテキスト）
