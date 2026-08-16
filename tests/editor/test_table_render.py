@@ -586,3 +586,34 @@ class TestScrollRepaint:
         height = editor.viewport().height()
         assert rects, "スクロールで再描画が起きていない"
         assert all(top == 0 and h >= height for top, h in rects), rects
+
+
+class TestManualFits:
+    """**同梱のマニュアルの表は、幅に収まっていること。**
+
+    収まらない表は罫線を描かず生の Markdown で出す（ADR-0003 追記）。
+    仕様どおりの動きだが、**アプリ自身の見本がそう表示されるのは困る**。
+    実際、ショートカットの表は 76 桁あって罫線が出ていなかった。
+
+    ここが赤くなったら、表の中身を削るか列を減らすこと。桁を広げる方向は
+    採らない（本文の幅は読みやすさのために 720px で決めてある）。
+    """
+
+    def test_マニュアルの表はすべて罫線が出る(self, qtbot) -> None:
+        from pathlib import Path
+
+        from hitofude.core.table import display_width, fits
+
+        editor = MarkdownEditor()
+        qtbot.addWidget(editor)
+        editor.resize(1370, 900)
+        editor.show()
+
+        manual = Path("hitofude/resources/manual.md").read_text(encoding="utf-8")
+        editor.setPlainText(manual)
+
+        columns = editor.table_columns()
+        over = [
+            line for line in manual.split("\n") if line.startswith("|") and not fits(line, columns)
+        ]
+        assert not over, [f"{display_width(line)} 桁 > {columns}: {line[:40]}" for line in over[:3]]

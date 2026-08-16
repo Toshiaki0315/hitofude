@@ -96,6 +96,13 @@ def build_menus(window) -> None:
     add(view_menu, "書式ツールバー", "Ctrl+3", window.toggle_toolbar)
     add(view_menu, "バックリンク", "Ctrl+4", window.toggle_backlinks)
     view_menu.addSeparator()
+    # **`+` は Shift を押さないと打てない。** 実際に押されるのは `Cmd+=` の
+    # ほうが多いので、両方受ける（macOS の他のアプリもそうしている）
+    zoom_in = add(view_menu, "文字を大きく", "Ctrl++", window.zoom_in)
+    zoom_in.setShortcuts([QKeySequence("Ctrl++"), QKeySequence("Ctrl+=")])
+    add(view_menu, "文字を小さく", "Ctrl+-", window.zoom_out)
+    add(view_menu, "標準の大きさ", "Ctrl+0", window.reset_zoom)
+    view_menu.addSeparator()
     add(view_menu, "ソースモード（Raw）", "Ctrl+/", window._editor.toggle_source_mode)
     add(view_menu, "フォーカスモード", "Ctrl+Shift+D", window._editor.toggle_focus_mode)
     add(view_menu, "タイプライタモード", "Ctrl+Shift+Y", window._editor.toggle_typewriter_mode)

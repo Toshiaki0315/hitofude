@@ -38,7 +38,12 @@ from PySide6.QtWidgets import (
 
 from hitofude import APP_NAME, __version__
 from hitofude.app import ThemeWatcher, apply_theme, set_macos_appearance
-from hitofude.config import Config
+from hitofude.config import (
+    DEFAULT_POINT_SIZE,
+    MAX_POINT_SIZE,
+    MIN_POINT_SIZE,
+    Config,
+)
 from hitofude.core import frontmatter
 from hitofude.core.activation import ALLOWED_SCHEMES
 from hitofude.core.document import Note, with_title
@@ -106,6 +111,10 @@ CLEANUP_PREVIEW = 10
 NEW_NOTE_TITLE = "無題"
 PINNED_NOTICE = "ピン留めしているノートは削除できません。先にピン留めを外してください。"
 NOTICE_MS = 5000
+
+# `Cmd +` / `Cmd -` の 1 押しで動く量（G-5）。環境設定の刻みは 0.5pt だが、
+# **押して分からない変化はもう一度押される**ので、こちらは 1pt にする
+ZOOM_STEP = 1.0
 
 
 def _short_path(path: Path) -> str:
@@ -1721,6 +1730,36 @@ class MainWindow(QMainWindow):
         dialog = PreferencesDialog(self._config, self)
         dialog.applied.connect(self._apply_preferences)
         dialog.exec()
+
+    def zoom_in(self) -> bool:
+        """`Cmd +`。本文を 1pt 大きくする（G-5）。変わったら True。"""
+        return self._set_font_size(self._config.font_point_size + ZOOM_STEP)
+
+    def zoom_out(self) -> bool:
+        """`Cmd -`。本文を 1pt 小さくする（G-5）。"""
+        return self._set_font_size(self._config.font_point_size - ZOOM_STEP)
+
+    def reset_zoom(self) -> bool:
+        """`Cmd 0`。既定の大きさへ戻す（G-5）。"""
+        return self._set_font_size(DEFAULT_POINT_SIZE)
+
+    def _set_font_size(self, size: float) -> bool:
+        """本文の大きさを変えて覚える。
+
+        **環境設定と同じ値を触る。** 別に持つと、片方で変えたときに
+        もう片方が古い値を書き戻す。
+
+        **端では丸める。** 上限まで 0.5pt しか無くても、そこまでは動かす
+        （押したのに何も起きないより、行けるところまで行くほうが素直）。
+        """
+        clamped = min(max(size, MIN_POINT_SIZE), MAX_POINT_SIZE)
+        if clamped == self._config.font_point_size:
+            return False
+        self._config.font_point_size = clamped
+        self._editor.set_base_point_size(clamped)
+        # 1pt の差は見て取りにくい。**変えたことが分かるように**数字を出す
+        self.statusBar().showMessage(f"文字サイズ {clamped:g}pt", NOTICE_MS)
+        return True
 
     def _apply_preferences(self) -> None:
         """設定を今の画面へ反映する。保管フォルダだけは再起動が要る。"""

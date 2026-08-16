@@ -240,6 +240,11 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._build_formats()
         self.rehighlight()
 
+    @property
+    def base_point_size(self) -> float:
+        """本文の大きさ。見出しやコードはここから決まる。"""
+        return self._base_point_size
+
     def set_base_point_size(self, size: float) -> None:
         self._base_point_size = size
         self._build_formats()
