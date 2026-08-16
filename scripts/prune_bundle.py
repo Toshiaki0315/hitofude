@@ -82,12 +82,56 @@ def _resign(app: Path) -> None:
 
     ファイルを消すと Sealed Resources が合わなくなり、macOS が起動を拒む。
     Developer ID での署名（§8.2）とは別物で、これは配布用ではない。
+
+    **先に壊れたライブラリを直す。** py2app は wheel が持ち込む署名済みの
+    `.dylib` から署名の中身だけを外し、目印（`LC_CODE_SIGNATURE`）を残す
+    ことがある。そのままだと `codesign` が
+    "main executable failed strict validation" で止まる
+    （Pillow の `liblzma.5.dylib` で踏んだ）。
     """
+    for library in sorted(app.rglob("*.dylib")):
+        _repair_signature(library)
+
     subprocess.run(
         ["codesign", "--force", "--deep", "--sign", "-", str(app)],
         check=True,
         capture_output=True,
     )
+
+
+def _repair_signature(library: Path) -> None:
+    """署名し直せない `.dylib` を、書き直して署名できる形に戻す。
+
+    `install_name_tool` に**今と同じ id を入れ直す**と Mach-O が組み直され、
+    壊れた署名の跡が消える。中身は変わらない。
+    """
+    if _sign(library):
+        return
+
+    identity = (
+        subprocess.run(["otool", "-D", str(library)], capture_output=True, text=True)
+        .stdout.strip()
+        .split("\n")[-1]
+    )
+    if not identity:
+        return
+
+    library.chmod(library.stat().st_mode | 0o200)
+    subprocess.run(
+        ["install_name_tool", "-id", identity, str(library)],
+        capture_output=True,
+        check=False,
+    )
+    if not _sign(library):
+        print(f"  署名できなかった: {library.name}")
+
+
+def _sign(target: Path) -> bool:
+    result = subprocess.run(
+        ["codesign", "--force", "--sign", "-", str(target)],
+        capture_output=True,
+    )
+    return result.returncode == 0
 
 
 def _size(path: Path) -> int:

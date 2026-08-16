@@ -69,6 +69,11 @@ EXCLUDES = [
 OPTIONS = {
     # True にすると Carbon 依存で Apple Silicon で問題が出る（§8.1）
     "argv_emulation": False,
+    # **シンボルを削らない。** 既定の strip は wheel が持ち込む署名済みの
+    # ライブラリを壊し、`codesign` が "main executable failed strict
+    # validation" で止まる（Pillow の liblzma で実際に踏んだ。341KB→184KB に
+    # 削られて署名の領域が合わなくなる）。配布には署名が要るので削らない
+    "strip": False,
     "iconfile": str(ROOT / "resources" / "Hitofude.icns"),
     "packages": [
         "PySide6",
@@ -80,6 +85,12 @@ OPTIONS = {
         "yaml",
         "watchdog",
         "hitofude",
+        # **PowerPoint の読み書き（F 群）。** `packages` に入れないと py2app は
+        # PIL の `.so` だけ拾って本体を入れず、`.app` の中で
+        # `from PIL import Image` が失敗する（ビルドして確かめた）
+        "pptx",
+        "PIL",
+        "lxml",
     ],
     "includes": ["sqlite3", "mdurl"],
     "excludes": EXCLUDES,

@@ -6,7 +6,7 @@ Hitofude が依存しているライブラリと、その許諾条件の一覧�
 ビルドした `.app` の中身から起こしている。書き写すと必ず古くなるので、
 依存を足したときは同じやり方で確かめ直すこと（末尾の「調べ直し方」）。
 
-最終確認: 2026-08-15 / PySide6 6.9.3
+最終確認: 2026-08-16 / PySide6 6.9.3 / `.app` 367MB（実測）
 
 ---
 
@@ -61,17 +61,26 @@ Hitofude が依存しているライブラリと、その許諾条件の一覧�
 | altgraph / macholib / modulegraph                               | —             | MIT                                             | py2app が使う     |
 | setuptools / packaging / pluggy / iniconfig / typing_extensions | —             | MIT / Apache-2.0 or BSD-2 / MIT / MIT / PSF-2.0 | 各ツールの土台    |
 
-## これから増えるもの（F 群 / 未着手）
+## `.app` の内訳（実測）
 
-PowerPoint との行き来（TASKS.md の F-3 / F-5）で入る予定。**まだ入れていない。**
+| 中身                                           | 大きさ  |
+| ---------------------------------------------- | ------- |
+| PySide6                                        | 291.4MB |
+| lxml                                           | 19.1MB  |
+| Pillow                                         | 13.2MB  |
+| Pygments                                       | 5.2MB   |
+| hitofude（同梱の mermaid.min.js 3.4MB を含む） | 5.0MB   |
+| python-pptx                                    | 2.3MB   |
+| その他（shiboken6 / yaml / watchdog ほか）     | 3MB     |
 
-| ライブラリ  | ライセンス   | 大きさ |
-| ----------- | ------------ | ------ |
-| python-pptx | MIT          | 1.4MB  |
-| lxml        | BSD-3-Clause | 19MB   |
-| Pillow      | MIT-CMU      | 13MB   |
+PowerPoint の読み書き（F 群）で 35MB 増えた（316MB → 367MB）。
 
-Pillow が同梱するネイティブライブラリ（実測で入っていたもの）:
+**`packages` に明記する。** py2app は Pillow の `.so` だけ拾って本体を
+入れないことがあり、`.app` の中で `from PIL import Image` が失敗する
+（ビルドして初めて分かった。`setup.py` の `packages` に `pptx` / `PIL` /
+`lxml` を足して直した）。
+
+Pillow が同梱するネイティブライブラリ（`PIL/.dylibs` に入る。実測）:
 
 | ライブラリ                       | ライセンス                            |
 | -------------------------------- | ------------------------------------- |
@@ -87,8 +96,9 @@ Pillow が同梱するネイティブライブラリ（実測で入っていた�
 
 **`libimagequant`（GPL-3.0-or-later）は入っていない。** SBOM には名前が
 あるが、`PIL.features.check("libimagequant")` は `False` で、`.dylibs` にも
-無い。**入ると `.app` 全体に GPL の義務が及ぶ**ので、Pillow の版を上げる
-ときは毎回ここを確かめること（`raqm` も同じ。LGPL の FriBiDi を連れてくる）。
+無い（ビルドした `.app` でも確認済み）。**入ると `.app` 全体に GPL の義務が
+及ぶ**ので、Pillow の版を上げるときは毎回ここを確かめること（`raqm` も同じ。
+LGPL の FriBiDi を連れてくる）。
 
 lxml は libxml2 / libxslt を静的に埋め込んでいる（どちらも MIT）。
 GPL なのは配布物に入らないテスト実行スクリプトだけ。
@@ -113,7 +123,12 @@ GPL なのは配布物に入らないテスト実行スクリプトだけ。
    - 差し替えを妨げる仕掛け（DRM）を入れない
 2. **MIT / BSD / Apache-2.0 / PSF / FTL など** — 著作権表示と許諾条文を同梱する。
    Apache-2.0（watchdog）は `NOTICE` があればそれも添える
-3. **Pillow を足したら** `libimagequant` が入っていないことを確かめる（上記）
+3. **Pillow の版を上げたら** `libimagequant` が入っていないことを確かめる（上記）
+4. **署名は内側から**。py2app は wheel が持ち込む署名済みの `.dylib` から
+   署名の中身だけを外すことがあり、`codesign --deep` が
+   "main executable failed strict validation" で止まる（Pillow の
+   `liblzma.5.dylib` で踏んだ）。`scripts/prune_bundle.py` が、署名し直せない
+   ものを `install_name_tool` で組み直してから署名する
 
 ## 調べ直し方
 
