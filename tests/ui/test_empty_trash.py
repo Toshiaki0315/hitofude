@@ -176,3 +176,37 @@ class TestMenus:
         from hitofude.ui.sidebar import ALL
 
         assert window.sidebar_menu_for(ALL) is None
+
+
+class TestEmptyNotice:
+    """空の一覧に出す案内は、**何を見ているか**で変える（ユーザー指摘）。
+
+    ゴミ箱を見ているのに「右上の ＋ で作れます」と言われても、作った
+    ノートはゴミ箱に入らない。お気に入りとタグでも同じことが起きていた。
+    """
+
+    def test_ゴミ箱では作り方を案内しない(self, window) -> None:
+        window.set_filter(TRASH)
+        text = window.note_list_pane.empty_notice_text()
+        assert "ゴミ箱" in text
+        assert "＋" not in text
+
+    def test_すべてでは作り方を案内する(self, window) -> None:
+        from hitofude.ui.sidebar import ALL
+
+        window.set_filter(ALL)
+        assert "＋" in window.note_list_pane.empty_notice_text()
+
+    def test_お気に入りではピン留めを案内する(self, window) -> None:
+        from hitofude.ui.sidebar import PINNED
+
+        window.set_filter(PINNED)
+        assert "ピン留め" in window.note_list_pane.empty_notice_text()
+
+    def test_タグではそのタグの話をする(self, window) -> None:
+        from hitofude.ui.sidebar import Filter, FilterKind
+
+        window.set_filter(Filter(FilterKind.TAG, "仕事"))
+        # どのタグを見ているのかが分かる（「ノートがありません」だけでは
+        # 絞り込みのせいなのか本当に無いのかが読めない）
+        assert "仕事" in window.note_list_pane.empty_notice_text()

@@ -65,7 +65,7 @@ from hitofude.ui.editor_pane import EditorPane
 from hitofude.ui.index_sync import IndexSyncTask, SyncReporter
 from hitofude.ui.menus import build_menus
 from hitofude.ui.note_list import NoteListView, NoteRole
-from hitofude.ui.note_list_pane import NoteListPane
+from hitofude.ui.note_list_pane import EMPTY_NOTICE, NoteListPane
 from hitofude.ui.panes import (
     SIDEBAR_MIN_WIDTH,
     PaneSplitter,
@@ -104,6 +104,24 @@ CLEANUP_PREVIEW = 10
 NEW_NOTE_TITLE = "無題"
 PINNED_NOTICE = "ピン留めしているノートは削除できません。先にピン留めを外してください。"
 NOTICE_MS = 5000
+
+
+def _empty_notice(target: Filter) -> str:
+    """一覧が 0 件のときに出す案内（C-6 の文言を絞り込みごとに変える）。
+
+    **次に何をすればよいかを言う。** ゴミ箱で「＋ で作れます」と案内すると、
+    作ったノートはゴミ箱に入らないので、案内どおりにしても状況が変わらない
+    （ユーザー指摘）。
+    """
+    match target.kind:
+        case FilterKind.TRASH:
+            return "ゴミ箱は空です。\n捨てたノートがここに 30 日残ります。"
+        case FilterKind.PINNED:
+            return "お気に入りはありません。\n一覧を右クリックしてピン留めできます。"
+        case FilterKind.TAG:
+            return f"「#{target.tag}」のノートはありません。\n本文に書くとここに集まります。"
+        case _:
+            return EMPTY_NOTICE
 
 
 class MainWindow(QMainWindow):
@@ -479,6 +497,7 @@ class MainWindow(QMainWindow):
 
     def set_filter(self, target: Filter) -> None:
         self._filter = target
+        self._list_pane.set_empty_notice(_empty_notice(target))
         self._note_list.set_rows(self._rows_for(target))
 
     def _on_filter_changed(self, target: Filter) -> None:

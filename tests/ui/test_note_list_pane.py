@@ -222,6 +222,12 @@ class TestEmptyState:
         pane.note_list.set_rows([])
         assert pane.empty_notice_visible() is True
 
+    def test_文言を差し替えられる(self, pane) -> None:
+        """**何を見ているかで案内は変わる。** ゴミ箱で「＋ で作れます」は
+        噛み合わない（作ったノートはゴミ箱に入らない）。"""
+        pane.set_empty_notice("ゴミ箱は空です。")
+        assert pane.empty_notice_text() == "ゴミ箱は空です。"
+
 
 class TestHeaderLook:
     """ヘッダの見た目（ユーザー要望の見直し）。

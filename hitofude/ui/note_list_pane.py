@@ -141,6 +141,15 @@ class NoteListPane(QWidget):
     def empty_notice_text(self) -> str:
         return self._empty.text()
 
+    def set_empty_notice(self, text: str) -> None:
+        """空のときの案内を差し替える。
+
+        **何を見ているかで案内は変わる。** ゴミ箱で「＋ で作れます」は
+        噛み合わない（作ったノートはゴミ箱に入らない）。何を出すかは
+        絞り込みを持っている `MainWindow` が決める。
+        """
+        self._empty.setText(text)
+
     def _sync_empty_notice(self) -> None:
         """ノートが 0 件のときだけ案内を出す（C-6）。
 
