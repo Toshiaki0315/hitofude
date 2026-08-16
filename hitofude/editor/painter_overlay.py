@@ -202,16 +202,19 @@ def table_decorations(editor, entries) -> list[Decoration]:
         if any(not fits(block.text(), columns) for block, _info, _rect in run):
             continue
 
-        columns = _pipe_positions(run[0][0], run[0][2])
-        if len(columns) < 2:
+        # **`columns`（桁数）に入れ直さない。** 上書きすると次の表の幅判定が
+        # `fits(文字列, 座標の一覧)` になって例外が飛び、`paintEvent` ごと
+        # 中断して本文が描かれなくなる（ユーザー報告）
+        pipes = _pipe_positions(run[0][0], run[0][2])
+        if len(pipes) < 2:
             continue  # 縦線が引けない＝表として描けない
 
         top = run[0][2].top()
         bottom = run[-1][2].bottom()
         # **ブロックの矩形は表示領域の全幅**なので、そのまま使うと罫線が
         # 画面の端まで伸びる。表の実際の幅（左端と右端の縦線）に収める
-        left = columns[0]
-        right = columns[-1] + RULE_HEIGHT
+        left = pipes[0]
+        right = pipes[-1] + RULE_HEIGHT
 
         delimiter = next(
             (i for i, (_b, info, _r) in enumerate(run) if info.type is BlockType.TABLE_DELIMITER),
@@ -221,7 +224,7 @@ def table_decorations(editor, entries) -> list[Decoration]:
             header = QRectF(left, top, right - left, run[delimiter][2].top() - top)
             result.append(Decoration(DecorationKind.TABLE_HEADER, header))
 
-        for x in columns:
+        for x in pipes:
             result.append(
                 Decoration(DecorationKind.TABLE_RULE, QRectF(x, top, RULE_HEIGHT, bottom - top))
             )

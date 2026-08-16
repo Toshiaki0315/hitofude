@@ -510,3 +510,41 @@ class TestTooWide:
         editor.resize(1900, 300)
         editor.show()
         assert editor.table_columns() == before
+
+
+class TestMultipleTables:
+    """**画面に表が 2 つ見えるとき**（ユーザー報告）。
+
+    1 つ目を描いたあと、桁数を入れておいた変数に縦線の x 座標を入れて
+    しまっていた。2 つ目の幅の判定が `fits(文字列, 座標の一覧)` になり、
+    `paintEvent` の中で `TypeError` が飛ぶ。**例外が出ると本文ごと
+    描かれない**ので、スクロールした先が真っ白になった。
+
+    表を 2 つ入れるだけでは足りない。**同時に見えていること**が要る
+    （窓が小さいと 1 つしか走査されず、素通りする）。
+    """
+
+    @pytest.fixture
+    def tall(self, qtbot) -> MarkdownEditor:
+        widget = MarkdownEditor()
+        qtbot.addWidget(widget)
+        widget.resize(760, 900)  # 表が 2 つとも入る高さ
+        widget.show()
+        return widget
+
+    def test_2つ目の表にも罫線が引かれる(self, tall) -> None:
+        tall.setPlainText(TABLE + "\n" + TABLE)
+        move_to(tall, tall.document().blockCount() - 1)
+
+        rules = [d for d in visible_decorations(tall) if d.kind is DecorationKind.TABLE_RULE]
+        tops = sorted({round(d.rect.top()) for d in rules})
+        assert len(tops) >= 2
+        # 2 つ目の表は 1 つ目よりずっと下にある
+        assert max(tops) - min(tops) > 100
+
+    def test_表が2つでも本文の飾りが消えない(self, tall) -> None:
+        """例外は `visible_decorations` 全体を巻き添えにする。"""
+        tall.setPlainText(TABLE + "> 引用\n\n" + TABLE)
+        move_to(tall, tall.document().blockCount() - 1)
+
+        assert DecorationKind.QUOTE_BAR in kinds(tall)

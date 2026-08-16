@@ -11,6 +11,7 @@
 import pytest
 from PySide6.QtGui import QTextCursor
 
+from hitofude.editor import painter_overlay
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.editor.painter_overlay import (
     CHECKED,
@@ -367,3 +368,36 @@ class TestSourceMode:
             visible_decorations(editor)
         )
         assert visible_decorations(editor)
+
+
+class TestPaintNeverHidesText:
+    """**飾りが壊れても本文は描く**（ユーザー報告の再発防止）。
+
+    `paintEvent` の中で例外が出ると `super().paintEvent()` に届かず、
+    その領域が真っ白になる。原因が何であれ、本文が消えるのは割に合わない。
+    """
+
+    def test_装飾が例外を出しても本文が描かれる(self, qtbot, monkeypatch, caplog) -> None:
+        from PySide6.QtGui import QColor, QImage
+
+        editor = MarkdownEditor()
+        qtbot.addWidget(editor)
+        editor.resize(400, 200)
+        editor.show()
+        editor.setPlainText("本文の文字")
+
+        def boom(_editor):
+            raise RuntimeError("飾りの組み立てが壊れた")
+
+        monkeypatch.setattr(painter_overlay, "visible_decorations", boom)
+
+        image = QImage(editor.viewport().size(), QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        editor.viewport().render(image)
+
+        assert any(
+            image.pixelColor(x, y) != QColor("white")
+            for y in range(image.height())
+            for x in range(image.width())
+        ), "本文が 1 ピクセルも描かれていない"
+        assert "装飾の組み立てに失敗した" in caplog.text

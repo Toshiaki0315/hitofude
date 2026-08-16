@@ -1063,9 +1063,17 @@ class MarkdownEditor(QPlainTextEdit):
         ここでしか描けない。順序が重要で、背景は `super()` の前、
         本文に重ねる記号は後に描く。
         """
-        decorations = painter_overlay.visible_decorations(self)
-        if self._focus_mode:
-            decorations = decorations + painter_overlay.focus_dim_rects(self)
+        try:
+            decorations = painter_overlay.visible_decorations(self)
+            if self._focus_mode:
+                decorations = decorations + painter_overlay.focus_dim_rects(self)
+        except Exception:
+            # **飾りの不具合で本文を隠さない。** ここで例外が出ると
+            # `super().paintEvent()` に届かず、その領域が真っ白になる
+            # （表が 2 つ見えると必ず起きていた。ユーザー報告）。
+            # 握り潰さずログには残す
+            logger.exception("装飾の組み立てに失敗した。本文だけ描く")
+            decorations = []
 
         background = QPainter(self.viewport())
         painter_overlay.paint(background, decorations, self._theme)
