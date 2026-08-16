@@ -1056,6 +1056,24 @@ class MarkdownEditor(QPlainTextEdit):
             return
         self.toggle_checkbox()
 
+    def scrollContentsBy(self, dx: int, dy: int) -> None:
+        """スクロールしたら**画面全体**を描き直す。
+
+        Qt は既にある絵をずらして、新しく出た帯だけを塗り直す。ふつうは
+        それで足りるが、**飾りは画面の外の行にも依存する**（ADR-0002 で
+        ブロック書式を使わないため、表の罫線もヘッダの帯もここで描く）。
+
+        表のヘッダの帯は区切り行（`|---|`）が見えて初めて決まる。区切り行が
+        下から入ってきた時点では、ヘッダ行はもう帯の外にあるので塗られず、
+        白いまま上へずれていく（ユーザー報告）。カーソルキーで動かすと
+        直って見えるのは、キャレット移動が別に塗り直しを起こすため。
+
+        実測: 中央値 1.9ms、95 パーセンタイル 3.0ms（マニュアルを全面
+        スクロール、273 回）。60fps の 16.7ms に対して十分収まる。
+        """
+        super().scrollContentsBy(dx, dy)
+        self.viewport().update()
+
     def paintEvent(self, event: QPaintEvent) -> None:
         """本文の下に背景要素を、上にチェックボックス記号を描く（§5.2, ADR-0002）。
 

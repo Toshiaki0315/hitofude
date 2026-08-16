@@ -5,6 +5,7 @@
 """
 
 import pytest
+from PySide6.QtWidgets import QApplication
 
 from hitofude.core.table import display_width
 from hitofude.editor.editor_widget import MarkdownEditor
@@ -548,3 +549,40 @@ class TestMultipleTables:
         move_to(tall, tall.document().blockCount() - 1)
 
         assert DecorationKind.QUOTE_BAR in kinds(tall)
+
+
+class TestScrollRepaint:
+    """**スクロールしたら画面全体を描き直す**（ユーザー報告）。
+
+    Qt は新しく出た帯だけを塗り直す。ふつうはそれで足りるが、飾りは
+    **画面の外の行にも依存する**。表のヘッダの帯は区切り行（`|---|`）が
+    見えて初めて決まるので、区切り行が下から入ってきた時点では、
+    ヘッダ行はもう帯の外にある。塗られないまま白く残り、それが
+    スクロールに合わせて上へずれていく。
+
+    カーソルキーで動かすと直るのは、キャレット移動が別途
+    塗り直しを起こすため。
+    """
+
+    def test_スクロールすると画面全体が塗り直される(self, qtbot) -> None:
+        rects: list[tuple[int, int]] = []
+
+        class Probe(MarkdownEditor):
+            def paintEvent(self, event) -> None:
+                rects.append((event.rect().top(), event.rect().height()))
+                super().paintEvent(event)
+
+        editor = Probe()
+        qtbot.addWidget(editor)
+        editor.resize(760, 900)  # 1 行ぶんが画面に対して十分小さい高さ
+        editor.show()
+        editor.setPlainText("本文\n" * 200)
+        QApplication.processEvents()
+
+        rects.clear()
+        editor.verticalScrollBar().setValue(1)
+        QApplication.processEvents()
+
+        height = editor.viewport().height()
+        assert rects, "スクロールで再描画が起きていない"
+        assert all(top == 0 and h >= height for top, h in rects), rects
