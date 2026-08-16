@@ -16,6 +16,7 @@ from PySide6.QtCore import QAbstractListModel, QModelIndex, QRect, QSize, Qt, Si
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import QListView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QWidget
 
+from hitofude.config import LineSpacing
 from hitofude.storage.index_db import NoteRow
 from hitofude.theme import LIGHT, ThemeColors
 from hitofude.ui.icons import Glyph, glyph_icon
@@ -122,6 +123,20 @@ class _Metrics:
     date_width: int = 48
 
 
+# 環境設定の「行間」から引く値。**上下の余白は控えめに動かす。**
+# 9px は「拡大して並べて選んだ」もので、12px にすると 4 件目が画面外に出る。
+# ゆったりを選んだ人はそれを承知で選んでいるので、そこで初めて 12px にする
+_SPACINGS = {
+    LineSpacing.TIGHT: _Metrics(padding=7, spacing=4),
+    LineSpacing.NORMAL: _Metrics(),
+    LineSpacing.RELAXED: _Metrics(padding=12, spacing=8),
+}
+
+
+def metrics_for(spacing: LineSpacing) -> _Metrics:
+    return _SPACINGS[spacing]
+
+
 def preview_height(font: QFont, text: str, width: int) -> int:
     """プレビューに要る高さ。
 
@@ -152,6 +167,9 @@ class NoteItemDelegate(QStyledItemDelegate):
         super().__init__(parent)
         self._theme = theme
         self._metrics = _Metrics()
+
+    def set_metrics(self, metrics: _Metrics) -> None:
+        self._metrics = metrics
 
     def set_theme(self, theme: ThemeColors) -> None:
         self._theme = theme
@@ -249,6 +267,15 @@ class NoteListView(QListView):
         self.setSelectionMode(QListView.SelectionMode.SingleSelection)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setFrameShape(QListView.Shape.NoFrame)
+
+    def set_line_spacing(self, spacing: LineSpacing) -> None:
+        """行間を変える（環境設定）。
+
+        `setUniformItemSizes(True)` は高さを 1 度だけ測って全行に当てる。
+        **測り直させないと古い高さのまま**なので、明示的に組み直す。
+        """
+        self._delegate.set_metrics(metrics_for(spacing))
+        self.reset()
 
     def set_rows(self, rows: list[NoteRow]) -> None:
         current = self.current_path()

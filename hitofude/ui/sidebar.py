@@ -13,6 +13,7 @@ from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QFontMetrics, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QTreeView, QWidget
 
+from hitofude.config import LineSpacing
 from hitofude.core import tags as tag_utils
 from hitofude.storage.index_db import TagCount
 from hitofude.theme import LIGHT, ThemeColors
@@ -27,6 +28,20 @@ TRASH_LABEL = "ゴミ箱"
 # こちらは 20px しかなく、字が上下でくっついていた。字送り（16px 前後）＋
 # 上下 5px で 26px 前後になり、同じ落ち着きになる
 ROW_PADDING = 5
+
+# 環境設定の「行間」から引く余白。**px は設定に出さない**（文字サイズと
+# 連れ立って効き方が変わる）ので、名前から実際の値をここで決める
+_PADDINGS = {
+    LineSpacing.TIGHT: 2,
+    LineSpacing.NORMAL: ROW_PADDING,
+    LineSpacing.RELAXED: 8,
+}
+
+
+def padding_for(spacing: LineSpacing) -> int:
+    return _PADDINGS[spacing]
+
+
 TAGS_LABEL = "タグ"
 
 _FILTER_ROLE = int(Qt.ItemDataRole.UserRole) + 1
@@ -117,6 +132,7 @@ class Sidebar(QTreeView):
         super().__init__(parent)
         self._theme = theme
         self._counts: list[TagCount] = []
+        self._row_padding = ROW_PADDING
         self._model = QStandardItemModel(self)
         self.setModel(self._model)
         self.setHeaderHidden(True)
@@ -128,6 +144,14 @@ class Sidebar(QTreeView):
         self.select(ALL)
 
     # ------------------------------------------------------------------ 構築
+
+    def set_line_spacing(self, spacing: LineSpacing) -> None:
+        """行間を変える（環境設定）。**組み直して初めて効く**ので引き直す。"""
+        padding = padding_for(spacing)
+        if padding == self._row_padding:
+            return
+        self._row_padding = padding
+        self.set_tags(self._counts)
 
     def set_theme(self, theme: ThemeColors) -> None:
         """アイコンをテーマの色で描き直す。
@@ -171,7 +195,7 @@ class Sidebar(QTreeView):
         root = self._model.invisibleRootItem()
 
         color = self._theme.foreground
-        height = _row_height(self)
+        height = _row_height(self, self._row_padding)
         for filter_ in (ALL, PINNED, TRASH):
             root.appendRow(_sized(_make_item(filter_.label, filter_, color), height))
 
@@ -242,14 +266,14 @@ def _size_children(item: QStandardItem, height: int) -> None:
         _size_children(child, height)
 
 
-def _row_height(widget: QWidget) -> int:
+def _row_height(widget: QWidget, padding: int = ROW_PADDING) -> int:
     """行の高さ。**字送りから決める**（`height()` ではない）。
 
     `QFontMetrics.height()` は字の高さで、行を積むときの送りは
     `lineSpacing()`。前者で組むと日本語のように背の高い字で詰まる
     （一覧のプレビューでも同じ間違いをして 2 行目が切れた）。
     """
-    return QFontMetrics(widget.font()).lineSpacing() + ROW_PADDING * 2
+    return QFontMetrics(widget.font()).lineSpacing() + padding * 2
 
 
 def _make_tag_item(node: TagNode, color: str) -> QStandardItem:

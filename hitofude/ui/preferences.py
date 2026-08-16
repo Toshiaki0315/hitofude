@@ -37,6 +37,7 @@ from hitofude.config import (
     MIN_POINT_SIZE,
     MIN_TAB_WIDTH,
     Config,
+    LineSpacing,
 )
 from hitofude.theme import ThemeMode
 
@@ -44,6 +45,12 @@ THEME_LABELS = {
     ThemeMode.SYSTEM: "システムに合わせる",
     ThemeMode.LIGHT: "ライト",
     ThemeMode.DARK: "ダーク",
+}
+
+SPACING_LABELS = {
+    LineSpacing.TIGHT: "詰めて",
+    LineSpacing.NORMAL: "ふつう",
+    LineSpacing.RELAXED: "ゆったり",
 }
 
 MAX_TRASH_DAYS = 3650
@@ -93,6 +100,13 @@ class PreferencesDialog(QDialog):
         tab_row.addStretch(1)
         form.addRow("タブ幅", tab_row)
 
+        self._spacing = QComboBox(self)
+        for spacing, label in SPACING_LABELS.items():
+            self._spacing.addItem(label, spacing)
+        self._spacing.setCurrentIndex(self._spacing.findData(config.line_spacing))
+        self._spacing.setToolTip("一覧とサイドバーの行の間隔。本文には効きません。")
+        form.addRow("行間", self._spacing)
+
         self._theme = QComboBox(self)
         for mode, label in THEME_LABELS.items():
             self._theme.addItem(label, mode)
@@ -126,7 +140,7 @@ class PreferencesDialog(QDialog):
         # `ResetRole` に置くと OS の作法どおり左端へ並ぶ
         self._reset = buttons.addButton("デフォルトに戻す", QDialogButtonBox.ButtonRole.ResetRole)
         self._reset.setToolTip(
-            "フォント・タブ幅・テーマ・ゴミ箱の保持を既定へ戻します（保管フォルダはそのまま）"
+            "フォント・行間・タブ幅・テーマ・ゴミ箱の保持を既定へ戻します（保管フォルダはそのまま）"
         )
         self._reset.clicked.connect(self.reset_to_defaults)
 
@@ -142,6 +156,11 @@ class PreferencesDialog(QDialog):
     @property
     def reset_button(self) -> QPushButton:
         return self._reset
+
+    @property
+    def line_spacing(self) -> LineSpacing:
+        """選ばれている行間。"""
+        return self._spacing.currentData()
 
     @property
     def selected_theme(self) -> ThemeMode:
@@ -181,6 +200,7 @@ class PreferencesDialog(QDialog):
         self._theme.setCurrentIndex(self._theme.findData(ThemeMode.SYSTEM))
         self._tab_width.setValue(DEFAULT_TAB_WIDTH)
         self._trash_days.setValue(DEFAULT_TRASH_DAYS)
+        self._spacing.setCurrentIndex(self._spacing.findData(LineSpacing.NORMAL))
 
     def accept(self) -> None:
         self.apply()
@@ -193,6 +213,7 @@ class PreferencesDialog(QDialog):
         self._config.mono_family = self._mono.currentText()
         self._config.theme_mode = self.selected_theme
         self._config.tab_width = self._tab_width.value()
+        self._config.line_spacing = self.line_spacing
         self._config.trash_days = self._trash_days.value()
         if self._pending_vault is not None:
             self._config.vault_path = self._pending_vault

@@ -8,6 +8,7 @@
 読み出しは必ず既定値へフォールバックする。
 """
 
+from enum import Enum
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QSettings
@@ -15,6 +16,20 @@ from PySide6.QtCore import QByteArray, QSettings
 from hitofude.core.paths import relative_inside
 from hitofude.storage.index_db import SortOrder
 from hitofude.theme import ThemeMode
+
+
+class LineSpacing(Enum):
+    """一覧とサイドバーの行間（ユーザー要望）。値は QSettings に保存する文字列。
+
+    **px では持たない。** 行間の効き方は文字サイズと連れ立って変わるので、
+    生の数値を設定に出すと「文字を大きくしたら詰まって見えるから、また
+    px を直す」になる。名前で選ばせて、実際の余白は字送りから決める。
+    """
+
+    TIGHT = "tight"
+    NORMAL = "normal"
+    RELAXED = "relaxed"
+
 
 DEFAULT_VAULT_NAME = "HitofudeNotes"
 DEFAULT_FONT_FAMILY = "Hiragino Sans"
@@ -49,6 +64,7 @@ _TAB_WIDTH = "editor/tab_width"
 _SORT_ORDER = "list/sort_order"
 _GEOMETRY = "layout/geometry"
 _LAST_NOTE = "session/last_note"
+_LINE_SPACING = "layout/line_spacing"
 
 
 class Config:
@@ -105,6 +121,19 @@ class Config:
     @font_point_size.setter
     def font_point_size(self, value: float) -> None:
         self.settings.setValue(_FONT_SIZE, float(value))
+
+    @property
+    def line_spacing(self) -> LineSpacing:
+        """行間。壊れた値は既定（ふつう）へ戻す。"""
+        raw = self.settings.value(_LINE_SPACING, LineSpacing.NORMAL.value, type=str)
+        try:
+            return LineSpacing(raw)
+        except ValueError:
+            return LineSpacing.NORMAL
+
+    @line_spacing.setter
+    def line_spacing(self, value: LineSpacing) -> None:
+        self.settings.setValue(_LINE_SPACING, value.value)
 
     @property
     def mono_family(self) -> str:

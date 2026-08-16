@@ -282,6 +282,8 @@ class MainWindow(QMainWindow):
         self._note_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._note_list.customContextMenuRequested.connect(self._show_context_menu)
 
+        self._sidebar.set_line_spacing(self._config.line_spacing)
+        self._note_list.set_line_spacing(self._config.line_spacing)
         self._sidebar.filter_changed.connect(self._on_filter_changed)
         self._sidebar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._sidebar.customContextMenuRequested.connect(self._show_sidebar_menu)
@@ -294,6 +296,8 @@ class MainWindow(QMainWindow):
         self._editor.set_tag_source(self._known_tags)
         self._editor.set_mono_family(self._config.mono_family)
         self._editor.set_tab_width(self._config.tab_width)
+        self._sidebar.set_line_spacing(self._config.line_spacing)
+        self._note_list.set_line_spacing(self._config.line_spacing)
         self._apply_list_font()
         self._editor.setFocus()
 
@@ -1769,6 +1773,8 @@ class MainWindow(QMainWindow):
         self._editor.set_image_base(self._vault.root)
         self._editor.set_mono_family(self._config.mono_family)
         self._editor.set_tab_width(self._config.tab_width)
+        self._sidebar.set_line_spacing(self._config.line_spacing)
+        self._note_list.set_line_spacing(self._config.line_spacing)
         self._apply_list_font()
         self._theme_watcher.set_mode(self._config.theme_mode)
         self._vault.purge_trash(self._config.trash_days)
