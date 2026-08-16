@@ -289,3 +289,71 @@ class TestRowPadding:
         assert view.visualRect(index).height() == pytest.approx(
             self._content_height(palette, 0) + 8, abs=1
         )
+
+
+class TestSearchJump:
+    """全文検索の結果から、その箇所へ飛ぶ（G-1）。
+
+    **今まではノートの先頭が開いていた。** 抜粋を見て選んだのに `Cmd+F` で
+    探し直しになる。飛ぶ仕組みは `Cmd+R`（アウトライン）が既に持っていた
+    ので、足りなかったのは「どの行か」だけ。
+    """
+
+    def note(self, window, title: str, body: str):
+        created = window.vault.create(title, f"# {title}\n\n{body}")
+        window.vault_index.upsert_note(created, window.vault.root)
+        window.refresh()
+        return created.path
+
+    def line_of_caret(self, window) -> int:
+        return window.editor.textCursor().blockNumber()
+
+    def choose(self, window, query: str):
+        window.full_text_search()
+        palette = window.findChild(Palette)
+        palette.open_with(query)
+        item = palette.items[0]
+        palette.chosen.emit(item)
+        return item
+
+    def test_一致した行へ飛ぶ(self, window) -> None:
+        body = "前置きです。\n" * 5 + "ここに予算の話があります。\n"
+        self.note(window, "会議メモ", body)
+        self.choose(window, "予算")
+
+        text = window.editor.toPlainText().split("\n")
+        assert "予算" in text[self.line_of_caret(window)]
+
+    def test_マーカー越しでも飛ぶ(self, window) -> None:
+        """索引は `**予算**について` を `予算について` として持っている。"""
+        self.note(window, "設計メモ", "前置き。\n\n**予算**について決めた。\n")
+        self.choose(window, "予算について")
+
+        text = window.editor.toPlainText().split("\n")
+        assert "予算" in text[self.line_of_caret(window)]
+
+    def test_見つからなければ本文の先頭(self, window) -> None:
+        """飛べないだけ。**開けないより開くほうがよい。**"""
+        from hitofude.core import frontmatter
+
+        self.note(window, "別のメモ", "本文です。\n")
+        window.full_text_search()
+        palette = window.findChild(Palette)
+        palette.open_with("別の")
+        palette.chosen.emit(PaletteItem(title="別のメモ", subtitle="", path=Path("別のメモ.md")))
+        offset = frontmatter.body_offset(window.editor.toPlainText())
+        assert window.editor.textCursor().position() == offset
+
+    def test_クイックオープンは今まで通り先頭(self, window) -> None:
+        """`Cmd+O` は場所を探しているのではない。"""
+        from hitofude.core import frontmatter
+
+        path = self.note(window, "会議メモ", "本文\n\n予算の話\n")
+        window.open_note(path)
+        window.quick_open()
+        palette = window.findChild(Palette)
+        palette.open_with("会議")
+        palette.chosen.emit(palette.items[0])
+
+        offset = frontmatter.body_offset(window.editor.toPlainText())
+        assert window.editor.textCursor().position() == offset

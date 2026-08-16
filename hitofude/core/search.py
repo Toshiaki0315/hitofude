@@ -81,3 +81,34 @@ def replace_all(
     for begin, end in reversed(matches):
         replaced = replaced[:begin] + replacement + replaced[end:]
     return replaced, len(matches)
+
+
+def matching_line(text: str, query: str) -> int | None:
+    """`query` を含む最初の行の番号（0 始まり）。無ければ None。
+
+    全文検索（`Cmd+Shift+F`）で選んだノートの、**どこへ飛ぶか**を決める
+    ために使う（G-1）。今まではノートの先頭が開くだけで、抜粋を見て選んだ
+    のに `Cmd+F` で探し直しになっていた。
+
+    **マーカーを外して見る。** 索引にはマーカーを外した写しが入っている
+    （`document.searchable_text`）ので、`**予算**について` は
+    `予算について` として引ける。素の本文で探すと、**索引では見つかるのに
+    本文では見つからない**という食い違いが起きる。
+
+    **索引に行番号は持たせない。** 持たせると索引の作りが変わって作り直しが
+    要る。ノートを開けば数え直せて、開く数は 1 つだけ。
+    """
+    if not query.strip():
+        return None
+
+    from hitofude.core.block_parser import classify_line
+    from hitofude.core.document import strip_markers
+    from hitofude.core.models import BlockState
+
+    needle = query.casefold()
+    state = BlockState()
+    for number, line in enumerate(text.split("\n")):
+        info, state = classify_line(line, number, state)
+        if needle in strip_markers(line, info).casefold() or needle in line.casefold():
+            return number
+    return None

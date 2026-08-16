@@ -9,7 +9,7 @@ R3 に従い GUI 非依存。`QTextCursor` の位置と文字オフセットは 
 
 import pytest
 
-from hitofude.core.search import find_all, find_next, replace_all
+from hitofude.core.search import find_all, find_next, matching_line, replace_all
 
 TEXT = "りんご みかん りんご\nぶどう りんご"
 
@@ -103,3 +103,49 @@ class TestReplaceAll:
         """R1: 置換はただの文字列操作。Markdown の構造を解釈しない。"""
         replaced, _ = replace_all("**強調** と `コード`", "強調", "太字")
         assert replaced == "**太字** と `コード`"
+
+
+class TestMatchingLine:
+    """全文検索の結果から、その行へ飛ぶ（G-1）。
+
+    索引には**マーカーを外した写し**が入っている（`searchable_text`）ので、
+    `**予算**について` は `予算について` として引ける。飛び先を探すときも
+    同じ形で見ないと、**索引では見つかるのに本文では見つからない**という
+    食い違いが起きる。
+
+    **索引に行番号は持たせない。** 持たせると索引の作りが変わって作り直しが
+    要るうえ、ノートを開けば数え直せる（開く数は 1 つ）。
+    """
+
+    def test_その行を返す(self) -> None:
+        text = "# 見出し\n\n本文です。\n予算の話。\n"
+        assert matching_line(text, "予算") == 3
+
+    def test_最初の一致(self) -> None:
+        assert matching_line("予算\n本文\n予算\n", "予算") == 0
+
+    def test_マーカー越しに見つける(self) -> None:
+        """索引は `**予算**について` を `予算について` として持っている。"""
+        assert matching_line("# 題\n\n**予算**について話す\n", "予算について") == 2
+
+    def test_行頭のマーカーも越える(self) -> None:
+        assert matching_line("- **予算**の話\n", "予算の話") == 0
+
+    def test_大小を無視する(self) -> None:
+        assert matching_line("# Title\n\nBudget review\n", "budget") == 2
+
+    def test_front_matterは数に入れる(self) -> None:
+        """行番号は**ファイルの先頭から**数える（キャレットの位置に使う）。"""
+        text = "---\nid: ABC\n---\n\n予算\n"
+        assert matching_line(text, "予算") == 4
+
+    def test_見つからなければNone(self) -> None:
+        assert matching_line("本文\n", "存在しない") is None
+
+    def test_空の検索語(self) -> None:
+        assert matching_line("本文\n", "") is None
+
+    def test_元の文字列を変えない(self) -> None:
+        text = "**予算**\n"
+        matching_line(text, "予算")
+        assert text == "**予算**\n"

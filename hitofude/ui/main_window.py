@@ -41,6 +41,7 @@ from hitofude.core import frontmatter
 from hitofude.core.activation import ALLOWED_SCHEMES
 from hitofude.core.document import Note, with_title
 from hitofude.core.outline import headings
+from hitofude.core.search import matching_line
 from hitofude.core.stats import count as count_text
 from hitofude.core.wikilink import context_line, normalize, resolve
 from hitofude.editor import exporter, importer, pptx_export
@@ -118,6 +119,8 @@ class MainWindow(QMainWindow):
         self._loading = False
         self._opening = False
         self._filter: Filter = ALL
+        # 全文検索で最後に打った語（G-1）。飛び先を数え直すのに使う
+        self._search_query = ""
 
         self._build_ui()
         self._build_menus()
@@ -1283,9 +1286,15 @@ class MainWindow(QMainWindow):
         self._editor.setFocus()
 
     def full_text_search(self) -> None:
-        """`Cmd+Shift+F`。本文を検索する（spec §5.4）。"""
-        palette = self._make_palette("本文を検索…")
+        """`Cmd+Shift+F`。本文を検索する（spec §5.4）。
+
+        **選んだら、その箇所へ飛ぶ**（G-1）。抜粋を見て選んだのに先頭が
+        開くと、`Cmd+F` で探し直しになる。
+        """
+        palette = Palette(self, placeholder="本文を検索…", theme=self._theme_watcher.colors)
         palette.set_provider(self._search_items)
+        palette.chosen.connect(self._on_search_chosen)
+        palette.finished.connect(palette.deleteLater)
         palette.open_with()
 
     def _make_palette(self, placeholder: str) -> Palette:
@@ -1303,10 +1312,25 @@ class MainWindow(QMainWindow):
         return fuzzy_filter(query, items)
 
     def _search_items(self, query: str) -> list[PaletteItem]:
+        # 飛び先を探すのに要る。**索引には行番号を持たせない**（作りが
+        # 変わって作り直しが要る。開いたノートで数え直せば足りる）
+        self._search_query = query
         return [
             PaletteItem(title=hit.title, subtitle=hit.snippet, path=hit.path)
             for hit in self._db.search(query)
         ]
+
+    def _on_search_chosen(self, item: PaletteItem) -> None:
+        """検索の結果を開いて、一致した行へキャレットを置く（G-1）。
+
+        **見つからなくても開く。** 飛べないだけで、開けないより開くほうがよい。
+        """
+        self.open_note(self._vault.root / item.path)
+        self._note_list.select_path(item.path)
+
+        line = matching_line(self._editor.toPlainText(), self._search_query)
+        if line is not None:
+            self.jump_to_line(line)
 
     def _on_palette_chosen(self, item: PaletteItem) -> None:
         if item.line is not None:
