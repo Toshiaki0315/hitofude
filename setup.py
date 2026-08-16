@@ -101,6 +101,14 @@ OPTIONS = {
         "CFBundleShortVersionString": "0.1.0",
         "CFBundleVersion": "1",
         "LSMinimumSystemVersion": "13.0",
+        # **対応する言語を申告する（ユーザー指摘）。** ファイルを選ぶ画面や
+        # 印刷パネルは macOS が描くので、こちらが何も言わないと英語のまま出る
+        # （Finder は日本語なのに「Open / Cancel / New Folder」と並ぶ）。
+        # ここに書いた言語と、利用者の優先言語の重なりで表示言語が決まる
+        "CFBundleDevelopmentRegion": "ja",
+        "CFBundleLocalizations": ["ja", "en"],
+        # アプリ自身の文言（日本語）と、OS が描く部分の言語が違ってもよい
+        "CFBundleAllowMixedLocalizations": True,
         "NSHighResolutionCapable": True,
         "NSHumanReadableCopyright": "© 2026 Toshiaki Nomura",
         # 既定の保管フォルダが ~/Documents なので、初回起動で許可を求められる

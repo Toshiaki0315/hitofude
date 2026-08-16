@@ -75,6 +75,10 @@ Hitofude が依存しているライブラリと、その許諾条件の一覧�
 
 PowerPoint の読み書き（F 群）で 35MB 増えた（316MB → 367MB）。
 
+**対応言語を申告する。** `CFBundleLocalizations` に `ja` を書かないと、
+ファイルを選ぶ画面や印刷パネル（macOS が描く部分）が英語のまま出る
+（実測: 申告なし `preferredLocalizations = ['English']` / 申告あり `['ja']`）。
+
 **`packages` に明記する。** py2app は Pillow の `.so` だけ拾って本体を
 入れないことがあり、`.app` の中で `from PIL import Image` が失敗する
 （ビルドして初めて分かった。`setup.py` の `packages` に `pptx` / `PIL` /
