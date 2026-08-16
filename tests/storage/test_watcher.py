@@ -285,3 +285,69 @@ class TestVaultWatcherIntegration:
         assert instance.running is True
         instance.stop()
         assert instance.running is False
+
+
+class TestShutdown:
+    """**終了する前に必ず監視を止める。**
+
+    macOS のクラッシュレポートに、`FSEventStreamCallback` が
+    `PyGILState_Ensure` を呼んで落ちているものが 2 件残っていた。その時
+    メインスレッドは既に `exit()` の後（C++ の後片付け中）で、Python は
+    もう動いていない。**監視が生きたままプロセスが終わる**と起きる。
+
+    止め忘れを責めても再発は防げないので、終了直前にまとめて止める。
+    """
+
+    @pytest.fixture
+    def vault(self, tmp_path):
+        from hitofude.storage.vault import Vault
+
+        return Vault(tmp_path / "V")
+
+    def test_始めたら登録される(self, vault, qapp) -> None:
+        from hitofude.storage import watcher as module
+
+        instance = module.VaultWatcher(vault)
+        instance.start()
+        try:
+            assert instance in module.live_watchers()
+        finally:
+            instance.stop()
+
+    def test_止めれば外れる(self, vault, qapp) -> None:
+        from hitofude.storage import watcher as module
+
+        instance = module.VaultWatcher(vault)
+        instance.start()
+        instance.stop()
+        assert instance not in module.live_watchers()
+
+    def test_止め忘れても終了前に止まる(self, vault, qapp) -> None:
+        from hitofude.storage import watcher as module
+
+        instance = module.VaultWatcher(vault)
+        instance.start()
+        module.stop_all()
+        assert instance.running is False
+
+    def test_止まらなければ記録を残す(self, vault, qapp, caplog) -> None:
+        """**黙って諦めない。** 次に落ちたときの手掛かりになる。"""
+        from hitofude.storage import watcher as module
+
+        instance = module.VaultWatcher(vault)
+        instance.start()
+
+        class Stubborn:
+            def stop(self) -> None: ...
+            def join(self, timeout=None) -> None: ...
+            def is_alive(self) -> bool:
+                return True
+
+        real = instance._observer
+        instance._observer = Stubborn()
+        try:
+            instance.stop()
+            assert "止まらなかった" in caplog.text
+        finally:
+            real.stop()
+            real.join(timeout=2.0)

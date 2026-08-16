@@ -8,8 +8,11 @@ Qt のイベントループへ渡す口がどこかに要る。
 触れない純関数側へ寄せてある。Qt を挟むと組み合わせを検査しづらい。
 """
 
+import atexit
+import logging
 import queue
 import time
+import weakref
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -24,6 +27,40 @@ from hitofude.storage.vault import (
     SKIP_DIRS,
     Vault,
 )
+
+logger = logging.getLogger(__name__)
+
+# 動いている監視。**終了直前にまとめて止める**ために覚えておく（下の `stop_all`）
+_LIVE: "weakref.WeakSet[VaultWatcher]" = weakref.WeakSet()
+
+# `observer.join()` を待つ長さ。ここを過ぎても止まらなければ記録を残す
+JOIN_TIMEOUT = 2.0
+
+
+def live_watchers() -> list["VaultWatcher"]:
+    """今動いている監視。"""
+    return list(_LIVE)
+
+
+def stop_all() -> None:
+    """終了する前に監視を全部止める。
+
+    **止め忘れるとプロセスの終了時に落ちる。** macOS の FSEvents は
+    別スレッドからコールバックを呼び、その中で GIL を取ろうとする。
+    Python が既に終了していると、そこで segfault になる（クラッシュ
+    レポートで確認済み）。
+
+    `atexit` は Python の後片付けより**前**に走るので、ここで止めれば
+    その窓が閉じる。誰が止め忘れても効く。
+    """
+    for watcher in live_watchers():
+        try:
+            watcher.stop()
+        except Exception:  # 終了処理なので、ここで例外を上げても誰も拾えない
+            logger.exception("終了前に監視を止められなかった")
+
+
+atexit.register(stop_all)
 
 SUPPRESS_SECONDS = 1.5
 """spec §7.5: 自分で書いた直後、このあいだは同じパスのイベントを無視する。"""
@@ -140,14 +177,23 @@ class VaultWatcher(QObject):
         self._observer.schedule(_Handler(self._enqueue), str(self._vault.root), recursive=True)
         self._observer.start()
         self._timer.start()
+        _LIVE.add(self)
 
     def stop(self) -> None:
+        """監視を止める。**スレッドが終わるまで待つ。**
+
+        待ちきれなかったときは記録を残す。生き残った監視スレッドは
+        終了時の segfault に直結するので、黙って諦めない。
+        """
         self._timer.stop()
+        _LIVE.discard(self)
         if self._observer is None:
             return
-        self._observer.stop()
-        self._observer.join(timeout=2.0)
-        self._observer = None
+        observer, self._observer = self._observer, None
+        observer.stop()
+        observer.join(timeout=JOIN_TIMEOUT)
+        if observer.is_alive():
+            logger.warning("監視スレッドが %.1f 秒で止まらなかった", JOIN_TIMEOUT)
 
     @property
     def running(self) -> bool:

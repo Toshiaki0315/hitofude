@@ -87,3 +87,32 @@ def write_png(png_bytes):
         return path
 
     return make
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _release_clipboard():
+    """終了する前にクリップボードを空にする。
+
+    **これを怠るとテストの最後に segfault で落ちる（exit 139）。**
+    Python 側で作った `QMimeData` をクリップボードに載せたまま終了すると、
+    Qt の後片付け（C++ の静的デストラクタ）が、既に終了した Python
+    インタプリタへ触りに行く。実測でも `QMimeData` を載せて終了する
+    プログラムは **20 回中 20 回**落ちた。
+
+    **offscreen のときだけ。** 実機（cocoa）では落ちない（5 回中 0 回）ので、
+    アプリ側の問題ではない。`cocoa` で走らせた人の**本物のクリップボードを
+    消さない**ために、ここで環境を見て分ける。
+
+    全件流すと出たり出なかったりしたのは、後から走るテストが別の中身で
+    上書きすると落ちなくなるため。`tests/editor/test_exporter.py` を
+    単独で流すと必ず再現する。
+    """
+    yield
+
+    if os.environ.get("QT_QPA_PLATFORM") != "offscreen":
+        return
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is not None:
+        app.clipboard().clear()
