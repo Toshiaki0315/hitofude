@@ -154,7 +154,10 @@ class FormatToolbar(QWidget):
             line.setStyleSheet(f"color: {self._theme.rule};")
         self.setStyleSheet(
             f"QWidget {{ background: {self._theme.background}; }}"
-            f"QToolButton {{ border: none; border-radius: 5px; padding: 2px 6px; }}"
+            # **薄い枠を付ける**（ユーザー要望）。押せる場所がどこまでかが
+            # 分かる。色は罫線と同じものを使う（同じ役目の線に色を増やさない）
+            f"QToolButton {{ border: 1px solid {self._theme.rule}; "
+            f"border-radius: 5px; padding: 2px 6px; }}"
             f"QToolButton:hover {{ background: {self._theme.selection_background}; }}"
             # 押しっぱなしの状態が見えないと、今どちらのモードか分からない
             f"QToolButton:checked {{ background: {self._theme.selection_background}; "

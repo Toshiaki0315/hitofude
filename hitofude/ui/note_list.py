@@ -102,6 +102,9 @@ class NoteListModel(QAbstractListModel):
 
 PREVIEW_MAX_LINES = 2
 
+# 行と行のあいだの仕切り（ユーザー要望）。**太いと飾りに見える**ので 1px
+SEPARATOR_HEIGHT = 1
+
 
 @dataclass(frozen=True, slots=True)
 class _Metrics:
@@ -168,6 +171,26 @@ class NoteItemDelegate(QStyledItemDelegate):
         self._theme = theme
         self._metrics = _Metrics()
 
+    def _draw_separator(self, painter: QPainter, option, index: QModelIndex) -> None:
+        """行の下に 1px の仕切り線を引く（ユーザー要望）。
+
+        **いちばん下の行には引かない。** 下に何も無いところへ線を引くと、
+        宙に浮いて見える。
+
+        色は罫線（`theme.rule`）と同じ。同じ役目の線に色を増やさない。
+        本文の左端に合わせて内側に寄せる（端まで引くと窓の枠に見える）。
+        """
+        if index.row() >= index.model().rowCount() - 1:
+            return
+        inset = self._metrics.padding
+        painter.fillRect(
+            option.rect.left() + inset,
+            option.rect.bottom() - SEPARATOR_HEIGHT + 1,
+            option.rect.width() - inset * 2,
+            SEPARATOR_HEIGHT,
+            QColor(self._theme.rule),
+        )
+
     def set_metrics(self, metrics: _Metrics) -> None:
         self._metrics = metrics
 
@@ -193,6 +216,7 @@ class NoteItemDelegate(QStyledItemDelegate):
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
         painter.save()
+        self._draw_separator(painter, option, index)
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
         if selected:
             painter.fillRect(option.rect, QColor(self._theme.selection_background))
