@@ -243,13 +243,21 @@ class TestHeaderLook:
 
     実機を見ると `⇅` だけ枠付きで浮いていた。`set_theme` が `＋` にしか
     書式を当てていなかったため（**あとから足したボタンが漏れていた**）。
+
+    **枠そのものは後に「付ける」へ変わった**（ユーザー要望）。本文側の
+    ツールバーと同じ角丸の枠にする。ここで見るのは**2 つが揃うこと**で、
+    それは枠の有無が変わっても要る性質。
     """
 
     def test_2つのボタンが同じ書式(self, pane) -> None:
         assert pane.sort_button.styleSheet() == pane.new_button.styleSheet()
 
-    def test_枠を描かない(self, pane) -> None:
-        assert "border: none" in pane.sort_button.styleSheet()
+    def test_本文側と同じ枠を描く(self, pane) -> None:
+        from hitofude.ui.format_toolbar import BUTTON_RADIUS
+
+        style = pane.sort_button.styleSheet()
+        assert f"border-radius: {BUTTON_RADIUS}px" in style
+        assert "border: none" not in style
 
     def test_テーマを変えても揃う(self, pane) -> None:
         from hitofude.theme import DARK

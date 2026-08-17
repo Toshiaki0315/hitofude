@@ -111,3 +111,49 @@ class TestButtonFrame:
 
         style = bar.buttons()[0].styleSheet() or bar.styleSheet()
         assert DARK.rule.lower() in style.lower()
+
+
+class TestListPaneButtons:
+    """一覧の上の `⇅` と `＋` にも同じ枠を付ける（ユーザー要望）。
+
+    **同じバーに並ぶボタンは同じ見た目にする。** 本文側だけ枠が付いていると、
+    こちらが押せるものだと分かりにくい。
+    """
+
+    def make(self, qtbot):
+        from hitofude.ui.note_list_pane import NoteListPane
+
+        pane = NoteListPane()
+        qtbot.addWidget(pane)
+        return pane
+
+    def test_両方に枠が付く(self, qtbot) -> None:
+        pane = self.make(qtbot)
+        for button in (pane.sort_button, pane.new_button):
+            style = button.styleSheet().lower()
+            assert LIGHT.rule.lower() in style
+            assert "border-radius" in style
+
+    def test_本文側と同じ角丸(self, qtbot) -> None:
+        """**丸みが違うと不揃いに見える。** 同じ値を使う。"""
+        from hitofude.ui.format_toolbar import BUTTON_RADIUS
+
+        pane = self.make(qtbot)
+        assert f"border-radius: {BUTTON_RADIUS}px" in pane.sort_button.styleSheet()
+
+    def test_テーマに追従する(self, qtbot) -> None:
+        pane = self.make(qtbot)
+        pane.set_theme(DARK)
+        assert DARK.rule.lower() in pane.new_button.styleSheet().lower()
+
+    def test_三角と記号が重ならない(self, qtbot) -> None:
+        """枠と余白のぶんだけ中身が広がる。並び順の三角の場所も確かめる。"""
+        import math
+
+        from PySide6.QtGui import QFontMetricsF
+
+        from hitofude.ui.note_list_pane import SORT_GLYPH, SORT_INDICATOR_ROOM
+
+        pane = self.make(qtbot)
+        glyph = QFontMetricsF(pane.sort_button.font()).horizontalAdvance(SORT_GLYPH)
+        assert pane.sort_button.minimumWidth() >= math.ceil(glyph + SORT_INDICATOR_ROOM)

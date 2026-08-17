@@ -36,6 +36,10 @@ BAR_PADDING = round(3 * TOOLBAR_SCALE)
 # バーの高さ。**一覧側の上のバーもこれに揃える**（左右に並んで見えるので、
 # 高さが違うと段差になって目に付く。ユーザー要望）
 BAR_HEIGHT = BUTTON_SIZE + BAR_PADDING * 2
+
+# ボタンの枠の丸み（ユーザー要望）。**一覧の上のボタンとも揃える**ので、
+# 値はここに置いて向こうから引く（別々に書くと丸みが食い違う）
+BUTTON_RADIUS = 5
 # 生の Markdown を出す切り替え（ユーザー要望）。中身はソースモード
 RAW_LABEL = "Raw"
 # 本文との境目。ペインの区切り（`QSplitter::handle`）と同じ太さに揃える
@@ -157,7 +161,7 @@ class FormatToolbar(QWidget):
             # **薄い枠を付ける**（ユーザー要望）。押せる場所がどこまでかが
             # 分かる。色は罫線と同じものを使う（同じ役目の線に色を増やさない）
             f"QToolButton {{ border: 1px solid {self._theme.rule}; "
-            f"border-radius: 5px; padding: 2px 6px; }}"
+            f"border-radius: {BUTTON_RADIUS}px; padding: 2px 6px; }}"
             f"QToolButton:hover {{ background: {self._theme.selection_background}; }}"
             # 押しっぱなしの状態が見えないと、今どちらのモードか分からない
             f"QToolButton:checked {{ background: {self._theme.selection_background}; "

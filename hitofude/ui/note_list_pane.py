@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from hitofude.storage.index_db import SortOrder
 from hitofude.theme import LIGHT, ThemeColors
-from hitofude.ui.format_toolbar import BAR_HEIGHT
+from hitofude.ui.format_toolbar import BAR_HEIGHT, BUTTON_RADIUS
 from hitofude.ui.icons import TOOLBAR_SCALE
 from hitofude.ui.note_list import NoteListView
 from hitofude.ui.panes import NOTE_LIST_MIN_WIDTH
@@ -197,7 +197,14 @@ class NoteListPane(QWidget):
         # ボタンだけに当てる。ペイン全体へ流すと一覧の配色まで上書きしてしまう。
         # **両方に当てる。** 片方だけだと、あとから足したボタンが枠付きで
         # 浮いて見える（実機で `⇅` だけ枠が出ていた）
-        style = f"QToolButton {{ color: {theme.muted_foreground}; border: none; }}"
+        # **本文側のツールバーと同じ見た目にする**（ユーザー要望）。同じバーに
+        # 並ぶのに片方だけ枠が無いと、押せるものだと分かりにくい。丸みは
+        # 向こうの値を引く（別々に書くと食い違う）
+        style = (
+            f"QToolButton {{ color: {theme.muted_foreground}; "
+            f"border: 1px solid {theme.rule}; border-radius: {BUTTON_RADIUS}px; "
+            f"padding: 2px 6px; }}"
+        )
         for button in (self._new, self._sort):
             button.setStyleSheet(style)
         # **案内は一覧の背景の上に描く。** 透けるのに任せていたが、上のバーの
