@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 from hitofude.storage.index_db import SortOrder
 from hitofude.theme import LIGHT, ThemeColors
 from hitofude.ui.format_toolbar import BAR_HEIGHT, BUTTON_RADIUS
-from hitofude.ui.icons import TOOLBAR_SCALE
+from hitofude.ui.icons import TOOLBAR_SCALE, apply_menu_font
 from hitofude.ui.note_list import NoteListView
 from hitofude.ui.panes import NOTE_LIST_MIN_WIDTH
 
@@ -89,6 +89,7 @@ class NoteListPane(QWidget):
         # 切り捨てると 1px 足りずに重なることがある（実測 31.5 → 31）
         self._sort.setMinimumWidth(math.ceil(glyph + SORT_INDICATOR_ROOM))
         menu = QMenu(self._sort)
+        apply_menu_font(menu)
         self._sort_actions: dict[SortOrder, QAction] = {}
         for order, label in SORT_LABELS.items():
             action = menu.addAction(label)

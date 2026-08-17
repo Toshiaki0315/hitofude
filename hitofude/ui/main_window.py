@@ -69,6 +69,7 @@ from hitofude.theme import ThemeColors, ThemeMode
 from hitofude.ui.backlink_bar import Backlink
 from hitofude.ui.conflict_dialog import ConflictDialog, Resolution
 from hitofude.ui.editor_pane import EditorPane
+from hitofude.ui.icons import apply_menu_font
 from hitofude.ui.index_sync import IndexSyncTask, StatsReporter, StatsTask, SyncReporter
 from hitofude.ui.menus import build_menus
 from hitofude.ui.note_list import NoteListView, NoteRole
@@ -606,6 +607,7 @@ class MainWindow(QMainWindow):
         if target.kind is not FilterKind.TRASH:
             return None
         menu = QMenu(self)
+        apply_menu_font(menu)
         action = menu.addAction("ゴミ箱を空にする…")
         action.triggered.connect(self.empty_trash)
         # **押してから断らない。** 件数は開く前に分かるので、押せない状態で
@@ -629,6 +631,7 @@ class MainWindow(QMainWindow):
         """
         path = self._vault.root / relative
         menu = QMenu(self)
+        apply_menu_font(menu)
         if self._filter.kind is FilterKind.TRASH:
             menu.addAction("元に戻す").triggered.connect(lambda: self.restore_note(path))
             menu.addSeparator()
