@@ -1,6 +1,9 @@
-"""索引の走査を背景で回す部品（spec §6.6, §7.3）。
+"""重い処理を背景で回す部品（spec §6.6, §7.3）。
 
-`MainWindow` から切り出した。走査そのものはウィンドウの都合を知らない。
+`MainWindow` から切り出した。処理そのものはウィンドウの都合を知らない。
+
+- `IndexSyncTask` … vault の走査
+- `StatsTask` … 文字数と行数の集計
 """
 
 import logging
@@ -8,6 +11,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, Signal
 
+from hitofude.core.stats import count
 from hitofude.storage.index_db import IndexDb
 from hitofude.storage.vault import Vault
 
@@ -47,3 +51,36 @@ class IndexSyncTask(QRunnable):
             self._reporter.failed.emit(error)
             return
         self._reporter.finished.emit(result)
+
+
+class StatsReporter(QObject):
+    """数え終わりを Qt スレッドへ渡す口。"""
+
+    counted = Signal(int, object)
+    """`(合図の番号, Stats)`。番号は**古い結果を捨てる**ために付ける。"""
+
+
+class StatsTask(QRunnable):
+    """文字数と行数を背景で数える（ユーザー要望）。
+
+    長い本文では時間がかかる（実測: 5 万文字で 70ms、忙しいときは 285ms）。
+    打つのをやめて 0.4 秒後に走るので入力の邪魔にはならないが、その一瞬だけ
+    画面が止まる。**数えるのは表示のためだけ**なので、待たせる理由がない。
+
+    **本文は Qt スレッドで写し取ってから渡す。** ワーカーからウィジェットに
+    触ると落ちる。ここへ来るのはただの文字列。
+    """
+
+    def __init__(self, text: str, token: int, reporter: StatsReporter) -> None:
+        super().__init__()
+        self._text = text
+        self._token = token
+        self._reporter = reporter
+
+    def run(self) -> None:
+        try:
+            result = count(self._text)
+        except Exception:
+            logger.exception("文字数を数えられなかった")
+            return
+        self._reporter.counted.emit(self._token, result)

@@ -69,7 +69,7 @@ from hitofude.theme import ThemeColors, ThemeMode
 from hitofude.ui.backlink_bar import Backlink
 from hitofude.ui.conflict_dialog import ConflictDialog, Resolution
 from hitofude.ui.editor_pane import EditorPane
-from hitofude.ui.index_sync import IndexSyncTask, SyncReporter
+from hitofude.ui.index_sync import IndexSyncTask, StatsReporter, StatsTask, SyncReporter
 from hitofude.ui.menus import build_menus
 from hitofude.ui.note_list import NoteListView, NoteRole
 from hitofude.ui.note_list_pane import EMPTY_NOTICE, NoteListPane
@@ -92,6 +92,12 @@ STASH_INTERVAL_SECONDS = 2.0
 # 文字数を数え直すまでの待ち。38,000 字のノートで 40ms 掛かる（実測）ので
 # 1 打ごとには数えられない
 STATS_DELAY_MS = 400
+
+# この長さを超えたら、文字数の集計を背景へ回す（ユーザー要望）。
+# **1 フレーム（16ms）に収まるうちはその場で数える。** 実測で
+# 1,000 文字 1.5ms / 1 万文字 13.7ms / 1.3 万文字 17.0ms。短い本文を
+# 投げると、返ってくるまでの往復のほうが長くつく
+ASYNC_STATS_CHARS = 10_000
 # 「直前のノートへ戻る」で遡れる数（C-8）
 MAX_HISTORY = 20
 DIRTY_MARK = "•"
@@ -191,6 +197,12 @@ class MainWindow(QMainWindow):
         # 入れると「戻る」の 1 回目が今の場所になり、押しても何も起きない
         self._history: list[Path] = []
         self._going_back = False
+
+        # 文字数の集計（長い本文だけ背景で回す）。**親を付けない**のは
+        # 索引の走査と同じ理由（結果が戻る前に窓ごと消えると落ちる）
+        self._stats_reporter = StatsReporter()
+        self._stats_reporter.counted.connect(self._on_stats_counted)
+        self._stats_token = 0
 
         self._stats_timer = QTimer(self)
         self._stats_timer.setSingleShot(True)
@@ -1080,10 +1092,35 @@ class MainWindow(QMainWindow):
         self._mode_label.setText(self.mode_text())
 
     def _update_stats(self) -> None:
+        """ステータスバーの「◯◯文字 / ◯◯行」を更新する。
+
+        **長い本文は背景で数える**（ユーザー要望）。その場で数えると、
+        打つ手を止めた 0.4 秒後に画面が 70ms（忙しいときは 285ms）止まる。
+        数えるのは表示のためだけなので、待たせる理由がない。
+        """
         if self._note is None:
             self._stats_label.setText("")
             return
-        stats = count_text(self._editor.toPlainText())
+
+        text = self._editor.toPlainText()
+        # 前に投げたぶんの結果を捨てるための合図
+        self._stats_token += 1
+        if len(text) <= ASYNC_STATS_CHARS:
+            self._show_stats(count_text(text))
+            return
+        QThreadPool.globalInstance().start(StatsTask(text, self._stats_token, self._stats_reporter))
+
+    def _on_stats_counted(self, token: int, stats) -> None:
+        """背景で数え終わった結果を出す。
+
+        **古い結果は捨てる。** 数え終わる前に別のノートへ移れるので、
+        遅れて届いた前のノートの数字を出すと、今見ているものと食い違う。
+        """
+        if self._closing or token != self._stats_token:
+            return
+        self._show_stats(stats)
+
+    def _show_stats(self, stats) -> None:
         self._stats_label.setText(f"{stats.characters:,} 文字 / {stats.lines:,} 行")
 
     def status_text(self) -> str:
