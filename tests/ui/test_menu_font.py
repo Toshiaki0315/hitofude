@@ -45,6 +45,33 @@ class TestStep:
         assert MENU_FONT_STEP == 2
 
 
+class TestTooltips:
+    """ボタンに乗せたときの説明も同じだけ大きくする（ユーザー要望）。
+
+    **ツールチップはアプリ全体で 1 つ**の設定を持つ（`QToolTip.setFont`）。
+    ボタンごとに当てて回る必要はないし、当てて回ると当て漏れる。
+    """
+
+    def test_2ポイント大きい(self, qapp) -> None:
+        from PySide6.QtWidgets import QToolTip
+
+        from hitofude.app import apply_chrome_font
+
+        apply_chrome_font(qapp)
+        expected = qapp.font().pointSizeF() + MENU_FONT_STEP
+        assert QToolTip.font().pointSizeF() == pytest.approx(expected)
+
+    def test_起動時に当たっている(self, qapp) -> None:
+        """`create_application()` を通れば設定済みになっていること。"""
+        from PySide6.QtWidgets import QToolTip
+
+        from hitofude.app import create_application
+
+        app = create_application([])
+        expected = app.font().pointSizeF() + MENU_FONT_STEP
+        assert QToolTip.font().pointSizeF() == pytest.approx(expected)
+
+
 class TestMenus:
     def test_並び順のメニュー(self, qtbot) -> None:
         pane = NoteListPane()

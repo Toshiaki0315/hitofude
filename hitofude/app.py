@@ -5,11 +5,12 @@ import sys
 from typing import cast
 
 from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtGui import QColor, QGuiApplication, QPalette
-from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QPalette
+from PySide6.QtWidgets import QApplication, QToolTip
 
 from hitofude import APP_NAME, ORG_DOMAIN, ORG_NAME, __version__
 from hitofude.theme import ThemeColors, ThemeMode, colors_for
+from hitofude.ui.icons import MENU_FONT_STEP
 
 logger = logging.getLogger(__name__)
 
@@ -391,8 +392,23 @@ def create_application(argv: list[str] | None = None) -> QApplication:
     app.setOrganizationDomain(ORG_DOMAIN)
     app.setApplicationVersion(__version__)
 
+    apply_chrome_font(app)
     apply_theme(app, colors_for(ThemeMode.SYSTEM, system_is_dark=system_is_dark()))
     return app
+
+
+def apply_chrome_font(app: QApplication) -> None:
+    """本文以外の文字（今はツールチップ）の大きさを決める。
+
+    **ツールチップはアプリ全体で 1 つの設定**（`QToolTip.setFont`）。
+    ボタンごとに当てて回る必要はないし、当てて回ると必ず当て漏れる。
+
+    ポップアップメニューと同じだけ大きくする（`MENU_FONT_STEP`）。どちらも
+    **押す前に読むもの**で、揃っていないほうが不自然に見える。
+    """
+    font = QFont(app.font())
+    font.setPointSizeF(font.pointSizeF() + MENU_FONT_STEP)
+    QToolTip.setFont(font)
 
 
 class ThemeWatcher(QObject):
