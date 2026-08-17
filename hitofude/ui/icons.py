@@ -67,6 +67,14 @@ class Glyph(Enum):
     TAG = auto()
     """タグ。"""
 
+    # ------------------------------------------------- 一覧の上のボタン
+
+    SORT = auto()
+    """並び順。上下の矢印。"""
+
+    NEW_NOTE = auto()
+    """新規ノート。＋。"""
+
     # ------------------------------------------- 書式ツールバー（B-1）
 
     BOLD = auto()
@@ -315,7 +323,29 @@ def _draw_quote(painter: QPainter) -> None:
     _rows(painter, rows=(20.0, 32.0, 44.0))
 
 
+def _draw_sort(painter: QPainter) -> None:
+    """並び順。**上向きと下向きの矢印を並べる。**
+
+    文字の `⇅` は書体で形が変わるうえ、ポップアップ用の三角と近づくと
+    重なった（ユーザー報告）。線で描けば大きさも間隔もこちらで決まる。
+    """
+    for x, tip, tail in ((24.0, 14.0, 50.0), (40.0, 50.0, 14.0)):
+        painter.drawLine(QPointF(x, tail), QPointF(x, tip))
+        head = 9.0 if tip < tail else -9.0
+        painter.drawPolyline(
+            [QPointF(x - 7, tip + head), QPointF(x, tip), QPointF(x + 7, tip + head)]
+        )
+
+
+def _draw_new_note(painter: QPainter) -> None:
+    """新規。十字。"""
+    painter.drawLine(QPointF(32, 14), QPointF(32, 50))
+    painter.drawLine(QPointF(14, 32), QPointF(50, 32))
+
+
 _DRAW = {
+    Glyph.SORT: _draw_sort,
+    Glyph.NEW_NOTE: _draw_new_note,
     Glyph.ALL: _draw_all,
     Glyph.PINNED: _draw_pinned,
     Glyph.TRASH: _draw_trash,

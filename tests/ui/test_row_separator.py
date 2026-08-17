@@ -146,14 +146,7 @@ class TestListPaneButtons:
         pane.set_theme(DARK)
         assert DARK.rule.lower() in pane.new_button.styleSheet().lower()
 
-    def test_三角と記号が重ならない(self, qtbot) -> None:
-        """枠と余白のぶんだけ中身が広がる。並び順の三角の場所も確かめる。"""
-        import math
-
-        from PySide6.QtGui import QFontMetricsF
-
-        from hitofude.ui.note_list_pane import SORT_GLYPH, SORT_INDICATOR_ROOM
-
+    def test_三角を出さない(self, qtbot) -> None:
+        """文字＋三角をやめ、正方形のアイコンボタンにした（ユーザー指摘）。"""
         pane = self.make(qtbot)
-        glyph = QFontMetricsF(pane.sort_button.font()).horizontalAdvance(SORT_GLYPH)
-        assert pane.sort_button.minimumWidth() >= math.ceil(glyph + SORT_INDICATOR_ROOM)
+        assert "menu-indicator" in pane.sort_button.styleSheet()

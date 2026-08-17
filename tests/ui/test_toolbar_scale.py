@@ -47,44 +47,17 @@ class TestScale:
         qtbot.addWidget(bar)
         assert bar.buttons()[0].iconSize().width() == ICON_SIZE
 
-    def test_一覧の上の記号も大きくなる(self, qtbot) -> None:
-        """`＋` と `⇅` は絵ではなく文字なので、字の大きさで効かせる。"""
+    def test_一覧の上のボタンも同じ大きさ(self, qtbot) -> None:
+        """`⇅` と `＋` は**絵で描く**ようにしたので、本文側と同じ寸法に
+        なる（文字だったころは字の大きさで効かせていた）。"""
+        from hitofude.ui.format_toolbar import BUTTON_SIZE, ICON_SIZE
         from hitofude.ui.note_list_pane import NoteListPane
 
         pane = NoteListPane()
         qtbot.addWidget(pane)
-        base = pane.font().pointSizeF()
         for button in (pane.new_button, pane.sort_button):
-            assert button.font().pointSizeF() == pytest.approx(base * TOOLBAR_SCALE)
-
-    def test_並び順の三角が重ならない(self, qtbot) -> None:
-        """字を大きくすると記号も広がる。三角の場所も一緒に広げる。"""
-        import math
-
-        from PySide6.QtGui import QFontMetricsF
-
-        from hitofude.ui.note_list_pane import SORT_GLYPH, SORT_INDICATOR_ROOM, NoteListPane
-
-        pane = NoteListPane()
-        qtbot.addWidget(pane)
-        glyph = QFontMetricsF(pane.sort_button.font()).horizontalAdvance(SORT_GLYPH)
-        assert pane.sort_button.minimumWidth() >= math.ceil(glyph + SORT_INDICATOR_ROOM)
-
-    def test_Rawも一緒に大きくなる(self, qtbot) -> None:
-        """**Raw だけ取り残さない。** 同じバーに並んでいるので、
-        1 つだけ元の大きさだと不揃いが目に付く（ユーザー指摘）。"""
-        from hitofude.editor.editor_widget import MarkdownEditor
-        from hitofude.ui.format_toolbar import BUTTON_SIZE, FormatToolbar
-
-        editor = MarkdownEditor()
-        qtbot.addWidget(editor)
-        bar = FormatToolbar(editor)
-        qtbot.addWidget(bar)
-
-        base = bar.font().pointSizeF()
-        assert bar.raw_button.font().pointSizeF() == pytest.approx(base * TOOLBAR_SCALE)
-        # 高さは他のボタンと揃える（幅は文字数で決まるので揃えない）
-        assert bar.raw_button.height() == BUTTON_SIZE
+            assert button.size().width() == BUTTON_SIZE
+            assert button.iconSize().width() == ICON_SIZE
 
 
 class TestSameHeight:
