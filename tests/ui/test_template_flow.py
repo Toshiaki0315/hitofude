@@ -63,10 +63,10 @@ class TestFromTemplate:
         assert window.findChild(Palette) is not None
 
     def test_雛形が候補に並ぶ(self, window) -> None:
-        assert "議事録" in [item.title for item in window._template_items("")]
+        assert "議事録" in [item.title for item in window._notes._template_items("")]
 
     def test_あいまい検索で絞れる(self, window) -> None:
-        assert [item.title for item in window._template_items("議")] == ["議事録"]
+        assert [item.title for item in window._notes._template_items("議")] == ["議事録"]
 
     def test_雛形が無ければ開かない(self, window, monkeypatch) -> None:
         """置き場所を知らせて終わる。空のパレットを出しても何も選べない。"""
@@ -119,7 +119,7 @@ class TestFromTemplate:
         """パレットと作成が配線されていること。"""
         window.new_from_template()
         palette = window.findChild(Palette)
-        item = next(found for found in window._template_items("") if found.title == "議事録")
+        item = next(found for found in window._notes._template_items("") if found.title == "議事録")
         palette.chosen.emit(item)
         assert window.current_note.path.name == "議事録.md"
 
