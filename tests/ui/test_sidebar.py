@@ -138,6 +138,29 @@ class TestSidebar:
             sidebar.set_tags(counts(("private", 1)))
         assert blocker.args[0] != Filter(FilterKind.TAG, "work")
 
+    def test_畳んだ枝は組み直しても畳まれたまま(self, sidebar) -> None:
+        """自動保存（800ms）のたびに set_tags が呼ばれる。組み直しの
+        expandAll で畳んだ枝が勝手に開いていた（回帰）。"""
+        sidebar.set_tags(counts(("work", 2), ("work/会議", 1)))
+        work = Filter(FilterKind.TAG, "work")
+        sidebar.setExpanded(sidebar._find(work), False)
+
+        # 件数が変わる = 実際に組み直しが走る更新
+        sidebar.set_tags(counts(("work", 3), ("work/会議", 2)))
+        assert not sidebar.isExpanded(sidebar._find(work))
+
+    def test_新しい枝は開いた状態で現れる(self, sidebar) -> None:
+        sidebar.set_tags(counts(("work", 1)))
+        sidebar.set_tags(counts(("work", 1), ("note", 2), ("note/日記", 1)))
+        assert sidebar.isExpanded(sidebar._find(Filter(FilterKind.TAG, "note")))
+
+    def test_タグが変わっていなければ組み直さない(self, sidebar) -> None:
+        """保存のたびの全組み直しは §6.6 的にも無駄が大きい。"""
+        sidebar.set_tags(counts(("work", 1)))
+        item = sidebar._model.item(0)
+        sidebar.set_tags(counts(("work", 1)))  # 同じ内容
+        assert sidebar._model.item(0) is item  # モデルが作り直されていない
+
     def test_行に余白がある(self, sidebar) -> None:
         """**文字の高さそのままでは詰まって見える**（ユーザー指摘）。
 

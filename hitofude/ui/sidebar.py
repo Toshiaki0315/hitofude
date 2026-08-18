@@ -139,7 +139,7 @@ class Sidebar(QTreeView):
         self.setIndentation(14)
         self.setFrameShape(QTreeView.Shape.NoFrame)
         self.setEditTriggers(QTreeView.EditTrigger.NoEditTriggers)
-        self.set_tags([])
+        self._apply()  # set_tags([]) は「変化なし」で素通りするので直接組む
         self.selectionModel().currentChanged.connect(self._on_current_changed)
         self.select(ALL)
 
@@ -151,7 +151,7 @@ class Sidebar(QTreeView):
         if padding == self._row_padding:
             return
         self._row_padding = padding
-        self.set_tags(self._counts)
+        self._apply()
 
     def set_theme(self, theme: ThemeColors) -> None:
         """アイコンをテーマの色で描き直す。
@@ -160,10 +160,24 @@ class Sidebar(QTreeView):
         組み直すのが単純で、サイドバーの規模なら問題にならない。
         """
         self._theme = theme
-        self.set_tags(self._counts)
+        self._apply()
 
     def set_tags(self, counts: list[TagCount]) -> None:
         """タグ一覧を差し替える。選択中の項目は可能なら保つ。
+
+        **変わっていなければ何もしない。** 自動保存（800ms）のたびに
+        呼ばれるので、タグ集合が同じなら組み直し自体を省く。
+        テーマや行間の変更は `_apply()` を直接呼ぶので、この早期 return に
+        巻き込まれない。
+        """
+        counts = list(counts)
+        if counts == self._counts:
+            return
+        self._counts = counts
+        self._apply()
+
+    def _apply(self) -> None:
+        """今の状態（タグ・テーマ・行間）でツリーを組み直す。
 
         **組み直しの途中では通知しない。** 項目を作り直すと選択が先頭
         （「すべて」）に移るので、そのまま通知すると、ゴミ箱やタグを
@@ -173,12 +187,11 @@ class Sidebar(QTreeView):
         **選んでいたものが消えたときだけ通知する。** そのときは実際に
         見る対象が変わるので、黙って別のものを見せるほうが危ない。
         """
-        self._counts = list(counts)
         keep = self.current_filter()
 
         self.blockSignals(True)
         try:
-            self._rebuild(counts)
+            self._rebuild(self._counts)
             if keep is not None:
                 self.select(keep)
         finally:
@@ -191,6 +204,7 @@ class Sidebar(QTreeView):
             self.filter_changed.emit(current)
 
     def _rebuild(self, counts: list[TagCount]) -> None:
+        collapsed = self._collapsed_filters()
         self._model.clear()
         root = self._model.invisibleRootItem()
 
@@ -208,7 +222,30 @@ class Sidebar(QTreeView):
                 root_item = _sized(_make_tag_item(node, color), height)
                 _size_children(root_item, height)
                 header.appendRow(root_item)
+            # 既定は全部開く。**畳んであった枝だけ**畳み直す。
+            # 開いた側を覚えると、新しく現れた枝が畳まれて見落とされる
             self.expandAll()
+            for filter_ in collapsed:
+                index = self._find(filter_)
+                if index is not None:
+                    self.setExpanded(index, False)
+
+    def _collapsed_filters(self) -> set[Filter]:
+        """畳まれているタグ枝。組み直しをまたいで畳みを保つために覚える。"""
+        collapsed: set[Filter] = set()
+
+        def walk(item: QStandardItem) -> None:
+            for row in range(item.rowCount()):
+                child = item.child(row)
+                if child is None:
+                    continue
+                data = child.data(_FILTER_ROLE)
+                if data is not None and child.rowCount() > 0 and not self.isExpanded(child.index()):
+                    collapsed.add(data)
+                walk(child)
+
+        walk(self._model.invisibleRootItem())
+        return collapsed
 
     # ------------------------------------------------------------------ 選択
 
