@@ -106,7 +106,6 @@ class Palette(QDialog):
     chosen = Signal(object)
     """選ばれた `PaletteItem`。行番号を持つ用途（アウトライン）があるので
     パスだけでは足りない。"""
-    """選ばれた `Path`。"""
 
     def __init__(
         self,

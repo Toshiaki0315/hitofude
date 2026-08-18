@@ -314,8 +314,6 @@ class MainWindow(QMainWindow):
         self._editor.set_tag_source(self._known_tags)
         self._editor.set_mono_family(self._config.mono_family)
         self._editor.set_tab_width(self._config.tab_width)
-        self._sidebar.set_line_spacing(self._config.line_spacing)
-        self._note_list.set_line_spacing(self._config.line_spacing)
         self._apply_list_font()
         self._editor.setFocus()
 
@@ -1290,6 +1288,7 @@ class MainWindow(QMainWindow):
         """競合ダイアログを出す。書き込みを続けてよいなら True。"""
         dialog = ConflictDialog(note.path, self)
         dialog.exec()
+        dialog.deleteLater()  # exec() 後も親の子リストに残るため
 
         match dialog.resolution:
             case Resolution.KEEP_BOTH:
@@ -1828,6 +1827,9 @@ class MainWindow(QMainWindow):
         dialog = PreferencesDialog(self._config, self)
         dialog.applied.connect(self._apply_preferences)
         dialog.exec()
+        # exec() 後も親の子リストに残り続ける。QFontComboBox ×2 を抱えた
+        # ダイアログが開くたびに溜まる（Palette 等は finished→deleteLater 済み）
+        dialog.deleteLater()
 
     def zoom_in(self) -> bool:
         """`Cmd +`。本文を 1pt 大きくする（G-5）。変わったら True。"""

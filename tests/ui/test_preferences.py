@@ -472,3 +472,35 @@ class TestTypedVault:
         qtbot.addWidget(dialog)
         dialog.set_vault(tmp_path / "選んだ場所")
         assert str(tmp_path / "選んだ場所") in dialog.vault_label_text()
+
+
+class TestDialogCleanup:
+    """exec() したダイアログを親の子リストに溜めない。
+
+    QFontComboBox ×2（フォント列挙を持つ重いウィジェット）を抱えた
+    ダイアログが、開くたびに MainWindow の子として残っていた。
+    """
+
+    def test_閉じたダイアログは破棄される(self, qtbot, tmp_path, monkeypatch) -> None:
+        from PySide6.QtCore import QSettings
+
+        from hitofude.config import Config
+        from hitofude.ui.main_window import MainWindow
+        from hitofude.ui.preferences import PreferencesDialog
+
+        settings = QSettings(str(tmp_path / "t.ini"), QSettings.Format.IniFormat)
+        config = Config(settings)
+        config.vault_path = tmp_path / "Notes"
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+
+        monkeypatch.setattr(PreferencesDialog, "exec", lambda self: 0)
+        window.open_preferences()
+        window.open_preferences()
+
+        # deleteLater は制御がイベントループへ戻ったときに効く
+        from PySide6.QtCore import QCoreApplication, QEvent
+
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        assert window.findChildren(PreferencesDialog) == []
+        window.close()
