@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 PDF_SUFFIX = ".pdf"
 PPTX_SUFFIX = ".pptx"
-SUPPORTED_SUFFIXES = (PDF_SUFFIX, PPTX_SUFFIX)
 # ファイル選択に出す絞り込み
 FILE_FILTER = "読み込める資料 (*.pdf *.pptx)"
 

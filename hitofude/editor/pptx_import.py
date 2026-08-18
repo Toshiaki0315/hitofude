@@ -36,8 +36,6 @@ from hitofude.core.table import format_table
 
 logger = logging.getLogger(__name__)
 
-SUFFIX = ".pptx"
-
 # 等幅として扱うフォント名（小文字で部分一致）。コードブロックの手掛かり
 MONO_FONTS = ("consolas", "menlo", "monaco", "courier", "mono", "source code", "sf mono")
 

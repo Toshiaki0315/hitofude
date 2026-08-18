@@ -28,10 +28,7 @@ SLIDE_HEIGHT_IN = 7.5
 
 # 余白と本文の置き場所（インチ）
 MARGIN = 0.6
-TITLE_TOP = 0.5
-TITLE_HEIGHT = 1.1
 BODY_TOP = 1.8
-BODY_HEIGHT = 5.0
 
 # 画像があるときの本文の幅（全体に対する割合）。残りが画像の場所になる
 BODY_RATIO_WITH_IMAGE = 0.52
@@ -52,8 +49,6 @@ _TEXT_KINDS = frozenset({BlockKind.PARAGRAPH, BlockKind.BULLET, BlockKind.HEADIN
 # 既定のレイアウト番号（`python-pptx` の既定テンプレート）
 LAYOUT_TITLE = 0
 LAYOUT_CONTENT = 1
-LAYOUT_TITLE_ONLY = 5
-LAYOUT_BLANK = 6
 
 
 def write_pptx(path: Path, text: str, *, base_path: Path | None = None) -> Path:

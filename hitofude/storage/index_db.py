@@ -10,7 +10,6 @@
 
 import logging
 import sqlite3
-from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -523,7 +522,3 @@ def rebuild(db_path: Path, vault) -> SyncResult:
         db_path.with_suffix(extra).unlink(missing_ok=True)
     with IndexDb(db_path) as db:
         return db.sync(vault)
-
-
-def paths_of(rows: Iterable[NoteRow], root: Path) -> list[Path]:
-    return [root / row.path for row in rows]
