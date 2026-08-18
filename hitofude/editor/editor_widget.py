@@ -348,6 +348,12 @@ class MarkdownEditor(QPlainTextEdit):
         """
         if old_line == new_line or self._composing or self._formatting:
             return
+        # Redo の待ちがあるうちは触らない。整形は見た目の都合であって、
+        # Cmd+Z で戻した直後に本文を書き換えると Redo スタックが消え、
+        # 「整形のやり直し」が事実上できなくなる。次の編集で待ちが消えれば
+        # 整形も再開する
+        if self.document().isRedoAvailable():
+            return
 
         lines = self.toPlainText().split("\n")
         found = table.find_table(lines, old_line)

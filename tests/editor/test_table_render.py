@@ -88,6 +88,54 @@ class TestAutoFormat:
         move_to(editor, 5)
         assert editor.toPlainText() == before
 
+    def test_整形をundoしたら離れても再整形しない(self, editor) -> None:
+        """整形は見た目の都合。Redo の待ちがあるうちに本文へ触ると Redo
+        スタックが消え、Cmd+Z で戻した整形をやり直せなくなる（回帰）。"""
+        editor.setPlainText(TABLE)
+        move_to(editor, 2)
+        move_to(editor, 5)
+        formatted = editor.toPlainText()
+
+        editor.undo()
+        original = editor.toPlainText()
+        assert original != formatted  # 整形が 1 手で戻っている
+
+        move_to(editor, 2)
+        move_to(editor, 5)
+        assert editor.toPlainText() == original  # 再整形で Redo を消さない
+
+    def test_undoした整形はredoで戻せる(self, editor) -> None:
+        editor.setPlainText(TABLE)
+        move_to(editor, 2)
+        move_to(editor, 5)
+        formatted = editor.toPlainText()
+
+        editor.undo()
+        move_to(editor, 2)
+        move_to(editor, 5)
+        editor.redo()
+        assert editor.toPlainText() == formatted
+
+    def test_undoの後でも編集すれば整形は再開する(self, editor) -> None:
+        """Redo 保全のガードが掛かりっぱなしにならないこと。"""
+        from PySide6.QtGui import QTextCursor
+
+        editor.setPlainText(TABLE)
+        move_to(editor, 2)
+        move_to(editor, 5)
+        editor.undo()
+
+        # 表のセルを編集する（Redo の待ちはここで消える）
+        cursor = editor.textCursor()
+        cursor.setPosition(editor.document().findBlockByNumber(2).position())
+        cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock)
+        editor.setTextCursor(cursor)
+        editor.textCursor().insertText(" 追記")
+
+        move_to(editor, 5)
+        lines = editor.toPlainText().split("\n")[:4]
+        assert len({display_width(line) for line in lines}) == 1, lines
+
 
 class TestHiding:
     def test_縦線の文字を隠す(self, editor) -> None:
