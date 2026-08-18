@@ -457,11 +457,15 @@ class IndexDb:
         走査対象はタイトルとプレビューだけ（spec §7.3）。本文まで LIKE で
         舐めると件数に比例して遅くなるため、G4（200ms）を守れなくなる。
         """
-        pattern = f"%{text}%"
+        # `%` と `_` は LIKE のワイルドカード。エスケープしないと
+        # 「%」の 1 文字検索が全件に一致する（打った文字をそのまま探す）
+        escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
         rows = self._connection.execute(
-            """
+            r"""
             SELECT id, path, title, preview AS snippet FROM notes
-            WHERE trashed = 0 AND (title LIKE ? OR preview LIKE ?)
+            WHERE trashed = 0
+              AND (title LIKE ? ESCAPE '\' OR preview LIKE ? ESCAPE '\')
             ORDER BY pinned DESC, modified_at DESC
             LIMIT ?
             """,

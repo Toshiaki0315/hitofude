@@ -542,3 +542,23 @@ class TestSortOrder:
             db.upsert_note(note, vault.root)
         titles = [row.title for row in db.notes_with_tag("共通", order=SortOrder.TITLE)]
         assert titles == ["あ", "い", "う"]
+
+
+class TestShortQueryEscaping:
+    """短いクエリは LIKE フォールバック（§7.3）。記号もそのまま探す。"""
+
+    def test_パーセントはワイルドカードにしない(self, db, vault) -> None:
+        """`%` が LIKE のワイルドカードとして効き、1〜2 文字の検索で
+        全件が引っかかっていた（回帰）。"""
+        vault.create("進捗", "# 進捗\n\n達成率は 5% です\n")
+        vault.create("別のメモ", "# 別のメモ\n\n記号は含まない\n")
+        db.sync(vault)
+
+        assert [hit.title for hit in db.search("%")] == ["進捗"]
+
+    def test_アンダースコアもそのまま探す(self, db, vault) -> None:
+        vault.create("識別子", "# 識別子\n\nmy_var を使う\n")
+        vault.create("ほか", "# ほか\n\nmyxvar ではない\n")
+        db.sync(vault)
+
+        assert [hit.title for hit in db.search("_v")] == ["識別子"]

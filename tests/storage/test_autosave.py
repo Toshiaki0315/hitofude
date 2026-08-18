@@ -240,3 +240,25 @@ class TestSaveBytes:
         with pytest.raises(OSError):
             save_bytes_atomic(target, b"data")
         assert list(tmp_path.iterdir()) == []
+
+
+class TestBrokenStash:
+    def test_不正なバイト列の退避は飛ばす(self, tmp_path: Path) -> None:
+        """「壊れた退避は黙って飛ばす」の約束が UnicodeDecodeError には
+        効いていなかった（except が OSError のみ。回帰）。"""
+        from hitofude.storage.autosave import pending, stash
+
+        stash(tmp_path, Path("/vault/正常.md"), "本文")
+        (tmp_path / "こわれた.source").write_text("/vault/壊.md", encoding="utf-8")
+        (tmp_path / "こわれた.stash").write_bytes(b"\x8c\xf0\xff")
+
+        assert [s.source.name for s in pending(tmp_path)] == ["正常.md"]
+
+    def test_サブディレクトリがあっても全消しできる(self, tmp_path: Path) -> None:
+        from hitofude.storage.autosave import clear_all, stash
+
+        stash(tmp_path, Path("/vault/メモ.md"), "本文")
+        (tmp_path / "手で作った入れ物").mkdir()
+
+        clear_all(tmp_path)  # IsADirectoryError で落ちない
+        assert not list(tmp_path.glob("*.stash"))

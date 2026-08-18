@@ -456,3 +456,33 @@ class TestSymlinkedNotes:
         (vault.root / "リンク.md").symlink_to(outside)
 
         assert [p.name for p in vault.scan()] == []
+
+
+class TestDeletePermanentlyGuard:
+    """完全削除はゴミ箱の中だけ（G-3 の安全弁）。"""
+
+    def test_ゴミ箱の外を指す相対パスは消せない(self, vault) -> None:
+        """`.trash/../メモ.md` は parents に .trash を含むため字句判定を
+        通過し、vault 直下の実体が消えていた（回帰）。"""
+        import pytest
+
+        note = vault.create("残るメモ")
+        vault.trash(vault.create("ダミー").path)  # .trash を作る
+        sneaky = vault.trash_dir / ".." / note.path.name
+
+        with pytest.raises(ValueError):
+            vault.delete_permanently(sneaky)
+        assert note.path.exists()
+
+
+class TestScanSymlinkLoop:
+    def test_中を指すディレクトリリンクで無限に潜らない(self, vault) -> None:
+        """`vault/loop -> vault` のような自己参照リンクは `_inside()` が
+        True を返すため辿ってしまい、再帰が止まらなかった（回帰）。"""
+        note = vault.create("メモ")
+        (vault.root / "loop").symlink_to(vault.root, target_is_directory=True)
+
+        found = list(vault.scan())
+        # リンクを辿った先の `loop/メモ.md` `loop/loop/メモ.md` … が
+        # 重複して出てはいけない。同じ実体は 1 回だけ
+        assert found == [note.path]

@@ -200,9 +200,9 @@ class Vault:
         """vault 内の `.md` を返す。`.trash` と `.hitofude` は除く。"""
         if not self.root.is_dir():
             return
-        yield from self._walk(self.root)
+        yield from self._walk(self.root, frozenset({self.root.resolve()}))
 
-    def _walk(self, directory: Path) -> Iterator[Path]:
+    def _walk(self, directory: Path, ancestors: frozenset[Path]) -> Iterator[Path]:
         for entry in sorted(directory.iterdir()):
             # **保管フォルダの外へ出るリンクは辿らない。** 辿ると外のノートが
             # 索引に入り、編集やゴミ箱移動の対象になる。ゴミ箱移動はボリュームを
@@ -212,7 +212,14 @@ class Vault:
             if entry.is_dir():
                 if entry.name in SKIP_DIRS or entry.name.startswith("."):
                     continue
-                yield from self._walk(entry)
+                # **祖先へ戻るリンクは辿らない。** `vault/loop -> vault` のような
+                # 中を指すリンクは _inside を通るため、これが無いと同じノートを
+                # 別パスで重複して yield し続ける。祖先だけを見るのは、兄弟への
+                # 別名リンク（今まで通り辿る）を巻き込まないため
+                real = entry.resolve()
+                if real in ancestors:
+                    continue
+                yield from self._walk(entry, ancestors | {real})
             elif entry.suffix.lower() in MARKDOWN_SUFFIXES:
                 yield entry
 
@@ -598,7 +605,9 @@ class Vault:
 
         既に無いファイルは何もしない（続けて押したときに落ちない）。
         """
-        if self.trash_dir not in path.parents:
+        # 字句上の判定（`self.trash_dir in path.parents`）は
+        # `.trash/../メモ.md` を通してしまう。実体の親で見る
+        if path.resolve().parent != self.trash_dir.resolve():
             raise ValueError(f"ゴミ箱の外は消せない: {path}")
         path.unlink(missing_ok=True)
 

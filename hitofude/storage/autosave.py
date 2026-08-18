@@ -170,11 +170,15 @@ def pending(root: Path) -> list[Stashed]:
                     stashed_at=body.stat().st_mtime,
                 )
             )
-        except OSError:
-            continue  # 読めない退避のせいで起動できなくなってはいけない
+        except (OSError, UnicodeDecodeError):
+            # 読めない退避のせいで起動できなくなってはいけない。
+            # ディスク障害等で不正な UTF-8 になった退避（UnicodeDecodeError）も同じ
+            continue
     return found
 
 
 def clear_all(root: Path) -> None:
     for path in root.glob("*"):
+        if path.is_dir():
+            continue  # 退避はフラットにしか置かない。手で作られた入れ物は触らない
         path.unlink(missing_ok=True)
