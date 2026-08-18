@@ -67,6 +67,34 @@ def _modifies_text(event: QKeyEvent) -> bool:
     return bool(event.text()) and not (event.modifiers() & Qt.KeyboardModifier.ControlModifier)
 
 
+type _Interval = tuple[int, int]
+"""両端を含むブロック番号の範囲。"""
+
+
+def _interval_symmetric_difference(old: _Interval | None, new: _Interval | None) -> list[_Interval]:
+    """2 つの範囲の対称差（片方だけに入る部分）。
+
+    ドラッグで選択を 1 行伸ばしたとき、掛け直すべきは伸びた 1 行だけ。
+    集合を作らず区間のまま計算する（10,000 行の選択で set を作らない）。
+    """
+    if old is None and new is None:
+        return []
+    if old is None:
+        return [new]  # type: ignore[list-item]
+    if new is None:
+        return [old]
+
+    if old[1] < new[0] or new[1] < old[0]:
+        return [old, new]  # 離れていれば両方まるごと
+
+    pieces: list[_Interval] = []
+    if old[0] != new[0]:
+        pieces.append((min(old[0], new[0]), max(old[0], new[0]) - 1))
+    if old[1] != new[1]:
+        pieces.append((min(old[1], new[1]) + 1, max(old[1], new[1])))
+    return pieces
+
+
 class MarkdownEditor(QPlainTextEdit):
     link_activated = Signal(str)
     """`Cmd+クリック` されたリンクの URL（D-1）。**開くのは呼び出し側**。
@@ -993,18 +1021,19 @@ class MarkdownEditor(QPlainTextEdit):
         """表示が変わりうるブロックだけを集める。
 
         通常は旧ブロックと新ブロックの高々 2 個。選択があるときは、
-        「選択範囲に交差するブロックは全表示」（§6.4）を満たすため、
-        旧選択と新選択の和集合にかかるブロックを対象にする。
+        「選択範囲に交差するブロックは全表示」（§6.4）を満たしつつ、
+        掛け直すのは旧選択と新選択の**対称差**だけにする。両方に入っている
+        ブロックは前回すでに全表示になっていて変わらない。和集合を毎回
+        掛け直すと、ドラッグや `Cmd+A` で実質の全体再ハイライトになり、
+        大きなノートで R7（§6.6 の 16ms）が破れる。
         """
         document = self.document()
         numbers: set[int] = {self._last_block, current_block}
 
-        for span in (self._last_selection, selection):
-            if span is None:
-                continue
-            start_block = document.findBlock(span[0]).blockNumber()
-            end_block = document.findBlock(span[1]).blockNumber()
-            numbers.update(range(start_block, end_block + 1))
+        old = self._block_span(self._last_selection)
+        new = self._block_span(selection)
+        for begin, end in _interval_symmetric_difference(old, new):
+            numbers.update(range(begin, end + 1))
 
         blocks = []
         for number in sorted(numbers):
@@ -1012,6 +1041,16 @@ class MarkdownEditor(QPlainTextEdit):
             if block.isValid():
                 blocks.append(block)
         return blocks
+
+    def _block_span(self, selection: tuple[int, int] | None) -> tuple[int, int] | None:
+        """選択が覆うブロック番号の範囲（両端含む）。選択が無ければ None。"""
+        if selection is None:
+            return None
+        document = self.document()
+        return (
+            document.findBlock(selection[0]).blockNumber(),
+            document.findBlock(selection[1]).blockNumber(),
+        )
 
     # ----------------------------------------------------------- レイアウト
 

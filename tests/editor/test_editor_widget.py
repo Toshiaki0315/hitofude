@@ -134,6 +134,50 @@ class TestRehighlightScope:
         move_to(editor, 5)
         assert calls == [0]
 
+    def test_選択を伸ばしたときは差分だけ掛け直す(self, editor, monkeypatch) -> None:
+        """ドラッグ中は selectionChanged のたびに呼ばれる。選択全体を
+        毎回掛け直すと大選択で実質の全体再ハイライトになる（回帰）。
+        旧選択にも新選択にも入っているブロックは既に全表示で変わらない。
+        """
+        from PySide6.QtGui import QTextCursor
+
+        editor.setPlainText("\n".join(f"**行{i}**" for i in range(200)))
+        document = editor.document()
+        cursor = editor.textCursor()
+        cursor.setPosition(0)
+        cursor.setPosition(
+            document.findBlockByNumber(99).position() + 2, QTextCursor.MoveMode.KeepAnchor
+        )
+        editor.setTextCursor(cursor)
+
+        calls: list[int] = []
+        monkeypatch.setattr(
+            editor.highlighter,
+            "rehighlightBlock",
+            lambda block: calls.append(block.blockNumber()),
+        )
+        cursor.setPosition(
+            document.findBlockByNumber(100).position() + 2, QTextCursor.MoveMode.KeepAnchor
+        )
+        editor.setTextCursor(cursor)
+        assert len(calls) <= 4, f"{len(calls)} ブロックを掛け直している"
+
+    def test_選択を解除すると隠し直す(self, editor) -> None:
+        """差分化しても「選択が外れた側を隠し直す」が壊れないこと。"""
+        from PySide6.QtGui import QTextCursor
+
+        editor.setPlainText("**あ**\n**い**\n**う**")
+        cursor = editor.textCursor()
+        cursor.setPosition(0)
+        cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
+        editor.setTextCursor(cursor)
+        assert not is_hidden(editor, 1, 0)  # 選択中は全表示
+
+        cursor.setPosition(0)
+        editor.setTextCursor(cursor)
+        assert is_hidden(editor, 1, 0)  # 選択が外れたら隠し直す
+        assert is_hidden(editor, 2, 0)
+
 
 class TestNoPollution:
     """R5 の前提: リビールは編集ではない。"""
