@@ -18,6 +18,7 @@ HitofudeNotes/
 """
 
 import logging
+import os
 import re
 import time
 import unicodedata
@@ -329,6 +330,9 @@ class Vault:
             stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             target = self.trash_dir / f"{path.stem}-{stamp}{path.suffix}"
         path.replace(target)
+        # `purge_trash` の期限は「捨ててから」数える。rename は mtime を
+        # 変えないので、ここで刻み直さないと古いノートが即座に消える。
+        os.utime(target)
         return target
 
     def restore(self, path: Path) -> Path:

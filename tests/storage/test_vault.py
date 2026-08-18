@@ -217,6 +217,24 @@ class TestPurgeTrash:
         assert vault.purge_trash(days=30) == []
         assert moved.exists()
 
+    def test_古いノートを今日捨てても期限まで残る(self, vault) -> None:
+        """期限は「捨ててから」数える。「最後に編集してから」ではない。
+
+        rename は mtime を変えないので、書いてから 30 日以上経った
+        ノートを捨てると次回起動で即座に完全削除されていた（回帰）。
+        """
+        import os
+        import time
+
+        note = vault.create("昔書いたメモ")
+        old = time.time() - 40 * 24 * 3600
+        os.utime(note.path, (old, old))
+
+        moved = vault.trash(note.path)
+
+        assert vault.purge_trash(days=30) == []
+        assert moved.exists()
+
     def test_ゴミ箱が無くても壊れない(self, vault) -> None:
         assert vault.purge_trash(days=30) == []
 
