@@ -66,6 +66,11 @@ CHECKBOX_SIZE_RATIO = 0.70
 CHECKBOX_GAP_RATIO = 0.10
 CHECKBOX_STROKE = 1.4
 
+# 見出しの開閉三角の一辺（I-4）。ADR-0016 の左余白 12px に収める
+FOLD_MARKER_SIZE = 8.0
+FOLDED = "folded"
+OPEN = "open"
+
 _CODE_TYPES = frozenset(
     {
         BlockType.CODE_FENCE_OPEN,
@@ -106,6 +111,9 @@ class DecorationKind(Enum):
     TABLE_TEXT_HEADER = auto()
     """折り返した表のヘッダ行のセル。太字で描く。"""
 
+    FOLD_MARKER = auto()
+    """見出しの開閉三角（I-4 / ADR-0019）。状態は `text`（open / folded）。"""
+
 
 @dataclass(frozen=True, slots=True)
 class Decoration:
@@ -130,6 +138,9 @@ def focus_dim_rects(editor) -> list[Decoration]:
     height = editor.viewport().height()
 
     while block.isValid():
+        if not block.isVisible():
+            block = block.next()
+            continue
         geometry = editor.blockBoundingGeometry(block).translated(offset)
         if geometry.top() > height:
             break
@@ -158,6 +169,11 @@ def visible_decorations(editor) -> list[Decoration]:
 
     entries: list[tuple[QTextBlock, object, QRectF]] = []
     while block.isValid():
+        if not block.isVisible():
+            # 折りたたみで隠れた行（I-4）。高さ 0 でも装飾を作ると、
+            # 表の罫線が 1px の線のゴミとして残る
+            block = block.next()
+            continue
         geometry = editor.blockBoundingGeometry(block).translated(offset)
         if geometry.top() > viewport_height:
             break
@@ -414,7 +430,32 @@ def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decora
     if info.type is BlockType.TASK_LIST_ITEM and info.checked is not None:
         result.append(_checkbox(editor, block, info, geometry))
 
+    if info.type is BlockType.HEADING:
+        marker = _fold_marker(editor, block, geometry)
+        if marker is not None:
+            result.append(marker)
+
     return result
+
+
+def _fold_marker(editor, block: QTextBlock, geometry: QRectF) -> Decoration | None:
+    """見出しの開閉三角（I-4）。畳める見出しにだけ出す。
+
+    置き場は ADR-0016 で生まれた左余白（documentMargin 12px）。
+    本文の開始位置は変えない。
+    """
+    line = block.blockNumber()
+    folded = editor.is_folded(line)
+    if not folded and not editor.foldable(line):
+        return None
+    height = QFontMetricsF(editor.font()).height()
+    side = FOLD_MARKER_SIZE
+    top = geometry.top() + max(0.0, (height - side)) / 2 + 2
+    return Decoration(
+        DecorationKind.FOLD_MARKER,
+        QRectF(geometry.left() + LEFT_INSET, top, side, side),
+        FOLDED if folded else OPEN,
+    )
 
 
 def checkbox_size(font: QFont) -> float:
@@ -502,6 +543,23 @@ def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) 
                 pass  # 文字なので前景で描く
             case DecorationKind.FOCUS_DIM:
                 pass  # 本文の上に重ねるので前景で描く
+            case DecorationKind.FOLD_MARKER:
+                _paint_fold_marker(painter, decoration, theme)
+    painter.restore()
+
+
+def _paint_fold_marker(painter: QPainter, decoration: Decoration, theme: ThemeColors) -> None:
+    """開閉三角。開いていれば下向き、畳んでいれば右向き（慣習どおり）。"""
+    box = decoration.rect
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(QColor("transparent"))
+    painter.setBrush(QColor(theme.muted_foreground))
+    if decoration.text == FOLDED:
+        points = [box.topLeft(), QPointF(box.right(), box.center().y()), box.bottomLeft()]
+    else:
+        points = [box.topLeft(), box.topRight(), QPointF(box.center().x(), box.bottom())]
+    painter.drawPolygon(points)
     painter.restore()
 
 

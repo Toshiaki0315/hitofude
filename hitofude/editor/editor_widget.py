@@ -6,6 +6,7 @@
 """
 
 import logging
+import re
 from collections.abc import Callable
 
 from PySide6.QtCore import QPoint, Qt, Signal
@@ -28,8 +29,9 @@ from PySide6.QtWidgets import QListWidget, QPlainTextEdit, QTextEdit, QWidget
 from hitofude.core import frontmatter, search, table, tags
 from hitofude.core.activation import ActivationKind, activation_at
 from hitofude.core.document import plain_text
+from hitofude.core.folding import section_end
 from hitofude.core.inline_scanner import image_only_line
-from hitofude.core.models import BlockInfo
+from hitofude.core.models import BlockInfo, BlockType
 from hitofude.core.textpos import py_to_utf16, utf16_to_py
 from hitofude.editor import attachments, commands, painter_overlay
 from hitofude.editor.highlighter import TABLE_FAMILIES, MarkdownHighlighter
@@ -64,6 +66,10 @@ DEFAULT_POINT_SIZE = 15.0
 # 手がなく、R5（ADR-0002）でそれは使えない（`QPlainTextDocumentLayout` が
 # 無視し、Undo も 1 段消費する）。余白を広げるのが唯一の手段。
 CONTENT_MARGIN = 12.0
+
+# 見出しの見た目（`# 〜 ###### ` 始まり）。textChanged はハイライトより先に
+# 届きうるので、折りたたみ解除の判定は BlockData だけに頼らない
+_HEADING_MARKER_RE = re.compile(r"^#{1,6} ")
 # タブ幅（文字数）。既定は `config.DEFAULT_TAB_WIDTH` と揃える
 DEFAULT_TAB_WIDTH = 4
 
@@ -198,6 +204,10 @@ class MarkdownEditor(QPlainTextEdit):
         self._formatting = False
 
         self.cursorPositionChanged.connect(self._sync_reveal)
+        # 隠れた行へキャレットが入ったら開く（検索・ジャンプもここを通る）
+        self.cursorPositionChanged.connect(self._unfold_at_cursor)
+        # 畳んだ見出しの `#` が消えたら開く（入る口が無くなるため）
+        self.textChanged.connect(self._unfold_broken_heading)
         self.selectionChanged.connect(self._sync_reveal)
 
         self._apply_palette()
@@ -233,6 +243,8 @@ class MarkdownEditor(QPlainTextEdit):
         if enabled == self._highlighter.source_mode:
             return
         self._highlighter.set_source_mode(enabled)
+        if enabled:
+            self.unfold_all()  # Raw はソースを全部見せるモード。隠れた行は嘘になる
         self._highlighter.rehighlight()
         self.viewport().update()  # 飾りの有無が変わる（`painter_overlay`）
         self.source_mode_changed.emit(enabled)
@@ -1078,6 +1090,149 @@ class MarkdownEditor(QPlainTextEdit):
 
     # ------------------------------------------------------------- リビール
 
+    # --------------------------------------------- 見出しの折りたたみ（I-4）
+
+    def _heading_level(self, block: QTextBlock) -> int:
+        """そのブロックの見出しレベル。見出しでなければ 0。
+
+        コードフェンス内の `#` は HEADING に分類されないので、ここで
+        自然に除外される。
+        """
+        data = block.userData()
+        if data is None or data.info.type is not BlockType.HEADING:
+            return 0
+        return data.info.level
+
+    def foldable(self, line: int) -> bool:
+        """畳める見出しか。次の行が同じか浅い見出しなら節が空で畳めない。
+
+        描画（開閉三角）から毎フレーム呼ばれるので O(1) に保つ。
+        """
+        block = self.document().findBlockByNumber(line)
+        level = self._heading_level(block)
+        if level <= 0:
+            return False
+        following = block.next()
+        if not following.isValid():
+            return False
+        next_level = self._heading_level(following)
+        return not (0 < next_level <= level)
+
+    def is_folded(self, line: int) -> bool:
+        block = self.document().findBlockByNumber(line)
+        following = block.next()
+        return self._heading_level(block) > 0 and following.isValid() and not following.isVisible()
+
+    def fold(self, line: int) -> None:
+        """見出し `line` の節を畳む。**ソースは触らない**（R1）。
+
+        `QTextBlock.setVisible(False)` は Undo スタックを消費しない
+        （スパイク実測。ADR-0019）。状態はセッション限りで、ノートを
+        開き直せば全部開いた状態に戻る。
+        """
+        document = self.document()
+        if not self.foldable(line):
+            return
+        levels = [
+            self._heading_level(document.findBlockByNumber(n)) for n in range(document.blockCount())
+        ]
+        end = section_end(levels, line)
+
+        # 畳む範囲にキャレットがいたら見出しの行末へ退避する。隠れた行に
+        # キャレットが残ると、次の打鍵が見えない場所へ入る
+        cursor = self.textCursor()
+        if line < cursor.blockNumber() < end:
+            heading = document.findBlockByNumber(line)
+            cursor.setPosition(heading.position() + heading.length() - 1)
+            self.setTextCursor(cursor)
+
+        first = document.findBlockByNumber(line + 1)
+        last = document.findBlockByNumber(end - 1)
+        block = first
+        while block.isValid() and block.blockNumber() < end:
+            block.setVisible(False)
+            block = block.next()
+        self._fold_relayout(first.position(), last.position() + last.length() - first.position())
+
+    def unfold(self, line: int) -> None:
+        """見出し `line` の節を開く。入れ子で畳んでいた分もまとめて開く。"""
+        document = self.document()
+        block = document.findBlockByNumber(line).next()
+        if not block.isValid() or block.isVisible():
+            return
+        first = block
+        length = 0
+        while block.isValid() and not block.isVisible():
+            block.setVisible(True)
+            length = block.position() + block.length() - first.position()
+            block = block.next()
+        self._fold_relayout(first.position(), length)
+
+    def toggle_fold(self, line: int) -> None:
+        if self.is_folded(line):
+            self.unfold(line)
+        else:
+            self.fold(line)
+
+    def unfold_all(self) -> None:
+        document = self.document()
+        block = document.firstBlock()
+        found = False
+        while block.isValid():
+            if not block.isVisible():
+                block.setVisible(True)
+                found = True
+            block = block.next()
+        if found:
+            self._fold_relayout(0, document.characterCount())
+
+    def _fold_relayout(self, position: int, length: int) -> None:
+        """可視状態の変更をレイアウトへ伝える。
+
+        `markContentsDirty` は本文もアンドゥ履歴も変えない（スパイク実測）。
+        """
+        self.document().markContentsDirty(position, length)
+        self.viewport().update()
+
+    def _unfold_at_cursor(self) -> None:
+        """キャレットが隠れた行に入ったら、その折りたたみを開く。
+
+        検索・見出しジャンプ・`Cmd+Z` など、キャレットを動かすものは
+        すべてここを通るので、個別の連携が要らない。
+        """
+        block = self.textCursor().block()
+        if block.isVisible():
+            return
+        probe = block.previous()
+        while probe.isValid() and not probe.isVisible():
+            probe = probe.previous()
+        start = probe.blockNumber() if probe.isValid() else 0
+        self.unfold(start)
+
+    def _unfold_broken_heading(self) -> None:
+        """編集で見出しでなくなったら開く。畳んだままだと入る口が消える。"""
+        block = self.textCursor().block()
+        following = block.next()
+        if not following.isValid() or following.isVisible():
+            return
+        if self._heading_level(block) > 0 or _HEADING_MARKER_RE.match(block.text()):
+            return
+        self.unfold(block.blockNumber())
+
+    def _maybe_toggle_fold(self, event) -> bool:
+        """左余白（開閉三角の帯）のクリックなら開閉して True。"""
+        if event.button() != Qt.MouseButton.LeftButton:
+            return False
+        x = event.position().x()
+        left = self.contentOffset().x()
+        if not (left <= x < left + self.document().documentMargin()):
+            return False
+        line = self.cursorForPosition(event.position().toPoint()).blockNumber()
+        if not (self.is_folded(line) or self.foldable(line)):
+            return False
+        self.toggle_fold(line)
+        return True
+
     def _sync_reveal(self) -> None:
         """キャレット位置をハイライタへ伝え、**必要なブロックだけ**掛け直す。
 
@@ -1160,6 +1315,8 @@ class MarkdownEditor(QPlainTextEdit):
         **キャレットは動かす。** 開いたあとそのまま本文を直せるほうがよい。
         素のクリックは今まで通り（判定を挟むと編集の邪魔になる）。
         """
+        if self._maybe_toggle_fold(event):
+            return  # 開閉だけ。キャレットは動かさない（本文を選び直させない）
         super().mousePressEvent(event)
         self._dismiss_tag_popup()  # クリックでキャレットが動く。候補は打鍵で出し直す
         point = event.position().toPoint()
