@@ -102,6 +102,22 @@ class WriteSuppressor:
         return len(self._until)
 
 
+def normalize_event_path(path: Path, root: Path, real_root: Path) -> Path:
+    """FSEvents が報告する実パスを、vault の表記（root 基準）へ写す（H-2）。
+
+    macOS の FSEvents はシンボリックリンクを解決した**実パス**で報告する
+    （`/tmp` → `/private/tmp`、別名リンク → 実体。実測）。root がリンク
+    経由だと受信パスが root 配下に見えず、`classify_event` が全部落として
+    外部変更の検知が全滅していた。real_root 配下のパスだけ root 表記へ
+    写し、それ以外はそのまま返す。root が最初から実パスなら恒等。
+    """
+    if root == real_root:
+        return path
+    if path.is_relative_to(real_root):
+        return root / path.relative_to(real_root)
+    return path
+
+
 def classify_event(
     root: Path, kind: str, path: Path, is_directory: bool = False
 ) -> tuple[ChangeKind, Path] | None:
@@ -160,6 +176,9 @@ class VaultWatcher(QObject):
         self._suppressor = WriteSuppressor()
         self._observer: Observer | None = None
         self._pending: queue.Queue[tuple[str, Path, bool]] = queue.Queue()
+        # FSEvents の実パス報告を root 表記へ写すための基準（H-2）。
+        # start() で resolve する（root は ensure_layout 前だと存在しない）
+        self._real_root = vault.root
 
         self._timer = QTimer(self)
         self._timer.setInterval(poll_interval_ms)
@@ -173,6 +192,7 @@ class VaultWatcher(QObject):
         if self._observer is not None:
             return
         self._vault.ensure_layout()
+        self._real_root = self._vault.root.resolve()
         self._observer = Observer()
         self._observer.schedule(_Handler(self._enqueue), str(self._vault.root), recursive=True)
         self._observer.start()
@@ -210,6 +230,7 @@ class VaultWatcher(QObject):
                 kind, path, is_directory = self._pending.get_nowait()
             except queue.Empty:
                 break
+            path = normalize_event_path(path, self._vault.root, self._real_root)
             classified = classify_event(self._vault.root, kind, path, is_directory)
             if classified is None:
                 continue

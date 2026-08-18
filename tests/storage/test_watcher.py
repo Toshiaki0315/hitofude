@@ -351,3 +351,78 @@ class TestShutdown:
         finally:
             real.stop()
             real.join(timeout=2.0)
+
+
+class TestNormalizeEventPath:
+    """FSEvents の実パス報告を vault の表記へ写す（H-2）。
+
+    macOS の FSEvents はシンボリックリンクを解決した実パスで報告する
+    （/tmp → /private/tmp、別名リンク → 実体。実測）。root がリンク経由だと
+    受信パスが root 配下に見えず、外部変更の検知が全滅していた。
+    """
+
+    def test_実パスをroot表記へ写す(self) -> None:
+        from hitofude.storage.watcher import normalize_event_path
+
+        root = Path("/var/tmp/別名")
+        real = Path("/private/var/tmp/実体")
+        got = normalize_event_path(Path("/private/var/tmp/実体/メモ.md"), root, real)
+        assert got == Path("/var/tmp/別名/メモ.md")
+
+    def test_rootが実パスなら何もしない(self) -> None:
+        from hitofude.storage.watcher import normalize_event_path
+
+        root = Path("/private/var/tmp/Vault")
+        got = normalize_event_path(Path("/private/var/tmp/Vault/メモ.md"), root, root)
+        assert got == Path("/private/var/tmp/Vault/メモ.md")
+
+    def test_realの外はそのまま返す(self) -> None:
+        from hitofude.storage.watcher import normalize_event_path
+
+        root = Path("/var/tmp/別名")
+        real = Path("/private/var/tmp/実体")
+        outside = Path("/private/var/tmp/無関係/メモ.md")
+        assert normalize_event_path(outside, root, real) == outside
+
+
+@pytest.mark.gui
+@pytest.mark.slow
+class TestSymlinkedVault:
+    """リンク経由の vault でも外部変更を検知する（H-2 の統合検査）。
+
+    実測: 別名リンク越しに開いた vault では FSEvents の報告パスが
+    root 配下に見えず、発火が 0 件だった。
+    """
+
+    def test_別名リンク経由でも外部変更が届く(self, qtbot, tmp_path, qapp) -> None:
+        from hitofude.storage.watcher import VaultWatcher
+
+        real = tmp_path / "実体Vault"
+        real.mkdir()
+        alias = tmp_path / "別名"
+        alias.symlink_to(real)
+
+        vault = Vault(alias)
+        vault.ensure_layout()
+        watcher = VaultWatcher(vault)
+        watcher.start()
+        try:
+            received: list = []
+            watcher.changed.connect(lambda kind, path: received.append((kind, Path(path))))
+            qtbot.wait(500)
+            watcher.poll()
+            received.clear()
+
+            # 外部エディタは実パス側で書くこともある
+            (real / "外部.md").write_text("# 外部\n", encoding="utf-8")
+
+            def arrived() -> bool:
+                watcher.poll()
+                return bool(received)
+
+            qtbot.waitUntil(arrived, timeout=10000)
+            # 届くパスは vault の表記（別名側）。root 基準の relative_to が
+            # 成立しないと、上流（index の upsert 等）が全部壊れる
+            assert received[0][1] == alias / "外部.md"
+        finally:
+            watcher.stop()
