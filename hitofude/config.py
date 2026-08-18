@@ -31,6 +31,25 @@ class LineSpacing(Enum):
     RELAXED = "relaxed"
 
 
+class ContentWidth(Enum):
+    """本文の横幅（I-3 / ADR-0018）。値は QSettings に保存する文字列。
+
+    行間（`LineSpacing`）と同じく **px では持たない**。名前で選ばせて、
+    実際の px は対応表（`CONTENT_WIDTH_PIXELS`）が決める。
+    """
+
+    STANDARD = "standard"
+    WIDE = "wide"
+    FULL = "full"
+
+
+# 0 は「制限なし = 窓幅いっぱい」。使う側（editor）の約束
+CONTENT_WIDTH_PIXELS = {
+    ContentWidth.STANDARD: 720,  # spec §5.1 の既定
+    ContentWidth.WIDE: 880,
+    ContentWidth.FULL: 0,
+}
+
 DEFAULT_VAULT_NAME = "HitofudeNotes"
 DEFAULT_FONT_FAMILY = "Hiragino Sans"
 # `SF Mono` は macOS がアプリに公開していないので既定にできない（§5.2）
@@ -65,6 +84,7 @@ _SORT_ORDER = "list/sort_order"
 _GEOMETRY = "layout/geometry"
 _LAST_NOTE = "session/last_note"
 _LINE_SPACING = "layout/line_spacing"
+_CONTENT_WIDTH = "editor/content_width"
 
 
 class Config:
@@ -134,6 +154,19 @@ class Config:
     @line_spacing.setter
     def line_spacing(self, value: LineSpacing) -> None:
         self.settings.setValue(_LINE_SPACING, value.value)
+
+    @property
+    def content_width(self) -> ContentWidth:
+        """本文の横幅。壊れた値は既定（標準）へ戻す。"""
+        raw = self.settings.value(_CONTENT_WIDTH, ContentWidth.STANDARD.value, type=str)
+        try:
+            return ContentWidth(raw)
+        except ValueError:
+            return ContentWidth.STANDARD
+
+    @content_width.setter
+    def content_width(self, value: ContentWidth) -> None:
+        self.settings.setValue(_CONTENT_WIDTH, value.value)
 
     @property
     def mono_family(self) -> str:

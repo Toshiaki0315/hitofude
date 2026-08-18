@@ -274,3 +274,40 @@ class TestTabWidth:
     def test_今の幅を答える(self, editor) -> None:
         editor.set_tab_width(3)
         assert editor.tab_width() == 3
+
+
+class TestContentWidth:
+    """本文の横幅の設定変更（I-3 / ADR-0018）。0 は「窓幅いっぱい」。"""
+
+    def test_広めにすると本文が広がる(self, editor) -> None:
+        editor.resize(1600, 400)
+        editor.set_content_width(880)
+        margins = editor.viewportMargins()
+        content = 1600 - margins.left() - margins.right()
+        assert 850 <= content <= 881
+
+    def test_最大にすると余白が消える(self, editor) -> None:
+        editor.resize(1600, 400)
+        editor.set_content_width(0)
+        assert editor.content_margin() == 0
+
+    def test_標準に戻せる(self, editor) -> None:
+        editor.resize(1600, 400)
+        editor.set_content_width(0)
+        editor.set_content_width(720)
+        margins = editor.viewportMargins()
+        content = 1600 - margins.left() - margins.right()
+        assert content <= 721
+
+    def test_表の桁数が連動する(self, editor) -> None:
+        editor.resize(1600, 400)
+        editor.show()
+        before = editor.table_columns()
+        editor.set_content_width(880)
+        assert editor.table_columns() > before
+
+    def test_画像の最大幅が連動する(self, editor) -> None:
+        editor.resize(1600, 400)
+        before = editor.image_width()
+        editor.set_content_width(880)
+        assert editor.image_width() > before

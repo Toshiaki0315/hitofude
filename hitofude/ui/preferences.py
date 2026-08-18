@@ -39,6 +39,7 @@ from hitofude.config import (
     MIN_POINT_SIZE,
     MIN_TAB_WIDTH,
     Config,
+    ContentWidth,
     LineSpacing,
 )
 from hitofude.theme import ThemeMode
@@ -47,6 +48,12 @@ THEME_LABELS = {
     ThemeMode.SYSTEM: "システムに合わせる",
     ThemeMode.LIGHT: "ライト",
     ThemeMode.DARK: "ダーク",
+}
+
+WIDTH_LABELS = {
+    ContentWidth.STANDARD: "標準",
+    ContentWidth.WIDE: "広め",
+    ContentWidth.FULL: "最大（ウィンドウ幅）",
 }
 
 SPACING_LABELS = {
@@ -144,6 +151,13 @@ class PreferencesDialog(QDialog):
         self._spacing.setToolTip("一覧とサイドバーの行の間隔。本文には効きません。")
         form.addRow("行間", self._spacing)
 
+        self._content_width = QComboBox(self)
+        for width, label in WIDTH_LABELS.items():
+            self._content_width.addItem(label, width)
+        self._content_width.setCurrentIndex(self._content_width.findData(config.content_width))
+        self._content_width.setToolTip("本文の最大幅。表の桁数と画像の大きさも一緒に変わります。")
+        form.addRow("本文の幅", self._content_width)
+
         self._theme = QComboBox(self)
         for mode, label in THEME_LABELS.items():
             self._theme.addItem(label, mode)
@@ -209,6 +223,11 @@ class PreferencesDialog(QDialog):
     def line_spacing(self) -> LineSpacing:
         """選ばれている行間。"""
         return self._spacing.currentData()
+
+    @property
+    def content_width(self) -> ContentWidth:
+        """選ばれている本文の幅。"""
+        return self._content_width.currentData()
 
     @property
     def selected_theme(self) -> ThemeMode:
@@ -295,6 +314,7 @@ class PreferencesDialog(QDialog):
         self._tab_width.setValue(DEFAULT_TAB_WIDTH)
         self._trash_days.setValue(DEFAULT_TRASH_DAYS)
         self._spacing.setCurrentIndex(self._spacing.findData(LineSpacing.NORMAL))
+        self._content_width.setCurrentIndex(self._content_width.findData(ContentWidth.STANDARD))
 
     def accept(self) -> None:
         """OK。**受け取れない場所なら閉じない。** 閉じると打ち直しからになる。"""
@@ -310,6 +330,7 @@ class PreferencesDialog(QDialog):
         self._config.theme_mode = self.selected_theme
         self._config.tab_width = self._tab_width.value()
         self._config.line_spacing = self.line_spacing
+        self._config.content_width = self.content_width
         self._config.trash_days = self._trash_days.value()
         vault = self._accept_typed_vault()
         if vault is None:

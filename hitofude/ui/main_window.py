@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 from hitofude import APP_NAME, __version__
 from hitofude.app import ThemeWatcher, apply_theme, set_macos_appearance
 from hitofude.config import (
+    CONTENT_WIDTH_PIXELS,
     DEFAULT_POINT_SIZE,
     MAX_POINT_SIZE,
     MIN_POINT_SIZE,
@@ -244,6 +245,7 @@ class MainWindow(QMainWindow):
 
         self._sidebar.set_line_spacing(self._config.line_spacing)
         self._note_list.set_line_spacing(self._config.line_spacing)
+        self._editor.set_content_width(CONTENT_WIDTH_PIXELS[self._config.content_width])
         self._sidebar.filter_changed.connect(self._on_filter_changed)
         self._sidebar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._sidebar.customContextMenuRequested.connect(self._show_sidebar_menu)
@@ -1079,6 +1081,7 @@ class MainWindow(QMainWindow):
         self._editor.set_tab_width(self._config.tab_width)
         self._sidebar.set_line_spacing(self._config.line_spacing)
         self._note_list.set_line_spacing(self._config.line_spacing)
+        self._editor.set_content_width(CONTENT_WIDTH_PIXELS[self._config.content_width])
         self._apply_list_font()
         self._theme_watcher.set_mode(self._config.theme_mode)
         self._vault.purge_trash(self._config.trash_days)

@@ -504,3 +504,36 @@ class TestDialogCleanup:
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         assert window.findChildren(PreferencesDialog) == []
         window.close()
+
+
+class TestContentWidth:
+    """本文の幅（I-3 / ADR-0018)。行間と同じ「名前から値」方式。"""
+
+    def test_選択肢は3つ(self, dialog) -> None:
+        from hitofude.config import ContentWidth
+
+        values = [dialog._content_width.itemData(i) for i in range(dialog._content_width.count())]
+        assert values == [ContentWidth.STANDARD, ContentWidth.WIDE, ContentWidth.FULL]
+
+    def test_OKで設定に書かれる(self, dialog, config) -> None:
+        from hitofude.config import ContentWidth
+
+        dialog._content_width.setCurrentIndex(dialog._content_width.findData(ContentWidth.WIDE))
+        assert dialog.apply() is True
+        assert config.content_width is ContentWidth.WIDE
+
+    def test_初期値は設定から(self, qtbot, config) -> None:
+        from hitofude.config import ContentWidth
+        from hitofude.ui.preferences import PreferencesDialog
+
+        config.content_width = ContentWidth.FULL
+        widget = PreferencesDialog(config)
+        qtbot.addWidget(widget)
+        assert widget._content_width.currentData() is ContentWidth.FULL
+
+    def test_初期設定に戻すで標準へ(self, dialog) -> None:
+        from hitofude.config import ContentWidth
+
+        dialog._content_width.setCurrentIndex(dialog._content_width.findData(ContentWidth.FULL))
+        dialog.reset_button.click()
+        assert dialog._content_width.currentData() is ContentWidth.STANDARD

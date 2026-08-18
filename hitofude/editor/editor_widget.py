@@ -28,6 +28,7 @@ from PySide6.QtWidgets import QListWidget, QPlainTextEdit, QTextEdit, QWidget
 from hitofude.core import frontmatter, search, table, tags
 from hitofude.core.activation import ActivationKind, activation_at
 from hitofude.core.document import plain_text
+from hitofude.core.inline_scanner import image_only_line
 from hitofude.core.models import BlockInfo
 from hitofude.core.textpos import py_to_utf16, utf16_to_py
 from hitofude.editor import attachments, commands, painter_overlay
@@ -130,7 +131,8 @@ class MarkdownEditor(QPlainTextEdit):
     **何がどう変わったかは載せない。** 受け手（ステータスバー）は今の状態を
     見に来ればよく、差分を追う必要がない。"""
 
-    # spec §5.1: 読みやすさのため本文は中央寄せで最大 720px
+    # spec §5.1: 読みやすさのため本文は中央寄せで最大 720px。
+    # 設定で 880 / 0（= 窓幅いっぱい）にも変えられる（I-3 / ADR-0018）
     MAX_CONTENT_WIDTH = 720
 
     def __init__(
@@ -143,6 +145,8 @@ class MarkdownEditor(QPlainTextEdit):
     ) -> None:
         super().__init__(parent)
         self._theme = theme
+        # 本文の最大幅（px）。0 は「制限なし = 窓幅いっぱい」（ADR-0018）
+        self._max_content_width = self.MAX_CONTENT_WIDTH
         # 添付の保存先を知らないまま受け取るための口（R3 の分担を UI 側でも保つ）
         self._attachment_handler: Callable[[bytes, str], str | None] | None = None
         # 既存タグの取り出し口（C-4）。索引はエディタの外にある
@@ -773,8 +777,12 @@ class MarkdownEditor(QPlainTextEdit):
         return self._images
 
     def image_width(self) -> int:
-        """本文中に描く画像の最大幅。本文の折り返し幅に合わせる。"""
-        return self.MAX_CONTENT_WIDTH - int(self.document().documentMargin()) * 2
+        """本文中に描く画像の最大幅。本文の折り返し幅に合わせる。
+
+        「窓幅いっぱい」（0）のときは今の viewport 幅に合わせる。
+        """
+        limit = self._max_content_width or self.viewport().width()
+        return limit - int(self.document().documentMargin()) * 2
 
     def set_image_base(self, base_path) -> None:
         """画像を探す起点（保管フォルダ）。変えると抱えていた絵を捨てる。"""
@@ -1375,6 +1383,9 @@ class MarkdownEditor(QPlainTextEdit):
         super().resizeEvent(event)
         self._update_content_margins()
         self._update_table_columns()
+        if self._max_content_width == 0:
+            # 「窓幅いっぱい」だけ画像幅が窓に連れて変わる
+            self._update_image_width()
 
     def table_font(self) -> QFont:
         """表の描画に使う等幅フォント。折り返したセルの中身もこれで描く。"""
@@ -1425,9 +1436,38 @@ class MarkdownEditor(QPlainTextEdit):
         """本文の左右に入っている余白（px）。"""
         return self.viewportMargins().left()
 
+    def set_content_width(self, width: int) -> None:
+        """本文の最大幅（px）を変える。0 は「制限なし = 窓幅いっぱい」（ADR-0018）。
+
+        余白・表の桁数・画像幅はすべて幅から導出されるので、ここから
+        まとめて更新する。
+        """
+        if width == self._max_content_width:
+            return
+        self._max_content_width = width
+        self._update_content_margins()
+        self._update_table_columns()
+        self._update_image_width()
+
+    def _update_image_width(self) -> None:
+        """画像の最大幅をハイライタへ伝え、画像の行だけ掛け直す（R7）。
+
+        描画（painter）は `image_width()` を毎回読むので放っておいても
+        追従するが、ハイライタが予約した**行の高さ**は掛け直すまで残る。
+        """
+        if self._highlighter.set_image_width(self.image_width()):
+            block = self.document().firstBlock()
+            while block.isValid():
+                if image_only_line(block.text()) is not None:
+                    self._highlighter.rehighlightBlock(block)
+                block = block.next()
+
     def _update_content_margins(self) -> None:
         """本文を中央寄せし、最大幅を超えないようにする（§5.1）。"""
-        margin = max(0, (self.width() - self.MAX_CONTENT_WIDTH) // 2)
+        if self._max_content_width == 0:
+            margin = 0
+        else:
+            margin = max(0, (self.width() - self._max_content_width) // 2)
         current = self.viewportMargins()
         if current.left() == margin and current.right() == margin:
             return  # 同じ値を入れ直すと resize が再帰する

@@ -213,3 +213,32 @@ class TestSortOrder:
     def test_壊れた値は既定に戻す(self, config) -> None:
         config.settings.setValue("list/sort_order", "なにか")
         assert config.sort_order is SortOrder.MODIFIED
+
+
+class TestContentWidth:
+    """本文の横幅（I-3 / ADR-0018）。名前で選び、px は使う側が決める。"""
+
+    def test_既定は標準(self, config) -> None:
+        from hitofude.config import ContentWidth
+
+        assert config.content_width is ContentWidth.STANDARD
+
+    def test_変えられる(self, config) -> None:
+        from hitofude.config import ContentWidth
+
+        config.content_width = ContentWidth.WIDE
+        assert config.content_width is ContentWidth.WIDE
+
+    def test_壊れた値は既定に戻す(self, config) -> None:
+        from hitofude.config import ContentWidth
+
+        config.settings.setValue("editor/content_width", "9999px")
+        assert config.content_width is ContentWidth.STANDARD
+
+    def test_pxへの対応表が全員ぶんある(self) -> None:
+        from hitofude.config import CONTENT_WIDTH_PIXELS, ContentWidth
+
+        assert set(CONTENT_WIDTH_PIXELS) == set(ContentWidth)
+        assert CONTENT_WIDTH_PIXELS[ContentWidth.STANDARD] == 720
+        assert CONTENT_WIDTH_PIXELS[ContentWidth.WIDE] == 880
+        assert CONTENT_WIDTH_PIXELS[ContentWidth.FULL] == 0  # 0 = 窓幅いっぱい

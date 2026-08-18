@@ -264,6 +264,16 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._build_formats()
         self.rehighlight()
 
+    def set_image_width(self, width: int) -> bool:
+        """画像の最大幅だけ差し替える（I-3）。変わったら True。
+
+        呼び手はそのとき画像の行だけを掛け直す（全体再ハイライトは R7 違反）。
+        """
+        if width == self._image_width:
+            return False
+        self._image_width = width
+        return True
+
     def set_image_source(self, cache, width: int) -> None:
         """画像行の高さを決めるための出どころ（タスク A-2）。
 
