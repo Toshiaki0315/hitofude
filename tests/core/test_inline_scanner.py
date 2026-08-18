@@ -381,3 +381,64 @@ class TestMath:
     def test_二重を単独の記号に割らない(self) -> None:
         """`$$a$$` を `$` 2 つ + `$a$` と読むと範囲がずれる。"""
         assert len(scan("$$a$$")) == 1
+
+
+class TestParenthesizedUrl:
+    """Wikipedia 型 URL（`…/Qt_(framework)`）。バランスした括弧 1 段を許す。
+
+    URL 部分が `[^()\\s]*` だったため、括弧を含むとリンクごと不成立で
+    `[` `]` が生の文字として残っていた（回帰）。CommonMark も 1 段の
+    バランスした括弧を許している。
+    """
+
+    def test_括弧入りURLのリンクが成立する(self) -> None:
+        text = "[Qt](https://ja.wikipedia.org/wiki/Qt_(framework))"
+        spans = scan(text)
+        assert [s.type for s in spans] == [SpanType.LINK_TEXT, SpanType.LINK_URL]
+        assert content(text, spans[1]) == "https://ja.wikipedia.org/wiki/Qt_(framework)"
+
+    def test_括弧入りURLの画像も成立する(self) -> None:
+        text = "![図](attachments/図 (1).png)"
+        spans = scan("![図](attachments/図(1).png)")
+        assert [s.type for s in spans] == [SpanType.IMAGE, SpanType.LINK_URL]
+        assert text  # 空白入りは従来どおり不成立のまま（URL に空白は書けない）
+
+    def test_裸のURLも括弧まで含めて拾う(self) -> None:
+        text = "https://ja.wikipedia.org/wiki/Qt_(framework) を見る"
+        span = only(text)
+        assert span.type is SpanType.AUTOLINK
+        assert span.payload == "https://ja.wikipedia.org/wiki/Qt_(framework)"
+
+    def test_閉じ括弧だけが続く裸のURLは括弧の前で止まる(self) -> None:
+        text = "（https://doc.qt.io/）"
+        # 全角括弧は今まで通り区切り。ASCII の閉じ括弧単独も URL に含めない
+        spans = scan("(https://doc.qt.io/)")
+        assert spans[0].payload == "https://doc.qt.io/"
+        assert text
+
+
+class TestHighlightWordGuard:
+    """`::` は ASCII の単語に食い込んでいるときはマーカーにしない。
+
+    `std::vector::size` の `::` が開き/閉じとして拾われ、散文中の
+    C++ 識別子がハイライトになっていた（回帰）。日本語は ASCII 単語
+    文字ではないので、`これは::目立つ::です` は今まで通り効く。
+    """
+
+    def test_CPP識別子はハイライトにしない(self) -> None:
+        assert scan("std::vector::size を使う") == []
+
+    def test_日本語の文中では今まで通り効く(self) -> None:
+        text = "これは::目立つ::です"
+        span = only(text)
+        assert span.type is SpanType.HIGHLIGHT
+        assert content(text, span) == "目立つ"
+
+    def test_行頭のハイライトは今まで通り(self) -> None:
+        assert only("::目立つ::").type is SpanType.HIGHLIGHT
+
+    def test_空白で区切られた英語も今まで通り(self) -> None:
+        assert only("a ::note:: b").type is SpanType.HIGHLIGHT
+
+    def test_閉じの直後にASCII単語が続くなら閉じない(self) -> None:
+        assert scan("::x::size") == []

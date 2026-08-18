@@ -25,10 +25,14 @@ from hitofude.core.tags import TAG_RE, normalize
 # --- 全体をマスクする規則 -------------------------------------------------
 
 _CODE_RE = re.compile(r"(?P<ticks>`+)(?P<body>.+?)(?P=ticks)")
-_IMAGE_RE = re.compile(r"!\[(?P<text>[^\[\]]*)\]\((?P<url>[^()\s]*)\)")
+# URL はバランスした括弧を 1 段だけ許す（CommonMark と同じ）。
+# Wikipedia 型（`…/Qt_(framework)`）を弾くと、リンクごと不成立になって
+# `[` `]` が生の文字として残る
+_URL_CHARS = r"(?:\([^()\s]*\)|[^()\s])*"
+_IMAGE_RE = re.compile(rf"!\[(?P<text>[^\[\]]*)\]\((?P<url>{_URL_CHARS})\)")
 # 行まるごとが画像 1 つのときだけ、本文中に絵として描く（タスク A-2）
-_IMAGE_LINE_RE = re.compile(r"\A\s*!\[[^\[\]]*\]\((?P<url>[^()\s]+)\)\s*\Z")
-_LINK_RE = re.compile(r"(?<!!)\[(?P<text>[^\[\]]*)\]\((?P<url>[^()\s]*)\)")
+_IMAGE_LINE_RE = re.compile(r"\A\s*!\[[^\[\]]*\]\((?P<url>(?:\([^()\s]*\)|[^()\s])+)\)\s*\Z")
+_LINK_RE = re.compile(rf"(?<!!)\[(?P<text>[^\[\]]*)\]\((?P<url>{_URL_CHARS})\)")
 # ノート間リンク `[[ノート名]]`（E-6）。**`|` を含むものは拾わない。**
 # 別名（`[[名前|表示]]`）は未対応で、中途半端に拾うと名前が壊れる
 _WIKI_LINK_RE = re.compile(r"\[\[(?P<name>[^\[\]|]+)\]\]")
@@ -45,7 +49,9 @@ _MATH_RE = re.compile(r"(?<![\d$])\$(?P<body>[^\s$][^$]*?[^\s$]|[^\s$])\$(?![\d$
 # かな・漢字を含むものは取り違え。数式に日本語は出てこない
 _MATH_CJK_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿々〆、。]")
 _AUTOLINK_RE = re.compile(r"<(?P<url>[A-Za-z][A-Za-z0-9+.\-]*:[^<>\s]+|[^@<>\s]+@[^@<>\s]+)>")
-_BARE_URL_RE = re.compile(r"(?<![\w/])(?P<url>https?://[^\s<>()\[\]\"'、。]+)")
+# 裸の URL もバランスした括弧 1 段を許す（GFM の自動リンクと同じ）。
+# 単独の `)` は含めないので、`(https://…)` のように括弧で包んだ書き方は壊れない
+_BARE_URL_RE = re.compile(r"(?<![\w/])(?P<url>https?://(?:\([^\s()]*\)|[^\s<>()\[\]\"'、。])+)")
 
 # --- デリミタ対で表す規則 -------------------------------------------------
 # spec §6.5 規則 4: 長いデリミタから先に確定する。
@@ -134,10 +140,25 @@ def _runs(text: str, char: str, length: int, mask: bytearray) -> list[tuple[int,
     return found
 
 
+def _ascii_word_at(text: str, index: int) -> bool:
+    """その位置が ASCII の単語文字（識別子の一部）か。範囲外は False。"""
+    if not 0 <= index < len(text):
+        return False
+    char = text[index]
+    return char.isascii() and (char.isalnum() or char == "_")
+
+
 def _scan_delimited(text: str, mask: bytearray, spans: list[InlineSpan]) -> None:
     for char, length, span_type, relaxed in _DELIMITER_PASSES:
+        # `::` は ASCII の単語に食い込んでいるときはマーカーにしない。
+        # `std::vector::size` の `::` は識別子の一部で、散文に書いただけで
+        # ハイライトになっていた。日本語は ASCII 単語文字ではないので、
+        # `これは::目立つ::です` には影響しない
+        word_guard = char == ":"
         open_stack: list[tuple[int, int]] = []
         for start, end in _runs(text, char, length, mask):
+            if word_guard and _ascii_word_at(text, start - 1) and _ascii_word_at(text, end):
+                continue  # 両側とも単語の中。識別子の一部で確定
             if open_stack and _can_close(text, start, end, relaxed=relaxed):
                 open_start, open_end = open_stack.pop()
                 spans.append(
