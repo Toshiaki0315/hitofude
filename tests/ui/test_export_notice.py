@@ -11,32 +11,21 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QFileDialog
 
-from hitofude.config import Config
-from hitofude.ui.main_window import NOTICE_MS, MainWindow
+from hitofude.ui.main_window import NOTICE_MS
 
 pytestmark = pytest.mark.gui
 
 
 @pytest.fixture
-def window(qtbot, tmp_path: Path) -> MainWindow:
-    settings = QSettings(str(tmp_path / "test.ini"), QSettings.Format.IniFormat)
-    config = Config(settings)
-    config.vault_path = tmp_path / "HitofudeNotes"
-    marker = config.vault_path / ".hitofude" / "seeded"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("test", encoding="utf-8")
-
-    widget = MainWindow(config)
-    qtbot.addWidget(widget)
-    widget.show()
-    widget.new_note()
-    widget.editor.setPlainText("# 見出し\n\n本文\n")
-    widget.flush()
-    yield widget
-    widget.close()
+def window(window):
+    """書き出す中身が要る。"""
+    window.show()
+    window.new_note()
+    window.editor.setPlainText("# 見出し\n\n本文\n")
+    window.flush()
+    return window
 
 
 @pytest.fixture

@@ -11,21 +11,6 @@ from hitofude.ui.shortcut_sheet import ShortcutSheet, shortcut_rows
 pytestmark = pytest.mark.gui
 
 
-@pytest.fixture
-def window(qtbot, tmp_path):
-    from PySide6.QtCore import QSettings
-
-    from hitofude.config import Config
-    from hitofude.ui.main_window import MainWindow
-
-    settings = QSettings(str(tmp_path / "t.ini"), QSettings.Format.IniFormat)
-    config = Config(settings)
-    config.vault_path = tmp_path / "Notes"
-    found = MainWindow(config)
-    qtbot.addWidget(found)
-    return found
-
-
 class TestRows:
     def test_メニューから作る(self, window) -> None:
         assert shortcut_rows(window)

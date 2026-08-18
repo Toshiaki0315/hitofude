@@ -1,7 +1,5 @@
 """ペインの区切り線とフォント設定の反映（ユーザー要望）。"""
 
-from pathlib import Path
-
 import pytest
 from PySide6.QtCore import QSettings, Qt
 
@@ -14,25 +12,10 @@ pytestmark = pytest.mark.gui
 
 
 @pytest.fixture
-def config(tmp_path: Path, qapp) -> Config:
-    settings = QSettings(str(tmp_path / "test.ini"), QSettings.Format.IniFormat)
-    config = Config(settings)
-    config.vault_path = tmp_path / "HitofudeNotes"
-    # 使い方ノートを置かせない。件数を数えるテストが 1 件ずれるため。
-    # 初回ノートそのものは TestWelcomeNote が見る
-    marker = config.vault_path / ".hitofude" / "seeded"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("test", encoding="utf-8")
-    return config
-
-
-@pytest.fixture
-def window(qtbot, config: Config) -> MainWindow:
-    widget = MainWindow(config)
-    qtbot.addWidget(widget)
-    widget.show()
-    yield widget
-    widget.close()
+def window(window):
+    """描いた色を見るので表示する。"""
+    window.show()
+    return window
 
 
 class TestSplitterDivider:
@@ -386,11 +369,9 @@ class TestThemeReachesEveryPane:
         食い違っていると、切り替えの通知も飛ばないまま明るいまま残る
         （実際にそうなっていた）。
         """
-        from PySide6.QtCore import QSettings
         from PySide6.QtGui import QPalette
         from PySide6.QtWidgets import QApplication
 
-        from hitofude.config import Config
         from hitofude.theme import DARK, ThemeMode
         from hitofude.ui.main_window import MainWindow
 

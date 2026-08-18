@@ -19,25 +19,9 @@ pytestmark = pytest.mark.gui
 
 
 @pytest.fixture
-def config(tmp_path: Path, qapp) -> Config:
-    settings = QSettings(str(tmp_path / "test.ini"), QSettings.Format.IniFormat)
-    config = Config(settings)
-    config.vault_path = tmp_path / "HitofudeNotes"
-    # 使い方ノートを置かせない。件数を数えるテストが 1 件ずれるため。
-    # 初回ノートそのものは TestWelcomeNote が見る
-    marker = config.vault_path / ".hitofude" / "seeded"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("test", encoding="utf-8")
-    return config
-
-
-@pytest.fixture
-def window(qtbot, config: Config) -> MainWindow:
-    widget = MainWindow(config)
-    qtbot.addWidget(widget)
-    widget.show()
-    yield widget
-    widget.close()
+def window(window):
+    window.show()
+    return window
 
 
 class TestLayout:

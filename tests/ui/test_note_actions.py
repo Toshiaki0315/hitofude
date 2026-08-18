@@ -18,21 +18,6 @@ from hitofude.ui.sidebar import ALL, PINNED, TRASH
 pytestmark = pytest.mark.gui
 
 
-@pytest.fixture
-def window(qtbot, tmp_path: Path) -> MainWindow:
-    settings = QSettings(str(tmp_path / "test.ini"), QSettings.Format.IniFormat)
-    config = Config(settings)
-    config.vault_path = tmp_path / "HitofudeNotes"
-    marker = config.vault_path / ".hitofude" / "seeded"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("test", encoding="utf-8")
-
-    widget = MainWindow(config)
-    qtbot.addWidget(widget)
-    yield widget
-    widget.close()
-
-
 def make_note(window: MainWindow, title: str, body: str = "本文\n") -> Path:
     # タイトルは本文の H1 から導かれる（document.title_of）。
     # ファイル名だけ付けても一覧には出ない
@@ -507,9 +492,7 @@ class TestSortOrder:
     """並び順の切り替え（C-3）。一覧まで届くこと。"""
 
     def test_起動時に設定を読む(self, qtbot, tmp_path) -> None:
-        from PySide6.QtCore import QSettings
 
-        from hitofude.config import Config
         from hitofude.storage.index_db import SortOrder
         from hitofude.ui.main_window import MainWindow
 

@@ -9,31 +9,14 @@
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-from hitofude.config import Config
 from hitofude.editor.exporter import write_pdf
 from hitofude.ui.main_window import MainWindow
 
 pytestmark = pytest.mark.gui
 
 NOTE = "# 四半期の振り返り\n\n本日の議題は **予算** です。\n"
-
-
-@pytest.fixture
-def window(qtbot, tmp_path: Path) -> MainWindow:
-    settings = QSettings(str(tmp_path / "test.ini"), QSettings.Format.IniFormat)
-    config = Config(settings)
-    config.vault_path = tmp_path / "HitofudeNotes"
-    marker = config.vault_path / ".hitofude" / "seeded"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("test", encoding="utf-8")
-
-    widget = MainWindow(config)
-    qtbot.addWidget(widget)
-    yield widget
-    widget.close()
 
 
 @pytest.fixture(autouse=True)

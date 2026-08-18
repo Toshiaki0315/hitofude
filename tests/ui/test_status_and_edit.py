@@ -7,30 +7,18 @@
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 
 from hitofude import APP_NAME
-from hitofude.config import Config
 from hitofude.ui.main_window import MainWindow
 
 pytestmark = pytest.mark.gui
 
 
 @pytest.fixture
-def window(qtbot, tmp_path: Path) -> MainWindow:
-    settings = QSettings(str(tmp_path / "test.ini"), QSettings.Format.IniFormat)
-    config = Config(settings)
-    config.vault_path = tmp_path / "HitofudeNotes"
-    marker = config.vault_path / ".hitofude" / "seeded"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("test", encoding="utf-8")
-
-    widget = MainWindow(config)
-    qtbot.addWidget(widget)
-    widget.show()
-    yield widget
-    widget.close()
+def window(window):
+    window.show()
+    return window
 
 
 def note(window: MainWindow, title: str, body: str = "本文\n") -> Path:

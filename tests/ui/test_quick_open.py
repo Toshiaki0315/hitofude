@@ -16,19 +16,9 @@ pytestmark = pytest.mark.gui
 
 
 @pytest.fixture
-def window(qtbot, tmp_path: Path):
-    from PySide6.QtCore import QSettings
-
-    from hitofude.config import Config
-    from hitofude.ui.main_window import MainWindow
-
-    settings = QSettings(str(tmp_path / "t.ini"), QSettings.Format.IniFormat)
-    config = Config(settings)
-    config.vault_path = tmp_path / "Notes"
-    found = MainWindow(config)
-    qtbot.addWidget(found)
-    found.show()
-    return found
+def window(window):
+    window.show()
+    return window
 
 
 def item(title: str, subtitle: str = "") -> PaletteItem:

@@ -9,10 +9,8 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QMessageBox
 
-from hitofude.config import Config
 from hitofude.storage.vault import DAILY_TEMPLATE
 from hitofude.ui.main_window import MainWindow
 from hitofude.ui.quick_open import Palette
@@ -20,21 +18,6 @@ from hitofude.ui.quick_open import Palette
 pytestmark = pytest.mark.gui
 
 NOW = datetime(2026, 8, 14, 9, 5)
-
-
-@pytest.fixture
-def window(qtbot, tmp_path: Path) -> MainWindow:
-    settings = QSettings(str(tmp_path / "test.ini"), QSettings.Format.IniFormat)
-    config = Config(settings)
-    config.vault_path = tmp_path / "HitofudeNotes"
-    marker = config.vault_path / ".hitofude" / "seeded"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("test", encoding="utf-8")
-
-    widget = MainWindow(config)
-    qtbot.addWidget(widget)
-    yield widget
-    widget.close()
 
 
 def put_template(window: MainWindow, name: str, text: str) -> Path:

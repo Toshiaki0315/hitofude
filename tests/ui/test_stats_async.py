@@ -9,13 +9,10 @@
 """
 
 import time
-from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QSettings
 
-from hitofude.config import Config
-from hitofude.ui.main_window import ASYNC_STATS_CHARS, MainWindow
+from hitofude.ui.main_window import ASYNC_STATS_CHARS
 
 pytestmark = pytest.mark.gui
 
@@ -23,19 +20,10 @@ LINE = "これは日本語の文章です。**強調** も入ります。\n"
 
 
 @pytest.fixture
-def window(qtbot, tmp_path: Path) -> MainWindow:
-    settings = QSettings(str(tmp_path / "test.ini"), QSettings.Format.IniFormat)
-    config = Config(settings)
-    config.vault_path = tmp_path / "HitofudeNotes"
-    marker = config.vault_path / ".hitofude" / "seeded"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("test", encoding="utf-8")
-
-    widget = MainWindow(config)
-    qtbot.addWidget(widget)
-    widget.new_note()
-    yield widget
-    widget.close()
+def window(window):
+    """数える対象が要る。"""
+    window.new_note()
+    return window
 
 
 def long_text() -> str:

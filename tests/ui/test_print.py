@@ -10,29 +10,12 @@
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QDialog
 
-from hitofude.config import Config
 from hitofude.ui import export_actions as export_actions_module
 from hitofude.ui.main_window import MainWindow
 
 pytestmark = pytest.mark.gui
-
-
-@pytest.fixture
-def window(qtbot, tmp_path: Path) -> MainWindow:
-    settings = QSettings(str(tmp_path / "test.ini"), QSettings.Format.IniFormat)
-    config = Config(settings)
-    config.vault_path = tmp_path / "HitofudeNotes"
-    marker = config.vault_path / ".hitofude" / "seeded"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("test", encoding="utf-8")
-
-    widget = MainWindow(config)
-    qtbot.addWidget(widget)
-    yield widget
-    widget.close()
 
 
 class FakeDialog:

@@ -10,31 +10,14 @@
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QMessageBox
 
-from hitofude.config import Config
 from hitofude.ui import main_window as main_window_module
 from hitofude.ui.main_window import MainWindow
 
 pytestmark = pytest.mark.gui
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 32
-
-
-@pytest.fixture
-def window(qtbot, tmp_path: Path) -> MainWindow:
-    settings = QSettings(str(tmp_path / "test.ini"), QSettings.Format.IniFormat)
-    config = Config(settings)
-    config.vault_path = tmp_path / "HitofudeNotes"
-    marker = config.vault_path / ".hitofude" / "seeded"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("test", encoding="utf-8")
-
-    widget = MainWindow(config)
-    qtbot.addWidget(widget)
-    yield widget
-    widget.close()
 
 
 @pytest.fixture

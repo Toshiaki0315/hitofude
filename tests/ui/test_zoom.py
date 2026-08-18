@@ -7,31 +7,13 @@
 「文字サイズ」と同じ値を触るので、両方から見て食い違わない。
 """
 
-from pathlib import Path
-
 import pytest
-from PySide6.QtCore import QSettings
 from PySide6.QtGui import QKeySequence
 
-from hitofude.config import DEFAULT_POINT_SIZE, MAX_POINT_SIZE, MIN_POINT_SIZE, Config
+from hitofude.config import DEFAULT_POINT_SIZE, MAX_POINT_SIZE, MIN_POINT_SIZE
 from hitofude.ui.main_window import ZOOM_STEP, MainWindow
 
 pytestmark = pytest.mark.gui
-
-
-@pytest.fixture
-def window(qtbot, tmp_path: Path) -> MainWindow:
-    settings = QSettings(str(tmp_path / "test.ini"), QSettings.Format.IniFormat)
-    config = Config(settings)
-    config.vault_path = tmp_path / "HitofudeNotes"
-    marker = config.vault_path / ".hitofude" / "seeded"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("test", encoding="utf-8")
-
-    widget = MainWindow(config)
-    qtbot.addWidget(widget)
-    yield widget
-    widget.close()
 
 
 def size(window: MainWindow) -> float:
