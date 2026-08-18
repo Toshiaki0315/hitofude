@@ -10,6 +10,7 @@ pytestmark = pytest.mark.gui
 
 CMD = Qt.KeyboardModifier.ControlModifier  # macOS では Cmd に対応する
 CMD_SHIFT = CMD | Qt.KeyboardModifier.ShiftModifier
+CMD_CTRL = CMD | Qt.KeyboardModifier.MetaModifier  # macOS では Meta が物理 Ctrl
 
 
 @pytest.fixture
@@ -166,29 +167,49 @@ class TestAutoPair:
 
 
 class TestHeadingLevel:
+    """spec §5.4: `Cmd+Ctrl+↑/↓`。
+
+    以前は `Cmd+Shift+↑/↓` に割り当てていたが、それは macOS 標準の
+    「文頭 / 文末まで選択」で、標準操作を奪っていた。spec に合わせて戻した。
+    """
+
     def test_下げると見出しになる(self, editor, qtbot) -> None:
         editor.setPlainText("段落")
         put_caret(editor, 1)
-        qtbot.keyClick(editor, Qt.Key.Key_Down, CMD_SHIFT)
+        qtbot.keyClick(editor, Qt.Key.Key_Down, CMD_CTRL)
         assert editor.toPlainText() == "# 段落"
 
     def test_上げると大きくなる(self, editor, qtbot) -> None:
         editor.setPlainText("## 見出し")
         put_caret(editor, 4)
-        qtbot.keyClick(editor, Qt.Key.Key_Up, CMD_SHIFT)
+        qtbot.keyClick(editor, Qt.Key.Key_Up, CMD_CTRL)
         assert editor.toPlainText() == "# 見出し"
 
     def test_H1から上げると段落に戻る(self, editor, qtbot) -> None:
         editor.setPlainText("# 見出し")
         put_caret(editor, 3)
-        qtbot.keyClick(editor, Qt.Key.Key_Up, CMD_SHIFT)
+        qtbot.keyClick(editor, Qt.Key.Key_Up, CMD_CTRL)
         assert editor.toPlainText() == "見出し"
 
     def test_H6より下げられない(self, editor, qtbot) -> None:
         editor.setPlainText("###### 見出し")
         put_caret(editor, 8)
-        qtbot.keyClick(editor, Qt.Key.Key_Down, CMD_SHIFT)
+        qtbot.keyClick(editor, Qt.Key.Key_Down, CMD_CTRL)
         assert editor.toPlainText() == "###### 見出し"
+
+    def test_CmdShiftでは変えない(self, editor, qtbot) -> None:
+        """macOS 標準の「文頭まで選択」を奪わない。"""
+        editor.setPlainText("## 見出し")
+        put_caret(editor, 4)
+        qtbot.keyClick(editor, Qt.Key.Key_Up, CMD_SHIFT)
+        assert editor.toPlainText() == "## 見出し"
+
+    def test_CmdCtrlに他のキーを足しても文字にならない(self, editor, qtbot) -> None:
+        """未割り当ての Cmd+Ctrl 組み合わせで本文を汚さない。"""
+        editor.setPlainText("本文")
+        put_caret(editor, 2)
+        qtbot.keyClick(editor, Qt.Key.Key_B, CMD_CTRL)
+        assert editor.toPlainText() == "本文"
 
 
 class TestCheckbox:

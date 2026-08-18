@@ -550,10 +550,24 @@ class MarkdownEditor(QPlainTextEdit):
         command = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
         shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
         alt = bool(modifiers & Qt.KeyboardModifier.AltModifier)
+        # macOS では物理 Ctrl が MetaModifier に入る
+        meta = bool(modifiers & Qt.KeyboardModifier.MetaModifier)
         if not command:
             return False
 
         key = event.key()
+        if meta:
+            # 見出しレベル ± は spec §5.4 どおり `Cmd+Ctrl+↑/↓`。
+            # 以前の `Cmd+Shift+↑/↓` は macOS 標準の「文頭 / 文末まで選択」を
+            # 奪っていた。ここで return して、Cmd+Ctrl の他の組み合わせが
+            # 下の Cmd 単独の分岐に落ちないようにする
+            if not shift and not alt:
+                match key:
+                    case Qt.Key.Key_Up:
+                        return self.shift_heading(-1)
+                    case Qt.Key.Key_Down:
+                        return self.shift_heading(1)
+            return False
         if not shift and not alt:
             match key:
                 case Qt.Key.Key_B:
@@ -583,10 +597,6 @@ class MarkdownEditor(QPlainTextEdit):
                 case Qt.Key.Key_Y:
                     self.toggle_typewriter_mode()
                     return True
-                case Qt.Key.Key_Up:
-                    return self.shift_heading(-1)
-                case Qt.Key.Key_Down:
-                    return self.shift_heading(1)
         return False
 
     def toggle_strong(self) -> bool:
