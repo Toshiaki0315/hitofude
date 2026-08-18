@@ -227,6 +227,39 @@ class TestExternalChange:
         window._on_external_change(ChangeKind.MODIFIED, path)
         assert "書き換えられた" in window.editor.toPlainText()
 
+    def test_読み直してもカーソルが飛ばない(self, window) -> None:
+        """iCloud / Dropbox の同期は mtime 更新だけでも読み直しを起こす。
+
+        `open_note()` で読み直すと `_place_cursor_at_body` がカーソルを
+        本文先頭へ動かし、閲覧中に突然先頭へ飛ばされていた（回帰）。
+        """
+        from PySide6.QtGui import QTextCursor
+
+        from hitofude.storage.watcher import ChangeKind
+
+        # 本文のあるノートで見る。new_note() は本文が空で、末尾と本文先頭が
+        # 同じ位置になり、飛んでいても検出できない
+        note = window.vault.create("読み直しメモ", "# 読み直しメモ\n\n1 行目\n2 行目\n3 行目\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        window.open_note(note.path)
+        cursor = window.editor.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        window.editor.setTextCursor(cursor)
+        position = window.editor.textCursor().position()
+        # カーソル移動はリビールの rehighlightBlock を起こし、それが
+        # textChanged を発火させて「編集中」扱いになる。ここで見たいのは
+        # 未編集の読み直しなので、書き出して待ちを解消しておく
+        window.flush()
+
+        # 外部で末尾に追記する（見出しは変えない → 保存時の自動改名を起こさない）
+        source = note.path.read_text(encoding="utf-8")
+        note.path.write_text(f"{source}外から追記\n", encoding="utf-8")
+
+        window._on_external_change(ChangeKind.MODIFIED, note.path)
+        assert "外から追記" in window.editor.toPlainText()  # 読み直されている
+        assert window.editor.textCursor().position() == position  # 先頭へ飛ばない
+
     def test_編集中なら読み直さない(self, window) -> None:
         """勝手に上書きすると書いている内容が消える。"""
         from hitofude.storage.watcher import ChangeKind

@@ -1307,12 +1307,15 @@ class MainWindow(QMainWindow):
             return
 
         if path.exists():
-            self._db.upsert_note(self._vault.read(path), self._vault.root)
+            note = self._vault.read(path)
+            self._db.upsert_note(note, self._vault.root)
 
-        if self._note is not None and self._note.path == path:
-            if self._debouncer.pending:
-                return  # 保存時に競合として扱う
-            self.open_note(path)  # 未編集なら静かに読み直す
+            if self._note is not None and self._note.path == path:
+                if self._debouncer.pending:
+                    return  # 保存時に競合として扱う
+                # 未編集なら静かに読み直す。open_note() だとカーソルが本文
+                # 先頭へ動き、iCloud 同期のたびに閲覧位置が飛んでしまう
+                self._reload_open_note(note)
         self.refresh()
 
     def _on_note_deleted(self, path: Path) -> None:
