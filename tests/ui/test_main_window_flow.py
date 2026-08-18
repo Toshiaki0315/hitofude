@@ -951,3 +951,31 @@ class TestStartupSweep:
             assert not orphan.exists()
         finally:
             window.close()
+
+
+class TestClearedNote:
+    """本文を全部消したらタイトルは「無題」へ戻る（ユーザー要望 2026-08-18）。
+
+    以前は空本文のタイトルがファイル名へ落ちていたため、一度書いて
+    改名が追従したあとに本文を消すと、前のタイトルが残って見えた。
+    """
+
+    def test_本文を消すとタイトルも一覧も無題に戻る(self, window) -> None:
+        from hitofude.ui.note_list import NoteRole
+
+        window.new_note()
+        window.editor.setPlainText("# 会議メモ\n\n本文\n")
+        window.flush()
+        assert "会議メモ" in window.windowTitle()
+
+        window.editor.selectAll()  # front matter は選ばれない（既存の守り）
+        window.editor.textCursor().removeSelectedText()
+        window.flush()
+
+        assert "会議メモ" not in window.windowTitle()
+        assert "無題" in window.windowTitle()
+        # ファイル名もタイトルへ追従する（ADR-0005 の既存機構）
+        assert window.current_note.path.name == "無題.md"
+        model = window.note_list.model()
+        titles = [model.data(model.index(row), NoteRole.TITLE) for row in range(model.rowCount())]
+        assert titles == ["無題"]

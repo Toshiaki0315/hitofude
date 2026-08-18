@@ -365,13 +365,18 @@ class TestRenameOnDisk:
         db.sync(vault)
         assert db.notes()[0].id == before
 
-    def test_見出しの無いノートだけ題名が変わる(self, db, vault) -> None:
-        """本文が空なら題名の出どころがファイル名しか残らない（§7.2）。"""
+    def test_本文が空なら改名しても題名は無題のまま(self, db, vault) -> None:
+        """題名の出どころは本文だけ（ADR-0015）。
+
+        以前はファイル名に落としていたが、ファイル名はタイトルの写し
+        （ADR-0005）なので、本文を全部消しても直前のタイトルが残って
+        見えていた。
+        """
         note = vault.create("メモ帳", "")
         db.upsert_note(note, vault.root)
         note.path.replace(vault.root / "新しい名前.md")
         db.sync(vault)
-        assert db.notes()[0].title == "新しい名前"
+        assert db.notes()[0].title == "無題"
 
     def test_タグも繋がりも付いてくる(self, db, vault) -> None:
         add(vault, db, "会議メモ")

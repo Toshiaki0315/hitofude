@@ -19,6 +19,9 @@ from hitofude.core.models import BlockInfo, BlockState, BlockType, SpanType
 
 PREVIEW_LENGTH = 200
 
+# 本文からタイトルを導けないときの表示名。storage/vault.py も同じ値を使う
+UNTITLED = "無題"
+
 # Crockford Base32（`I` `L` `O` `U` を除いて読み間違いを避ける）
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 _ULID_TIME_CHARS = 10
@@ -213,7 +216,10 @@ class Note:
 
     @property
     def title(self) -> str:
-        return title_of(self.text, self.path.stem)
+        # フォールバックはファイル名ではなく「無題」。本文が唯一の真実（R1）で、
+        # ファイル名へ落とすと、本文を全部消しても直前のタイトル（= 追従済みの
+        # ファイル名）が残って見える（ユーザー要望 2026-08-18 で変更）
+        return title_of(self.text, UNTITLED)
 
     @property
     def preview(self) -> str:

@@ -114,8 +114,15 @@ class TestNote:
         assert note.title == "会議メモ"
         assert note.id is None
 
-    def test_タイトルが無ければファイル名(self) -> None:
-        assert self.make("", "買い物リスト.md").title == "買い物リスト"
+    def test_本文が空ならファイル名ではなく無題(self) -> None:
+        """本文が唯一の真実（R1）。ファイル名へ落とすと、本文を全部消しても
+        直前のタイトル（= 追従済みのファイル名）が残って見える
+        （ユーザー要望 2026-08-18 で変更）。
+        """
+        assert self.make("", "買い物リスト.md").title == "無題"
+
+    def test_front_matterだけでも無題(self) -> None:
+        assert self.make("---\nid: ABC\n---\n", "会議メモ.md").title == "無題"
 
     def test_ダイジェストは内容で決まる(self) -> None:
         """spec §7.5: 競合検知に使う。"""

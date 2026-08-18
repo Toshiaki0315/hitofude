@@ -30,7 +30,7 @@ from enum import Enum, auto
 from pathlib import Path
 
 from hitofude.core import frontmatter
-from hitofude.core.document import Note, new_id
+from hitofude.core.document import UNTITLED, Note, new_id
 from hitofude.core.references import attachment_names
 from hitofude.core.table import find_table, format_table
 from hitofude.core.template import Expanded, daily_title, expand
@@ -49,7 +49,8 @@ DEFAULT_TRASH_DAYS = 30
 TEMP_SUFFIX = ".tmp"
 # これより古い .tmp はクラッシュの残骸と見なして掃除する（H-1 層 1）
 TEMP_SWEEP_AGE_SECONDS = 3600.0
-UNTITLED = "無題"
+# UNTITLED は core/document.py が持つ（タイトル導出のフォールバックと同じ値）。
+# ここからは import で再輸出している（既存の `vault.UNTITLED` 参照のため）
 
 MANUAL_TITLE = "Hitofude の使い方"
 MANUAL_RESOURCE = "manual.md"
