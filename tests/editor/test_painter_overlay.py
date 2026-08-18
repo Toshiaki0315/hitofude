@@ -401,3 +401,39 @@ class TestPaintNeverHidesText:
             for x in range(image.width())
         ), "本文が 1 ピクセルも描かれていない"
         assert "装飾の組み立てに失敗した" in caplog.text
+
+
+class TestBlockInset:
+    """囲みの飾りと中身の間に余白を作る（ユーザー要望 2026-08-18）。
+
+    **本文は右に動かせない。** ブロックの左余白は `QTextBlockFormat` しか
+    手がなく、R5（ADR-0002）でそれは使えない。そこで文書の余白
+    （`documentMargin`）を広げて本文の左に帯を作り、飾りは今までどおり
+    viewport の左端から描く。飾りの座標は変えずに隙間だけが生まれる。
+
+    以前は帯が 4px しかなく、縦バー（x=2..6）が本文（x=4 から）に
+    重なっていた（実測）。
+    """
+
+    def body_left(self, editor: MarkdownEditor, line: int = 0) -> float:
+        """その行の本文が始まる x。行頭のマーカーは潰れているので同じ位置。"""
+        block = editor.document().findBlockByNumber(line)
+        cursor = editor.textCursor()
+        cursor.setPosition(block.position())
+        editor.setTextCursor(cursor)
+        return float(editor.cursorRect().left())
+
+    def test_コードブロックの背景が中身より左から始まる(self, editor) -> None:
+        editor.setPlainText("```\ncode\n```\n\n末尾")
+        rect = of_kind(editor, DecorationKind.CODE_BACKGROUND)[0].rect
+        assert self.body_left(editor, 1) - rect.left() >= 8
+
+    def test_noteの縦バーが中身に重ならない(self, editor) -> None:
+        editor.setPlainText(":::note\naaa\n:::\n")
+        bar = of_kind(editor, DecorationKind.NOTE_BAR)[0].rect
+        assert bar.right() <= self.body_left(editor, 1)
+
+    def test_引用の縦バーが中身に重ならない(self, editor) -> None:
+        editor.setPlainText("> 引用\n")
+        bar = of_kind(editor, DecorationKind.QUOTE_BAR)[0].rect
+        assert bar.right() <= self.body_left(editor, 0)

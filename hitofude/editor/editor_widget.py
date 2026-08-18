@@ -50,6 +50,19 @@ _EDITING_KEYS = frozenset(
 
 DEFAULT_FONT_FAMILY = "Hiragino Sans"
 DEFAULT_POINT_SIZE = 15.0
+
+# 本文の周りの余白（`QTextDocument.documentMargin`）。
+#
+# **既定の 4px では狭すぎた**（ユーザー要望 2026-08-18）。飾り
+# （コードブロックの背景・`:::note` と引用の縦バー）は viewport の左端から
+# 描くのに対し、本文はこの余白のぶん右から始まる。つまりこの値がそのまま
+# 「飾りと中身の隙間」になる。4px のときは幅 4px の縦バー（x=2..6）が
+# 本文（x=4 から）に重なっていた（実測）。
+#
+# **本文を右へ動かす道は無い。** ブロックの左余白は `QTextBlockFormat` しか
+# 手がなく、R5（ADR-0002）でそれは使えない（`QPlainTextDocumentLayout` が
+# 無視し、Undo も 1 段消費する）。余白を広げるのが唯一の手段。
+CONTENT_MARGIN = 12.0
 # タブ幅（文字数）。既定は `config.DEFAULT_TAB_WIDTH` と揃える
 DEFAULT_TAB_WIDTH = 4
 
@@ -144,6 +157,8 @@ class MarkdownEditor(QPlainTextEdit):
         font = QFont(font_family)
         font.setPointSizeF(base_point_size)
         self.setFont(font)
+        # 飾りと中身の隙間はこの余白がそのまま決める（`CONTENT_MARGIN`）
+        self.document().setDocumentMargin(CONTENT_MARGIN)
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self.setFrameShape(QPlainTextEdit.Shape.NoFrame)
         self.setTabChangesFocus(False)
