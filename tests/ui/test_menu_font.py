@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QSettings
 
+from hitofude.app import MENU_FONT_STEP
 from hitofude.config import Config
-from hitofude.ui.icons import MENU_FONT_STEP
 from hitofude.ui.main_window import MainWindow
 from hitofude.ui.note_list_pane import NoteListPane
 from hitofude.ui.sidebar import ALL, TRASH

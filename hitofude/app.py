@@ -7,11 +7,10 @@ from typing import cast
 
 from PySide6.QtCore import QLockFile, QObject, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPalette
-from PySide6.QtWidgets import QApplication, QToolTip
+from PySide6.QtWidgets import QApplication, QToolTip, QWidget
 
 from hitofude import APP_NAME, ORG_DOMAIN, ORG_NAME, __version__
 from hitofude.theme import ThemeColors, ThemeMode, colors_for
-from hitofude.ui.icons import MENU_FONT_STEP
 
 logger = logging.getLogger(__name__)
 
@@ -396,6 +395,24 @@ def create_application(argv: list[str] | None = None) -> QApplication:
     apply_chrome_font(app)
     apply_theme(app, colors_for(ThemeMode.SYSTEM, system_is_dark=system_is_dark()))
     return app
+
+
+# ポップアップメニューの文字を大きくする量（ユーザー要望）。並び順・
+# 一覧の右クリック・サイドバーの右クリックは**押す前に読むもの**で、
+# 既定の大きさでは小さかった。画面上部のメニューバーは OS が描くので
+# こちらからは変えられない
+MENU_FONT_STEP = 2
+
+
+def apply_menu_font(menu: QWidget) -> None:
+    """ポップアップメニューの文字を `MENU_FONT_STEP` だけ大きくする。
+
+    **親の大きさから決める。** 数字を直に置くと、本文フォントの設定を
+    変えたときに置いていかれる。
+    """
+    font = QFont(menu.font())
+    font.setPointSizeF(font.pointSizeF() + MENU_FONT_STEP)
+    menu.setFont(font)
 
 
 def apply_chrome_font(app: QApplication) -> None:

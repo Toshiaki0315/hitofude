@@ -1,4 +1,4 @@
-"""サイドバーのアイコンを線で描く。あわせて、画面全体で揃えたい寸法を置く。
+"""サイドバーのアイコンを線で描く。あわせて、上部のバーの倍率を置く。
 
 **絵文字も画像ファイルも使わない。** 絵文字は色を指定できずテーマから浮き、
 画像ファイルはライト / ダーク × 解像度のぶんだけ用意することになる。
@@ -16,34 +16,14 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (
     QBrush,
     QColor,
-    QFont,
     QIcon,
     QPainter,
     QPainterPath,
     QPen,
     QPixmap,
 )
-from PySide6.QtWidgets import QWidget
 
 # 描画は倍率をかけた大きさで行い、表示側で縮小する。線が滑らかになる
-# ポップアップメニューの文字を大きくする量（ユーザー要望）。並び順・
-# 一覧の右クリック・サイドバーの右クリックは**押す前に読むもの**で、
-# 既定の大きさでは小さかった。画面上部のメニューバーは OS が描くので
-# こちらからは変えられない
-MENU_FONT_STEP = 2
-
-
-def apply_menu_font(menu: "QWidget") -> None:
-    """ポップアップメニューの文字を `MENU_FONT_STEP` だけ大きくする。
-
-    **親の大きさから決める。** 数字を直に置くと、本文フォントの設定を
-    変えたときに置いていかれる。
-    """
-    font = QFont(menu.font())
-    font.setPointSizeF(font.pointSizeF() + MENU_FONT_STEP)
-    menu.setFont(font)
-
-
 # 上部のバー（一覧の並び順・新規、本文の書式ツールバー）の倍率。
 # **1 か所に持つ。** 各ファイルに数字を散らすと、直すときに片方だけ残る。
 # 1.0 が元の大きさ（ユーザー要望で 1.5 倍を試し、1.3 に落ち着いた）

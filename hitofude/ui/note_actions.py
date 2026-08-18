@@ -14,10 +14,10 @@ from pathlib import Path
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QInputDialog, QMenu, QMessageBox
 
+from hitofude.app import apply_menu_font
 from hitofude.core.document import Note, with_title
 from hitofude.storage.index_db import NoteRow
 from hitofude.storage.vault import MARKDOWN_SUFFIXES, sanitize_filename, unique_path
-from hitofude.ui.icons import apply_menu_font
 from hitofude.ui.note_list import NoteRole
 from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
 from hitofude.ui.sidebar import Filter, FilterKind

@@ -18,10 +18,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from hitofude.app import apply_menu_font
 from hitofude.storage.index_db import SortOrder
 from hitofude.theme import LIGHT, ThemeColors
 from hitofude.ui.format_toolbar import BAR_HEIGHT, BUTTON_RADIUS, BUTTON_SIZE, ICON_SIZE
-from hitofude.ui.icons import TOOLBAR_SCALE, Glyph, apply_menu_font, glyph_icon
+from hitofude.ui.icons import TOOLBAR_SCALE, Glyph, glyph_icon
 from hitofude.ui.note_list import NoteListView
 from hitofude.ui.panes import NOTE_LIST_MIN_WIDTH
 
