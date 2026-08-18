@@ -409,6 +409,17 @@ class TestCodeColors:
         set_text(document, "```python\ndef f():\n    pass\n```\n\n末尾")
         assert self.color_at(document, 1, 0) != self.color_at(document, 1, 4)
 
+    def test_開いた直後でも後ろが長い文書なら色が付く(self, document, highlighter) -> None:
+        """初回パスでは後続ブロックの userData がまだ無い。
+
+        `_fence_body` の下方向の走査が閉じフェンスで止まらず文書末尾まで
+        集めてしまい、200 行ガードに当たって「開いた直後だけ短いコード
+        ブロックに色が付かない（編集すると直る）」になっていた（回帰）。
+        """
+        trailing = "\n".join(["本文"] * 250)
+        set_text(document, f"```python\ndef f():\n    pass\n```\n\n{trailing}")
+        assert self.color_at(document, 1, 0) != self.color_at(document, 1, 4)
+
     def test_言語が無ければ色を付けない(self, document, highlighter) -> None:
         set_text(document, "```\ndef f():\n    pass\n```\n\n末尾")
         assert self.color_at(document, 1, 0) == self.color_at(document, 1, 4)

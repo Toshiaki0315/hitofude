@@ -568,12 +568,28 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         if not opening.info.lang:
             return None  # 言語の指定が無ければ色を付けない
 
+        # 閉じフェンスをテキストで見分けるための記号と長さ。
+        # `` ```` `` で開いたブロックは ` ``` ` では閉じない（CommonMark）
+        opening_text = start.text().lstrip()
+        fence_char = opening_text[0] if opening_text[:1] in ("`", "~") else "`"
+        fence_len = len(opening_text) - len(opening_text.lstrip(fence_char))
+
         lines = []
         probe = start.next()
         while probe.isValid():
             data = probe.userData()
-            if data is not None and data.info.type is not BlockType.CODE_FENCE_BODY:
-                break
+            if data is not None:
+                if data.info.type is not BlockType.CODE_FENCE_BODY:
+                    break
+            else:
+                # 初回パスでは後続ブロックの userData がまだ無い。ここで
+                # 止まらないと文書末尾まで集めてしまい、200 行ガードに
+                # 当たって「開いた直後だけ色が付かない」が起きる
+                stripped = probe.text().strip()
+                if stripped and set(stripped) == {fence_char} and len(stripped) >= fence_len:
+                    break
+            if len(lines) > MAX_HIGHLIGHT_LINES:
+                break  # どうせ色を付けない長さ。走査もここで打ち切る
             lines.append(probe.text())
             probe = probe.next()
         return opening.info.lang, "\n".join(lines), offset
