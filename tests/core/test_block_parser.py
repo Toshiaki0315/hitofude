@@ -121,6 +121,18 @@ class TestCodeFence:
     def test_チルダのフェンス(self) -> None:
         assert parse("~~~js\nx\n~~~\n")[0].type is BlockType.CODE_FENCE_OPEN
 
+    def test_4連フェンスは3連で閉じない(self) -> None:
+        """CommonMark: 閉じは開きと同じ長さ以上の run。3 連固定で判定して
+        いたため `classify_line` と食い違っていた（回帰）。"""
+        blocks = parse("````\ncode\n```")
+        assert blocks[2].type is BlockType.CODE_FENCE_BODY
+
+    def test_4連フェンスは4連で閉じる(self) -> None:
+        assert parse("````\ncode\n````")[2].type is BlockType.CODE_FENCE_CLOSE
+
+    def test_閉じフェンスに文字が続くなら閉じない(self) -> None:
+        assert parse("```\ncode\n``` x")[2].type is BlockType.CODE_FENCE_BODY
+
 
 class TestBlockquote:
     def test_引用の深さ(self) -> None:

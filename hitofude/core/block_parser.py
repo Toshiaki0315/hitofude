@@ -290,7 +290,11 @@ def _apply_fence(
     drafts[start] = BlockInfo(line=start, type=BlockType.CODE_FENCE_OPEN, lang=lang, code_name=name)
 
     last = end - 1
-    closed = last > start and lines[last].strip().startswith(markup[0] * 3)
+    # CommonMark: 閉じは開きと同じ記号・同じ長さ以上の run だけの行。
+    # `startswith("```")` だと `````` を ``` で閉じたことにしてしまい、
+    # classify_line 側の判定（fence_len を比べる）と食い違う
+    closing = lines[last].strip()
+    closed = last > start and len(closing) >= len(markup) and set(closing) == {markup[0]}
     body_end = last if closed else end
 
     for line in range(start + 1, body_end):
