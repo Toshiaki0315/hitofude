@@ -237,7 +237,7 @@ class TestRecoveryPrompt:
         path = opened_note(window, "保存済みの本文\n")
         window.editor.moveCursor(window.editor.textCursor().MoveOperation.End)
         window.editor.textCursor().insertText("打ちかけで落ちた分")
-        window._on_save_tick()  # 200ms 相当。ここで退避ができる
+        window._saver.on_tick()  # 200ms 相当。ここで退避ができる
         return path
 
     def test_保存が済んでいれば尋ねない(self, window, monkeypatch) -> None:

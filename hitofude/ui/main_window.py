@@ -10,7 +10,6 @@
 """
 
 import logging
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import cast
@@ -48,20 +47,14 @@ from hitofude.core.stats import is_huge
 from hitofude.core.wikilink import context_line, normalize, resolve
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.storage import autosave
-from hitofude.storage.autosave import Debouncer
 from hitofude.storage.index_db import IndexDb, NoteRow, SortOrder
 from hitofude.storage.vault import (
-    ConflictAction,
     Vault,
-    check_conflict,
-    keep_both_path,
-    sanitize_filename,
     unique_path,
 )
 from hitofude.storage.watcher import ChangeKind, VaultWatcher
 from hitofude.theme import ThemeColors, ThemeMode
 from hitofude.ui.backlink_bar import Backlink
-from hitofude.ui.conflict_dialog import ConflictDialog, Resolution
 from hitofude.ui.editor_pane import EditorPane
 from hitofude.ui.export_actions import ExportActions
 from hitofude.ui.icons import apply_menu_font
@@ -75,6 +68,7 @@ from hitofude.ui.panes import (
 )
 from hitofude.ui.preferences import PreferencesDialog
 from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
+from hitofude.ui.save_controller import SaveController
 from hitofude.ui.search_actions import SearchActions
 from hitofude.ui.shortcut_sheet import ShortcutSheet
 from hitofude.ui.sidebar import ALL, Filter, FilterKind, Sidebar
@@ -84,8 +78,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SIZE = (1100, 720)
 MINIMUM_SIZE = (720, 480)
-SAVE_TICK_MS = 200
-STASH_INTERVAL_SECONDS = 2.0
 # 文字数を数え直すまでの待ち。38,000 字のノートで 40ms 掛かる（実測）ので
 # 1 打ごとには数えられない
 STATS_DELAY_MS = 400
@@ -152,20 +144,18 @@ class MainWindow(QMainWindow):
         self._loading = False
         self._opening = False
         self._filter: Filter = ALL
-        # 全文検索で最後に打った語（G-1）。飛び先を数え直すのに使う
-        self._search_query = ""
 
         self._build_ui()
         self._build_menus()
         self._restore_layout()
 
-        self._debouncer = Debouncer()
-        self._recovery_root = autosave.recovery_root(self._vault.root)
-        self._last_stash = 0.0
-        self._save_timer = QTimer(self)
-        self._save_timer.setInterval(SAVE_TICK_MS)
-        self._save_timer.timeout.connect(self._on_save_tick)
-        self._save_timer.start()
+        # 保存フロー（デバウンス・競合・退避）は束ごと切り出してある
+        # （ui/save_controller.py）。pending は保存の外からも見るので、
+        # 同じオブジェクトへの別名を残す
+        self._saver = SaveController(self)
+        self._debouncer = self._saver.debouncer
+        self._recovery_root = self._saver.recovery_root
+        self._save_timer = self._saver.timer
 
         self._watcher = VaultWatcher(self._vault, self)
         self._watcher.changed.connect(self._on_external_change)
@@ -1173,130 +1163,9 @@ class MainWindow(QMainWindow):
         # 際限なく持つと閉じるときの保存も重くなる
         del self._history[:-MAX_HISTORY]
 
-    def _on_save_tick(self) -> None:
-        if self._debouncer.due():
-            self.flush()
-            return
-        if self._debouncer.pending:
-            self._maybe_stash()
-
-    def _maybe_stash(self) -> None:
-        """未保存の内容を退避する（spec §9 Phase 6）。
-
-        毎チック書くと 1 秒に 5 回ディスクを叩くので、間隔を空ける。
-        通常は 800ms で保存されるのでここまで来ることは少ないが、
-        保存できない状態（競合の未解決など）が続いたときの保険になる。
-        """
-        now = time.monotonic()
-        if self._note is None or now - self._last_stash < STASH_INTERVAL_SECONDS:
-            return
-        self._last_stash = now
-        try:
-            autosave.stash(self._recovery_root, self._note.path, self._editor.toPlainText())
-        except OSError:
-            logger.warning("未保存内容の退避に失敗した", exc_info=True)
-
     def flush(self, *, interactive: bool = True) -> None:
-        """未保存の内容を今すぐ書く（§7.4 の即時フラッシュ）。
-
-        `interactive=False` のときは競合してもダイアログを出さない。
-        終了処理から呼ぶときに使う。**`closeEvent` の中でモーダルを開くと
-        アプリが終了できなくなる**（実装中に踏んだ）。
-        """
-        if self._note is None or not self._debouncer.pending:
-            return
-        self._debouncer.clear()
-        self._save(self._editor.toPlainText(), interactive=interactive)
-
-    def _save(self, text: str, *, interactive: bool = True) -> None:
-        note = self._note
-        if note is None:
-            return
-
-        action = check_conflict(note, dirty=True)
-        if action is ConflictAction.ASK:
-            if interactive:
-                if not self._resolve_conflict(note, text):
-                    return
-            else:
-                # 聞けないときは書いたものを失わない側に倒す。
-                # ダイアログの既定（両方残す）と同じ判断
-                self._keep_both(note, text)
-                return
-        if action is ConflictAction.RELOAD:
-            # 自分は書いていないのにここへ来ることはないが、来たら外部を優先する
-            self.open_note(note.path)
-            return
-
-        payload = self._vault.touch_modified(text)
-        self._watcher.suppress(note.path)
-        self._vault.write(note.path, payload)
-        # 書けた時点で「ここが保存済みの状態」。これを怠ると、保存後の
-        # カーソル移動（リビールの textChanged）が編集扱いに戻ってしまう
-        self._editor.document().setModified(False)
-
-        autosave.discard(self._recovery_root, note.path)
-        self._note = self._rename_if_title_changed(note, self._vault.read(note.path))
-        self._db.upsert_note(self._note, self._vault.root)
-        self.refresh()
-        self._update_title()
-        self._show_saved(datetime.now())
-        self._remember_note(self._note.path)
-
-    def _rename_if_title_changed(self, previous: Note, current: Note) -> Note:
-        """タイトルが変わったらファイル名も合わせる（spec §7.1）。
-
-        ただし**ファイル名がそれまでのタイトルと一致していたときだけ**動かす。
-        `2026-08-08-会議.md` のように意図して別名を付けている人のファイルを、
-        保存のたびに勝手に改名してしまわないため。
-        """
-        if current.path.stem != sanitize_filename(previous.title):
-            return current
-
-        new_stem = sanitize_filename(current.title)
-        if new_stem == current.path.stem:
-            return current
-
-        self._watcher.suppress(current.path)
-        target = self._vault.rename(current.path, current.title)
-        self._watcher.suppress(target)
-        self._db.remove_path(self._vault.root, current.path)
-        logger.info("タイトル変更に合わせて改名した: %s → %s", current.path.name, target.name)
-        return self._vault.read(target)
-
-    def _resolve_conflict(self, note: Note, text: str) -> bool:
-        """競合ダイアログを出す。書き込みを続けてよいなら True。"""
-        dialog = ConflictDialog(note.path, self)
-        dialog.exec()
-        dialog.deleteLater()  # exec() 後も親の子リストに残るため
-
-        match dialog.resolution:
-            case Resolution.KEEP_BOTH:
-                self.open_note(self._keep_both(note, text))
-                return False
-            case Resolution.TAKE_EXTERNAL:
-                self.open_note(note.path)
-                return False
-            case Resolution.TAKE_MINE:
-                return True
-            case _:
-                # キャンセルは「まだ決めない」であって「保存できた」ではない。
-                # `flush()` は保存の前に待ちを解除しているので、ここで戻さないと
-                # 未保存の編集が「保存済み」扱いになり、終了時の「両方残す」も
-                # 走らず、書いた内容が消える。退避（_maybe_stash）も pending を
-                # 見ているため、戻すことで保険も生き返る
-                self._debouncer.touch()
-                return False
-
-    def _keep_both(self, note: Note, text: str) -> Path:
-        """自分の版を別名で保存する（spec §7.5）。書いたものを失わない道。"""
-        target = keep_both_path(note.path)
-        self._watcher.suppress(target)
-        self._vault.write(target, text)
-        self._db.upsert_note(self._vault.read(target), self._vault.root)
-        logger.info("競合したため別名で保存した: %s", target.name)
-        self.refresh()
-        return target
+        """未保存の内容を今すぐ書く（§7.4）。実体は SaveController。"""
+        self._saver.flush(interactive=interactive)
 
     # ------------------------------------------------------------------ 外部変更
 

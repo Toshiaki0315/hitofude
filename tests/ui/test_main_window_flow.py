@@ -590,8 +590,8 @@ class TestRecovery:
 
         window.new_note()
         window.editor.setPlainText("# メモ\n\n落ちる前に書いた\n")
-        window._last_stash = 0.0  # 間隔の待ちを飛ばす
-        window._maybe_stash()
+        window._saver._last_stash = 0.0  # 間隔の待ちを飛ばす
+        window._saver._maybe_stash()
 
         found = autosave.pending(window._recovery_root)
         assert len(found) == 1
@@ -604,8 +604,8 @@ class TestRecovery:
         original.write_text("# メモ\n\nディスク上の内容\n", encoding="utf-8")
 
         window.editor.setPlainText("# メモ\n\n復元したい内容\n")
-        window._last_stash = 0.0
-        window._maybe_stash()
+        window._saver._last_stash = 0.0
+        window._saver._maybe_stash()
 
         restored = window.restore_pending()
         assert len(restored) == 1
@@ -616,8 +616,8 @@ class TestRecovery:
     def test_復元したら退避は消える(self, window) -> None:
         window.new_note()
         window.editor.setPlainText("# メモ\n\n本文\n")
-        window._last_stash = 0.0
-        window._maybe_stash()
+        window._saver._last_stash = 0.0
+        window._saver._maybe_stash()
         window.restore_pending()
         assert window.pending_recovery() == []
 
@@ -626,8 +626,8 @@ class TestRecovery:
         window.editor.setPlainText("# メモ\n\n本文\n")
         window.flush()
         window.editor.setPlainText("# メモ\n\n未保存の続き\n")
-        window._last_stash = 0.0
-        window._maybe_stash()
+        window._saver._last_stash = 0.0
+        window._saver._maybe_stash()
 
         before = window.note_list.model().rowCount()
         window.restore_pending()
@@ -640,8 +640,8 @@ class TestRecovery:
     def test_保存すると退避が捨てられる(self, window) -> None:
         window.new_note()
         window.editor.setPlainText("# メモ\n\n本文\n")
-        window._last_stash = 0.0
-        window._maybe_stash()
+        window._saver._last_stash = 0.0
+        window._saver._maybe_stash()
         assert window.pending_recovery() != []
 
         window._debouncer.touch()

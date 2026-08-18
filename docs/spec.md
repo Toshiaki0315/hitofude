@@ -414,6 +414,7 @@ hitofude/
 │   ├── main_window.py       #   メインウィンドウ。保存フロー・競合・外部変更の束ね役
 │   ├── export_actions.py    #   書き出し・印刷・取り込みの束（G-4 の通知込み）
 │   ├── search_actions.py    #   探す系の束（Cmd+O / Cmd+Shift+F / Cmd+R）
+│   ├── save_controller.py   #   保存フローの束（デバウンス・競合・退避・改名追従）
 │   ├── panes.py             #   3 ペインの分割と幅の保存・復元
 │   ├── sidebar.py           #   タグツリー
 │   ├── note_list.py         #   ノート一覧（QListView + カスタムデリゲート）
