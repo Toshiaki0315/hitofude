@@ -775,23 +775,23 @@ class TestExport:
 
     def test_Markdownで書き出せる(self, window, tmp_path: Path) -> None:
         self._open_note(window)
-        target = window._write_markdown(tmp_path / "out.md", window.editor.toPlainText())
+        target = window._exports._write_markdown(tmp_path / "out.md", window.editor.toPlainText())
         assert target.read_text(encoding="utf-8") == self.SOURCE
 
     def test_Markdownはマーカーを保つ(self, window, tmp_path: Path) -> None:
         """R1: 書き出しても `**` は `**` のまま。"""
         self._open_note(window)
-        window._write_markdown(tmp_path / "out.md", window.editor.toPlainText())
+        window._exports._write_markdown(tmp_path / "out.md", window.editor.toPlainText())
         assert "**強調**" in (tmp_path / "out.md").read_text(encoding="utf-8")
 
     def test_HTMLで書き出せる(self, window, tmp_path: Path) -> None:
         self._open_note(window)
-        window._write_html(tmp_path / "out.html", window.editor.toPlainText())
+        window._exports._write_html(tmp_path / "out.html", window.editor.toPlainText())
         assert "<" in (tmp_path / "out.html").read_text(encoding="utf-8")
 
     def test_PDFで書き出せる(self, window, tmp_path: Path) -> None:
         self._open_note(window)
-        window._write_pdf(tmp_path / "out.pdf", window.editor.toPlainText())
+        window._exports._write_pdf(tmp_path / "out.pdf", window.editor.toPlainText())
         assert (tmp_path / "out.pdf").read_bytes().startswith(b"%PDF")
 
     def test_ノートが無ければ何もしない(self, window) -> None:
@@ -800,7 +800,7 @@ class TestExport:
     def test_書き出しても元のノートは残る(self, window, tmp_path: Path) -> None:
         self._open_note(window)
         path = window.current_note.path
-        window._write_markdown(tmp_path / "out.md", window.editor.toPlainText())
+        window._exports._write_markdown(tmp_path / "out.md", window.editor.toPlainText())
         assert path.is_file()
         assert "**強調**" in path.read_text(encoding="utf-8")
 

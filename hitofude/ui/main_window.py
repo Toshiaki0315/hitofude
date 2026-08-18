@@ -10,7 +10,6 @@
 """
 
 import logging
-import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -22,11 +21,8 @@ from PySide6.QtGui import (
     QDesktopServices,
     QTextCursor,
 )
-from PySide6.QtPrintSupport import QPrintDialog
 from PySide6.QtWidgets import (
     QApplication,
-    QDialog,
-    QFileDialog,
     QInputDialog,
     QLabel,
     QMainWindow,
@@ -52,7 +48,6 @@ from hitofude.core.search import matching_line
 from hitofude.core.stats import count as count_text
 from hitofude.core.stats import is_huge
 from hitofude.core.wikilink import context_line, normalize, resolve
-from hitofude.editor import exporter, importer, pptx_export
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.storage import autosave
 from hitofude.storage.autosave import Debouncer
@@ -70,6 +65,7 @@ from hitofude.theme import ThemeColors, ThemeMode
 from hitofude.ui.backlink_bar import Backlink
 from hitofude.ui.conflict_dialog import ConflictDialog, Resolution
 from hitofude.ui.editor_pane import EditorPane
+from hitofude.ui.export_actions import ExportActions
 from hitofude.ui.icons import apply_menu_font
 from hitofude.ui.index_sync import IndexSyncTask, StatsReporter, StatsTask, SyncReporter
 from hitofude.ui.menus import build_menus
@@ -124,18 +120,6 @@ NOTICE_MS = 5000
 # `Cmd +` / `Cmd -` の 1 押しで動く量（G-5）。環境設定の刻みは 0.5pt だが、
 # **押して分からない変化はもう一度押される**ので、こちらは 1pt にする
 ZOOM_STEP = 1.0
-
-
-def _short_path(path: Path) -> str:
-    """ステータスバーに収まる長さにする。
-
-    絶対パスはたいてい `/Users/名前/` で始まり、その分だけ肝心の場所が
-    見えなくなる。**見えない知らせは無いのと同じ**なので `~` にする。
-    """
-    try:
-        return f"~/{path.relative_to(Path.home())}"
-    except ValueError:
-        return str(path)
 
 
 def _empty_notice(target: Filter) -> str:
@@ -259,17 +243,9 @@ class MainWindow(QMainWindow):
 
         # 書き出した直後だけ出す（G-4）。**いちばん左寄り**に置く。
         # 隣は今のノートの状態を出す場所で、押せるものが混ざると紛らわしい
-        self._reveal_button = QToolButton(self)
-        self._reveal_button.setText("Finder で表示")
-        self._reveal_button.setAutoRaise(True)
-        self._reveal_button.hide()
-        self._reveal_button.clicked.connect(self._reveal_exported)
-        self.statusBar().addPermanentWidget(self._reveal_button)
-        self._exported: Path | None = None
-        self._export_timer = QTimer(self)
-        self._export_timer.setSingleShot(True)
-        self._export_timer.setInterval(NOTICE_MS)
-        self._export_timer.timeout.connect(self.hide_export_notice)
+        # 書き出し・印刷・取り込みは束ごと切り出してある（ui/export_actions.py）。
+        # G-4 の知らせ（ボタンとタイマ）も書き出しの一部なので、部品ごと持たせる
+        self._exports = ExportActions(self)
 
         # **文字数より左に置く。** 右端は文字数の場所で、あとから増えたものを
         # 右へ足すと、保存のたびに文字数が横へ動いて見える
@@ -375,11 +351,11 @@ class MainWindow(QMainWindow):
     @property
     def reveal_button(self) -> QToolButton:
         """書き出した直後だけ出る「Finder で表示」（G-4）。"""
-        return self._reveal_button
+        return self._exports.reveal_button
 
     @property
     def export_timer(self) -> QTimer:
-        return self._export_timer
+        return self._exports.export_timer
 
     @property
     def theme_watcher(self) -> ThemeWatcher:
@@ -946,11 +922,22 @@ class MainWindow(QMainWindow):
 
     def new_note(self) -> None:
         self.flush()
-        note = self._vault.create(NEW_NOTE_TITLE)
+        self._open_created(self._vault.create(NEW_NOTE_TITLE))
+
+    def _open_created(self, note: Note, cursor: int | None = None) -> None:
+        """作った / 取り込んだノートを索引へ入れ、一覧を更新して開く。
+
+        「upsert → refresh → open → select」の 4 連は作成系の全入口
+        （新規・雛形・今日のノート・wikilink・取り込み・マニュアル設置）で
+        同じ並びになる。ばらばらに書くと select 漏れが起きる
+        （place_manual で実際に漏れていた）。
+        """
         self._db.upsert_note(note, self._vault.root)
         self.refresh()
         self.open_note(note.path)
         self._note_list.select_path(note.path.relative_to(self._vault.root))
+        if cursor is not None:
+            self._place_cursor(cursor)
 
     # ------------------------------------------------------------- テンプレート
 
@@ -985,11 +972,7 @@ class MainWindow(QMainWindow):
             logger.warning("雛形から作れなかった: %s", path)
             return None
 
-        self._db.upsert_note(created.note, self._vault.root)
-        self.refresh()
-        self.open_note(created.note.path)
-        self._note_list.select_path(created.note.path.relative_to(self._vault.root))
-        self._place_cursor(created.cursor)
+        self._open_created(created.note, created.cursor)
         return created.note
 
     def open_daily_note(self, day: datetime | None = None) -> Note:
@@ -1000,11 +983,7 @@ class MainWindow(QMainWindow):
         """
         self.flush()
         created = self._vault.daily_note(day)
-        self._db.upsert_note(created.note, self._vault.root)
-        self.refresh()
-        self.open_note(created.note.path)
-        self._note_list.select_path(created.note.path.relative_to(self._vault.root))
-        self._place_cursor(created.cursor)
+        self._open_created(created.note, created.cursor)
         return created.note
 
     def _template_items(self, query: str) -> list[PaletteItem]:
@@ -1371,29 +1350,12 @@ class MainWindow(QMainWindow):
         palette.open_with()
 
     def preview_in_browser(self) -> None:
-        """書き出さずに既定のブラウザで確認する（E-2）。
-
-        **画面では図にならない Mermaid・数式・コードの色**が、ここで見える。
-        押した時点の本文を書き出すので、直後の内容がそのまま出る。
-        """
-        if self._note is None:
-            return
-        target = exporter.write_preview(
-            self._editor.toPlainText(),
-            theme=self._theme_watcher.colors,
-            base_path=self._vault.root,
-        )
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+        """書き出さずに既定のブラウザで確認する（E-2）。"""
+        self._exports.preview_in_browser()
 
     def copy_as_html(self) -> None:
-        """書式付きでクリップボードへ入れる（E-3）。メールやチャットへ貼る用。"""
-        if self._note is None:
-            return
-        exporter.copy_html(
-            self._editor.toPlainText(),
-            theme=self._theme_watcher.colors,
-            base_path=self._vault.root,
-        )
+        """書式付きでクリップボードへ入れる（E-3）。"""
+        self._exports.copy_as_html()
 
     def activate_link(self, url: str) -> None:
         """`Cmd+クリック` されたリンクを既定のブラウザで開く（D-1）。
@@ -1431,10 +1393,7 @@ class MainWindow(QMainWindow):
 
         self.flush()
         note = self._vault.create(target, f"# {target}\n\n")
-        self._db.upsert_note(note, self._vault.root)
-        self.refresh()
-        self.open_note(note.path)
-        self._note_list.select_path(note.path.relative_to(self._vault.root))
+        self._open_created(note)
         logger.info("リンク先が無かったので作った: %s", note.path.name)
         return note.path
 
@@ -1595,166 +1554,30 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------ エクスポート
 
     def export_markdown(self) -> Path | None:
-        """Markdown のまま書き出す。変換を挟まない。"""
-        return self._export("Markdown で書き出す", "Markdown (*.md)", ".md", self._write_markdown)
+        return self._exports.export_markdown()
 
     def export_html(self) -> Path | None:
-        """spec §9 Phase 6。R2 の例外はエクスポート層に閉じている。"""
-        return self._export("HTML で書き出す", "HTML (*.html)", ".html", self._write_html)
+        return self._exports.export_html()
 
     def export_pdf(self) -> Path | None:
-        return self._export("PDF で書き出す", "PDF (*.pdf)", ".pdf", self._write_pdf)
+        return self._exports.export_pdf()
 
     def export_pptx(self) -> Path | None:
-        """PowerPoint で書き出す（F-5）。**ざっくり作って手で整える**前提。"""
-        return self._export(
-            "PowerPoint で書き出す", "PowerPoint (*.pptx)", ".pptx", self._write_pptx
-        )
+        return self._exports.export_pptx()
 
     def print_note(self) -> bool:
-        """`Cmd+P`。印刷ダイアログを出す（C-9）。
-
-        **macOS では `Cmd+P` は印刷が慣習。** ここは PDF 書き出しに
-        割り当てていたが、印刷パネルから「PDF として保存」も選べるので、
-        慣習に合わせても PDF への道は残る。書き出しはメニューにある。
-
-        刷る前に保存する。書き出しと同じで、打った直後の内容が出ないと
-        「今見えているもの」と違うものが出てしまう。
-        """
-        if self._note is None:
-            return False
-        self.flush()
-        printer = exporter.new_printer()
-        dialog = QPrintDialog(printer, self)
-        dialog.setWindowTitle("印刷")
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return False
-        exporter.print_document(
-            printer,
-            self._editor.toPlainText(),
-            theme=self._theme_watcher.colors,
-            base_point_size=self._config.font_point_size,
-            base_path=self._vault.root,
-        )
-        return True
-
-    def _export(self, caption: str, filter_: str, suffix: str, writer) -> Path | None:
-        """保存先を尋ねて書き出す。`writer` は `(Path, str) -> Path`。"""
-        if self._note is None:
-            return None
-        self.flush()
-        suggested = str(Path.home() / f"{self._note.title}{suffix}")
-        chosen, _ = QFileDialog.getSaveFileName(self, caption, suggested, filter_)
-        if not chosen:
-            return None
-        try:
-            target = writer(Path(chosen), self._editor.toPlainText())
-        except OSError:
-            # ディスクフルや権限。黙って無反応だと「書けたのかどうか」が
-            # 画面から分からない（G-4 と同じ理由で、失敗も知らせる）
-            logger.warning("書き出せなかった: %s", chosen, exc_info=True)
-            QMessageBox.warning(
-                self,
-                "書き出せませんでした",
-                f"{_short_path(Path(chosen))} に書き出せませんでした。\n"
-                "保存先に書き込めるか、空き容量があるかを確かめてください。",
-            )
-            return None
-        self._notify_export(target)
-        return target
-
-    def _notify_export(self, target: Path) -> None:
-        """どこへ書いたかを見せ、Finder への道を添える（G-4）。
-
-        **書き出しても画面が変わらなかった。** 保存先を選んだ直後、
-        何も起きないように見えて、書けたのかどうかも分からない。
-
-        知らせは残さない。前のファイルを指すボタンが居座ると、今のノートと
-        関係のないものを開くことになる。
-        """
-        self._exported = target
-        self.statusBar().showMessage(f"{_short_path(target)} に書き出しました", NOTICE_MS)
-        self._reveal_button.show()
-        self._export_timer.start()
+        """`Cmd+P`（C-9）。"""
+        return self._exports.print_note()
 
     def hide_export_notice(self) -> None:
-        self._reveal_button.hide()
-        self._exported = None
-
-    def _reveal_exported(self) -> None:
-        if self._exported is not None:
-            self.reveal_in_finder(self._exported)
+        self._exports.hide_notice()
 
     def reveal_in_finder(self, path: Path) -> None:
-        """Finder で場所を開き、そのファイルを選んだ状態にする（G-4）。
-
-        **フォルダを開くだけにしない。** 同じ名前が並ぶ場所だと、どれを
-        書いたのか分からない。`open -R` は選択まで面倒を見てくれる。
-
-        書き出したあとに消された場合は何もしない（空振りさせない）。
-        """
-        if not path.exists():
-            logger.info("書き出したファイルが見つからない: %s", path)
-            return
-        subprocess.run(["open", "-R", str(path)], check=False)
-
-    def _write_markdown(self, target: Path, text: str) -> Path:
-        return exporter.write_markdown(target, text)
-
-    def _write_html(self, target: Path, text: str) -> Path:
-        return exporter.write_html(
-            target,
-            text,
-            title=self._note.title if self._note else "",
-            theme=self._theme_watcher.colors,
-            base_path=self._vault.root,
-        )
-
-    def _write_pptx(self, target: Path, text: str) -> Path:
-        return pptx_export.write_pptx(target, text, base_path=self._vault.root)
-
-    def _write_pdf(self, target: Path, text: str) -> Path:
-        return exporter.write_pdf(
-            target,
-            text,
-            theme=self._theme_watcher.colors,
-            base_point_size=self._config.font_point_size,
-            base_path=self._vault.root,
-        )
+        self._exports.reveal_in_finder(path)
 
     def import_document(self) -> Path | None:
-        """「ファイル」→「読み込む…」。資料をノートにして開く（F-2）。
-
-        **元のファイルは触らない。** 読むだけで、移動も複製もしない。
-        題名はファイル名を使う（`講演資料.pdf` → `講演資料`）。
-
-        **読めなければノートを作らない。** 空のノートが増えるほうが困る。
-        """
-        self.flush()
-        chosen, _ = QFileDialog.getOpenFileName(
-            self, "読み込む", str(Path.home()), importer.FILE_FILTER
-        )
-        if not chosen:
-            return None
-
-        source = Path(chosen)
-        text = importer.to_markdown(source, save_image=self.save_attachment)
-        if not text.strip():
-            QMessageBox.warning(
-                self,
-                "読み込めませんでした",
-                f"「{source.name}」から文字を取り出せませんでした。\n"
-                "画像だけの資料や、保護されたファイルかもしれません。",
-            )
-            return None
-
-        note = self._vault.create(source.stem, text)
-        self._db.upsert_note(note, self._vault.root)
-        self.refresh()
-        self.open_note(note.path)
-        self._note_list.select_path(note.path.relative_to(self._vault.root))
-        logger.info("取り込んだ: %s → %s", source.name, note.path.name)
-        return note.path
+        """「ファイル」→「読み込む…」（F-2）。"""
+        return self._exports.import_document()
 
     def cleanup_attachments(self) -> int:
         """使っていない添付をゴミ箱へ移す（E-5）。移した数を返す。
@@ -1803,9 +1626,7 @@ class MainWindow(QMainWindow):
         note = self._vault.place_manual()
         if note is None:
             return
-        self._db.upsert_note(note, self._vault.root)
-        self.refresh()
-        self.open_note(note.path)
+        self._open_created(note)
 
     def show_shortcuts(self) -> None:
         """`Cmd+?`。ショートカットの一覧を出す（C-7）。"""

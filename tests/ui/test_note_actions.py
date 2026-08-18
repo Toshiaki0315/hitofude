@@ -364,7 +364,7 @@ class TestAttachmentWiring:
         window.editor.textCursor().insertText(f"\n{link}\n")
         window.flush()
 
-        target = window._write_html(tmp_path / "out.html", window.editor.toPlainText())
+        target = window._exports._write_html(tmp_path / "out.html", window.editor.toPlainText())
         assert "data:image/png;base64," in target.read_text(encoding="utf-8")
 
     def test_PDF書き出しでも落ちない(self, window, tmp_path: Path) -> None:
@@ -373,7 +373,7 @@ class TestAttachmentWiring:
         link = window.save_attachment(self.png(), ".png")
         window.editor.textCursor().insertText(f"\n{link}\n")
 
-        target = window._write_pdf(tmp_path / "out.pdf", window.editor.toPlainText())
+        target = window._exports._write_pdf(tmp_path / "out.pdf", window.editor.toPlainText())
         assert target.read_bytes().startswith(b"%PDF")
 
     def test_添付は一覧に出てこない(self, window) -> None:

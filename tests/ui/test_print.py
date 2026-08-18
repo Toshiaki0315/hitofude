@@ -14,7 +14,7 @@ from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QDialog
 
 from hitofude.config import Config
-from hitofude.ui import main_window as main_window_module
+from hitofude.ui import export_actions as export_actions_module
 from hitofude.ui.main_window import MainWindow
 
 pytestmark = pytest.mark.gui
@@ -51,6 +51,9 @@ class FakeDialog:
     def exec(self) -> int:
         return type(self).answer
 
+    def deleteLater(self) -> None:
+        pass  # 本物と同じ口だけ持つ
+
 
 @pytest.fixture
 def dialog(monkeypatch) -> type[FakeDialog]:
@@ -58,7 +61,7 @@ def dialog(monkeypatch) -> type[FakeDialog]:
         opened = 0
         answer = QDialog.DialogCode.Accepted
 
-    monkeypatch.setattr(main_window_module, "QPrintDialog", Spy)
+    monkeypatch.setattr(export_actions_module, "QPrintDialog", Spy)
     return Spy
 
 
@@ -67,7 +70,7 @@ def printed(monkeypatch) -> list[tuple]:
     """`exporter.print_document` に渡ったものを記録する。"""
     calls: list[tuple] = []
     monkeypatch.setattr(
-        main_window_module.exporter,
+        export_actions_module.exporter,
         "print_document",
         lambda printer, text, **kwargs: calls.append((printer, text, kwargs)),
     )

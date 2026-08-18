@@ -227,7 +227,7 @@ class TestMenu:
         qtbot.addWidget(window)
         try:
             (window.vault.attachments_dir / "図.png").write_bytes(png())
-            target = window._write_pptx(
+            target = window._exports._write_pptx(
                 tmp_path / "出力.pptx", "## 枚\n\n![](attachments/図.png)\n"
             )
             assert any(shape.shape_type == 13 for shape in slides(target)[0].shapes)
