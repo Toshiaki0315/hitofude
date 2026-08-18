@@ -124,6 +124,7 @@ class MainWindow(QMainWindow):
         self._vault = Vault(self._config.vault_path)
         self._vault.ensure_layout()
         self._vault.purge_trash(self._config.trash_days)
+        self._vault.sweep_temp_files()  # クラッシュで残った .tmp の掃除（H-1）
 
         self._db = IndexDb(self._vault.managed_dir / "index.sqlite")
         self._note: Note | None = None

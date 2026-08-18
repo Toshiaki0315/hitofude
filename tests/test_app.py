@@ -417,3 +417,40 @@ class TestFollowingTheSystem:
             assert watcher.colors.is_dark is False
         finally:
             window.close()
+
+
+class TestVaultLock:
+    """vault 単位の二重起動ロック（H-1 層 2 / spec §6.1）。"""
+
+    def test_取れたらロックを返す(self, qapp, tmp_path) -> None:
+        from hitofude.app import acquire_vault_lock
+
+        lock = acquire_vault_lock(tmp_path / ".hitofude")
+        assert lock is not None
+        lock.unlock()
+
+    def test_二重には取れない(self, qapp, tmp_path) -> None:
+        from hitofude.app import acquire_vault_lock
+
+        first = acquire_vault_lock(tmp_path / ".hitofude")
+        assert acquire_vault_lock(tmp_path / ".hitofude") is None
+        first.unlock()
+
+    def test_解放すれば取り直せる(self, qapp, tmp_path) -> None:
+        from hitofude.app import acquire_vault_lock
+
+        first = acquire_vault_lock(tmp_path / ".hitofude")
+        first.unlock()
+        second = acquire_vault_lock(tmp_path / ".hitofude")
+        assert second is not None
+        second.unlock()
+
+    def test_vaultごとに独立している(self, qapp, tmp_path) -> None:
+        """別の vault なら同時に開ける。"""
+        from hitofude.app import acquire_vault_lock
+
+        first = acquire_vault_lock(tmp_path / "a" / ".hitofude")
+        second = acquire_vault_lock(tmp_path / "b" / ".hitofude")
+        assert first is not None and second is not None
+        first.unlock()
+        second.unlock()

@@ -262,3 +262,58 @@ class TestBrokenStash:
 
         clear_all(tmp_path)  # IsADirectoryError で落ちない
         assert not list(tmp_path.glob("*.stash"))
+
+
+class TestUniqueTempNames:
+    def test_一時ファイル名は毎回変わる(self, tmp_path: Path, monkeypatch) -> None:
+        """名前が `名前.md.tmp` 固定だと、同じ vault を 2 プロセスで開いた
+        ときに書き込み同士が衝突する（H-1 層 1、回帰）。"""
+        from hitofude.storage.autosave import save_atomic
+
+        names: list[str] = []
+        original = Path.replace
+
+        def spy(self: Path, target: Path) -> Path:
+            names.append(self.name)
+            return original(self, target)
+
+        monkeypatch.setattr(Path, "replace", spy)
+        target = tmp_path / "メモ.md"
+        save_atomic(target, "一")
+        save_atomic(target, "二")
+
+        assert len(names) == 2
+        assert names[0] != names[1]
+
+    def test_バイト列版も毎回変わる(self, tmp_path: Path, monkeypatch) -> None:
+        from hitofude.storage.autosave import save_bytes_atomic
+
+        names: list[str] = []
+        original = Path.replace
+
+        def spy(self: Path, target: Path) -> Path:
+            names.append(self.name)
+            return original(self, target)
+
+        monkeypatch.setattr(Path, "replace", spy)
+        target = tmp_path / "画像.png"
+        save_bytes_atomic(target, b"a")
+        save_bytes_atomic(target, b"b")
+        assert names[0] != names[1]
+
+    def test_ドット始まりで走査の目に入らない(self, tmp_path: Path, monkeypatch) -> None:
+        """`.名前.md.….tmp` の形。`scan()` は suffix .md しか拾わないが、
+        Finder 等でも目につかないようドット始まりにする。"""
+        from hitofude.storage.autosave import save_atomic
+
+        names: list[str] = []
+        original = Path.replace
+
+        def spy(self: Path, target: Path) -> Path:
+            names.append(self.name)
+            return original(self, target)
+
+        monkeypatch.setattr(Path, "replace", spy)
+        save_atomic(tmp_path / "メモ.md", "本文")
+        assert names[0].startswith(".")
+        assert names[0].endswith(".tmp")

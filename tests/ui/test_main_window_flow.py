@@ -928,3 +928,26 @@ class TestHugeFileGuard:
         assert window.editor.highlighter.plain_mode is False
         data = window.editor.document().findBlockByNumber(2).userData()
         assert data is not None  # 解析が走っている
+
+
+class TestStartupSweep:
+    def test_起動時にクラッシュの残骸を掃除する(self, qtbot, config) -> None:
+        """H-1 層 1 の配線。掃除の中身は tests/storage/test_vault.py が見る。"""
+        import os
+        import time
+
+        from hitofude.ui.main_window import MainWindow
+
+        vault_root = config.vault_path
+        vault_root.mkdir(parents=True, exist_ok=True)
+        orphan = vault_root / ".メモ.md.abc.tmp"
+        orphan.write_text("残骸", encoding="utf-8")
+        old = time.time() - 2 * 3600
+        os.utime(orphan, (old, old))
+
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+        try:
+            assert not orphan.exists()
+        finally:
+            window.close()

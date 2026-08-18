@@ -7,6 +7,7 @@ GUI 非依存（R3）。デバウンスは `QTimer` ではなく「いつ書く�
 
 import hashlib
 import os
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -18,6 +19,22 @@ DEBOUNCE_SECONDS = 0.8
 TEMP_SUFFIX = ".tmp"
 
 
+def _open_temporary(path: Path) -> tuple[int, Path]:
+    """衝突しない一時ファイルを同じディレクトリに開く（H-1 層 1）。
+
+    名前を `名前.md.tmp` 固定にすると、同じ vault を 2 プロセス
+    （または同期越しの 2 台）が触ったときに書き込み同士が衝突する。
+    `mkstemp` は名前の一意性と O_EXCL を OS に任せられる。
+    ドット始まりなので Finder や `scan()` の目に入らない。
+    同じディレクトリに作るのは `os.replace` を atomic に保つため
+    （ボリュームをまたぐ rename は atomic でない）。
+    """
+    descriptor, name = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.name}.", suffix=TEMP_SUFFIX
+    )
+    return descriptor, Path(name)
+
+
 def save_atomic(path: Path, text: str) -> None:
     """一時ファイルへ書いてから差し替える（spec §7.4）。
 
@@ -26,9 +43,9 @@ def save_atomic(path: Path, text: str) -> None:
     中途半端に切れたファイルが残らないことがノートアプリでは決定的に重要。
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + TEMP_SUFFIX)
+    descriptor, temporary = _open_temporary(path)
     try:
-        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
@@ -45,9 +62,9 @@ def save_bytes_atomic(path: Path, data: bytes) -> None:
     一部で、触ると壊れる。
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + TEMP_SUFFIX)
+    descriptor, temporary = _open_temporary(path)
     try:
-        with temporary.open("wb") as handle:
+        with os.fdopen(descriptor, "wb") as handle:
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())

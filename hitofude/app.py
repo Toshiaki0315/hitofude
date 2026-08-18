@@ -2,9 +2,10 @@
 
 import logging
 import sys
+from pathlib import Path
 from typing import cast
 
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QLockFile, QObject, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPalette
 from PySide6.QtWidgets import QApplication, QToolTip
 
@@ -465,3 +466,23 @@ class ThemeWatcher(QObject):
             return
         self._colors = colors
         self.changed.emit(colors)
+
+
+def acquire_vault_lock(managed_dir: Path) -> QLockFile | None:
+    """vault 単位の二重起動ロック（H-1 層 2 / spec §6.1）。
+
+    同じ vault を 2 つのウィンドウで開くと、watcher が互いの保存に反応し、
+    競合ダイアログが行き来する。取れたら `QLockFile` を返すので、
+    **アプリが生きている間は参照を保持し続けること**（手放すと GC で
+    ロックが外れる）。取れなければ None。
+
+    ロックは `.hitofude/` 内 = 捨ててよい（R9）。クラッシュの残骸は
+    QLockFile が PID の死活で自動回収する。時間による stale 判定は
+    切る（アプリは何時間でも開きっぱなしになる）。
+    """
+    managed_dir.mkdir(parents=True, exist_ok=True)
+    lock = QLockFile(str(managed_dir / "instance.lock"))
+    lock.setStaleLockTime(0)
+    if not lock.tryLock(0):
+        return None
+    return lock

@@ -500,3 +500,49 @@ class TestEmptyTrashWithDirectories:
         removed = vault.empty_trash()
         assert list(vault.trash_dir.iterdir()) == []
         assert stray in removed
+
+
+class TestSweepTempFiles:
+    """クラッシュで残った一時ファイルの掃除（H-1 層 1）。"""
+
+    def stale(self, path: Path) -> Path:
+        import os
+        import time
+
+        path.write_text("残骸", encoding="utf-8")
+        old = time.time() - 2 * 3600
+        os.utime(path, (old, old))
+        return path
+
+    def test_古い孤児を消す(self, vault) -> None:
+        vault.ensure_layout()
+        orphan = self.stale(vault.root / ".メモ.md.abc123.tmp")
+        assert vault.sweep_temp_files() == [orphan]
+        assert not orphan.exists()
+
+    def test_書き込み中かもしれない新しいものは残す(self, vault) -> None:
+        """別マシンが同期越しに同じ vault を触っている場合の保険。"""
+        vault.ensure_layout()
+        fresh = vault.root / ".メモ.md.def456.tmp"
+        fresh.write_text("書き込み中", encoding="utf-8")
+        assert vault.sweep_temp_files() == []
+        assert fresh.exists()
+
+    def test_サブフォルダの孤児も消す(self, vault) -> None:
+        vault.ensure_layout()
+        nested = vault.root / "仕事"
+        nested.mkdir()
+        orphan = self.stale(nested / ".資料.md.xyz.tmp")
+        vault.sweep_temp_files()
+        assert not orphan.exists()
+
+    def test_旧形式の固定名の残骸も消す(self, vault) -> None:
+        vault.ensure_layout()
+        legacy = self.stale(vault.root / "メモ.md.tmp")
+        vault.sweep_temp_files()
+        assert not legacy.exists()
+
+    def test_ノートは触らない(self, vault) -> None:
+        note = vault.create("大事なメモ")
+        vault.sweep_temp_files()
+        assert note.path.exists()

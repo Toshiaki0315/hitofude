@@ -44,6 +44,11 @@ TEMPLATES_DIR = "templates"
 TRASH_DIR = ".trash"
 MANAGED_DIR = ".hitofude"
 DEFAULT_TRASH_DAYS = 30
+
+# 一時ファイルの拡張子（autosave.TEMP_SUFFIX と揃える。循環 import 回避で値を持つ）
+TEMP_SUFFIX = ".tmp"
+# これより古い .tmp はクラッシュの残骸と見なして掃除する（H-1 層 1）
+TEMP_SWEEP_AGE_SECONDS = 3600.0
 UNTITLED = "無題"
 
 MANUAL_TITLE = "Hitofude の使い方"
@@ -616,6 +621,25 @@ class Vault:
         if path.resolve().parent != self.trash_dir.resolve():
             raise ValueError(f"ゴミ箱の外は消せない: {path}")
         path.unlink(missing_ok=True)
+
+    def sweep_temp_files(self, *, max_age_seconds: float = TEMP_SWEEP_AGE_SECONDS) -> list[Path]:
+        """クラッシュで残った一時ファイル（`*.tmp`）を消す（H-1 層 1）。起動時に呼ぶ。
+
+        **新しいものは残す。** 別マシンが同期越しに同じ vault を書いている
+        最中かもしれない。書き込みはミリ秒で終わるので、1 時間残っている
+        `.tmp` はクラッシュの残骸で確定してよい。旧形式（`名前.md.tmp`
+        固定名）の残骸も一緒に拾う。
+        """
+        deadline = time.time() - max_age_seconds
+        removed: list[Path] = []
+        for entry in sorted(self.root.rglob(f"*{TEMP_SUFFIX}")):
+            try:
+                if entry.is_file() and entry.stat().st_mtime < deadline:
+                    entry.unlink()
+                    removed.append(entry)
+            except OSError:
+                continue  # 掃除は保守作業。1 件の失敗で起動を止めない
+        return removed
 
     def purge_trash(self, days: int = DEFAULT_TRASH_DAYS) -> list[Path]:
         """期限を過ぎたゴミ箱の中身を消す（spec §7.6）。起動時に呼ぶ。"""
