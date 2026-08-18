@@ -416,6 +416,7 @@ hitofude/
 │   ├── search_actions.py    #   探す系の束（Cmd+O / Cmd+Shift+F / Cmd+R）
 │   ├── save_controller.py   #   保存フローの束（デバウンス・競合・退避・改名追従）
 │   ├── note_actions.py      #   ノートの CRUD（ゴミ箱・ピン・改名・雛形・片づけ・右クリック）
+│   ├── status_bar.py        #   ステータスバー（保存時刻・モード・文字数の背景集計）
 │   ├── panes.py             #   3 ペインの分割と幅の保存・復元
 │   ├── sidebar.py           #   タグツリー
 │   ├── note_list.py         #   ノート一覧（QListView + カスタムデリゲート）

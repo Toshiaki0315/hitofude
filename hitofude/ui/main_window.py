@@ -21,7 +21,6 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
-    QLabel,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -40,7 +39,6 @@ from hitofude.config import (
 from hitofude.core import frontmatter, textpos
 from hitofude.core.activation import ALLOWED_SCHEMES
 from hitofude.core.document import Note
-from hitofude.core.stats import count as count_text
 from hitofude.core.stats import is_huge
 from hitofude.core.wikilink import context_line, normalize, resolve
 from hitofude.editor.editor_widget import MarkdownEditor
@@ -55,7 +53,7 @@ from hitofude.theme import ThemeColors, ThemeMode
 from hitofude.ui.backlink_bar import Backlink
 from hitofude.ui.editor_pane import EditorPane
 from hitofude.ui.export_actions import ExportActions
-from hitofude.ui.index_sync import IndexSyncTask, StatsReporter, StatsTask, SyncReporter
+from hitofude.ui.index_sync import IndexSyncTask, SyncReporter
 from hitofude.ui.menus import build_menus
 from hitofude.ui.note_actions import NoteActions
 from hitofude.ui.note_list import NoteListView
@@ -69,29 +67,20 @@ from hitofude.ui.save_controller import SaveController
 from hitofude.ui.search_actions import SearchActions
 from hitofude.ui.shortcut_sheet import ShortcutSheet
 from hitofude.ui.sidebar import ALL, Filter, FilterKind, Sidebar
+from hitofude.ui.status_bar import (  # noqa: F401  ASYNC_STATS_CHARS 等はテストが再輸出先として参照する
+    ASYNC_STATS_CHARS,
+    STATUS_RIGHT_MARGIN,
+    StatusBarController,
+)
 
 logger = logging.getLogger(__name__)
 
 
 DEFAULT_SIZE = (1100, 720)
 MINIMUM_SIZE = (720, 480)
-# 文字数を数え直すまでの待ち。38,000 字のノートで 40ms 掛かる（実測）ので
-# 1 打ごとには数えられない
-STATS_DELAY_MS = 400
-
-# この長さを超えたら、文字数の集計を背景へ回す（ユーザー要望）。
-# **1 フレーム（16ms）に収まるうちはその場で数える。** 実測で
-# 1,000 文字 1.5ms / 1 万文字 13.7ms / 1.3 万文字 17.0ms。短い本文を
-# 投げると、返ってくるまでの往復のほうが長くつく
-ASYNC_STATS_CHARS = 10_000
 # 「直前のノートへ戻る」で遡れる数（C-8）
 MAX_HISTORY = 20
 DIRTY_MARK = "•"
-# ステータスバー右端の余白。ウィンドウの角が丸いので、右端ぴったりに置くと
-# 最後の文字が欠ける（実際に欠けた）
-STATUS_RIGHT_MARGIN = 14
-STATS_TOOLTIP = "文字数と行数。\n装飾の記号（`**` など）と front matter、改行は数えません。"
-MODE_TOOLTIP = "今入っている書き方のモード。\nRaw（⌘/）／ フォーカス（⇧⌘D）／ タイプライタ（⇧⌘Y）"
 
 # 帯に出すバックリンクの上限（E-6）。ここに出る数だけファイルを読むので、
 # 際限なく増えると開くたびに遅くなる。読み切れない数を並べても使えない
@@ -175,17 +164,6 @@ class MainWindow(QMainWindow):
         self._history: list[Path] = []
         self._going_back = False
 
-        # 文字数の集計（長い本文だけ背景で回す）。**親を付けない**のは
-        # 索引の走査と同じ理由（結果が戻る前に窓ごと消えると落ちる）
-        self._stats_reporter = StatsReporter()
-        self._stats_reporter.counted.connect(self._on_stats_counted)
-        self._stats_token = 0
-
-        self._stats_timer = QTimer(self)
-        self._stats_timer.setSingleShot(True)
-        self._stats_timer.setInterval(STATS_DELAY_MS)
-        self._stats_timer.timeout.connect(self._update_stats)
-
         self._seed_manual()
         self._vault.seed_templates()
         self.refresh()  # 前回の索引で先に描く。走査を待たずに操作できる
@@ -241,19 +219,14 @@ class MainWindow(QMainWindow):
 
         # **文字数より左に置く。** 右端は文字数の場所で、あとから増えたものを
         # 右へ足すと、保存のたびに文字数が横へ動いて見える
-        self._mode_label = QLabel("", self)
-        self._mode_label.setToolTip(MODE_TOOLTIP)
-        self.statusBar().addPermanentWidget(self._mode_label)
-
-        self._saved_label = QLabel("", self)
-        self._saved_label.setToolTip("最後に保存した時刻。保存は自動で、打ち始めると消えます。")
-        self.statusBar().addPermanentWidget(self._saved_label)
-
-        self._stats_label = QLabel("", self)
-        self._stats_label.setToolTip(STATS_TOOLTIP)
-        self._stats_label.setContentsMargins(0, 0, STATUS_RIGHT_MARGIN, 0)
-        self.statusBar().addPermanentWidget(self._stats_label)
-        self.statusBar().setSizeGripEnabled(False)
+        # ステータスバーの 3 ラベルと集計の背景実行は束ごと切り出してある
+        # （ui/status_bar.py）。ラベルはテストからも見るので別名を残す
+        self._status = StatusBarController(self)
+        self._mode_label = self._status.mode_label
+        self._saved_label = self._status.saved_label
+        self._stats_label = self._status.stats_label
+        self._stats_reporter = self._status.reporter
+        self._stats_timer = self._status.stats_timer
 
         self._list_pane.new_note_requested.connect(self.new_note)
         self._list_pane.sort_order_changed.connect(self.set_sort_order)
@@ -736,15 +709,11 @@ class MainWindow(QMainWindow):
     # --------------------------------------------------------- 表示の更新
 
     def _show_saved(self, at: "datetime | None") -> None:
-        """保存済みの合図（C-5）。`None` で消す。
-
-        **開いただけでは出さない。** まだ何も書いていないのに「保存しました」
-        は嘘になる。打ち始めたら消す。
-        """
-        self._saved_label.setText(f"{at:%H:%M} に保存" if at is not None else "")
+        """保存済みの合図（C-5）。実体は StatusBarController。"""
+        self._status.show_saved(at)
 
     def saved_text(self) -> str:
-        return self._saved_label.text()
+        return self._status.saved_text()
 
     def _update_title(self) -> None:
         """未保存なら印を付ける。
@@ -758,59 +727,24 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{mark}{self._note.title} — {APP_NAME}")
 
     def mode_text(self) -> str:
-        """今入っているモードの並び。何も入っていなければ空（ユーザー要望）。
-
-        **有効なものだけ出す。** 「なし」と出しても場所を取るだけで、
-        読む理由がない。Raw はツールバーを隠していると（`Cmd+3`）他に
-        分かる場所が無いので、ここが唯一の手掛かりになる。
-        """
-        found = [name for name, active in self._modes() if active]
-        return " / ".join(found)
-
-    def _modes(self) -> list[tuple[str, bool]]:
-        return [
-            ("Raw", self._editor.source_mode),
-            ("フォーカス", self._editor.focus_mode),
-            ("タイプライタ", self._editor.typewriter_mode),
-        ]
+        return self._status.mode_text()
 
     def _update_modes(self) -> None:
-        self._mode_label.setText(self.mode_text())
+        self._status.update_modes()
 
     def _update_stats(self) -> None:
-        """ステータスバーの「◯◯文字 / ◯◯行」を更新する。
-
-        **長い本文は背景で数える**（ユーザー要望）。その場で数えると、
-        打つ手を止めた 0.4 秒後に画面が 70ms（忙しいときは 285ms）止まる。
-        数えるのは表示のためだけなので、待たせる理由がない。
-        """
-        if self._note is None:
-            self._stats_label.setText("")
-            return
-
-        text = self._editor.toPlainText()
-        # 前に投げたぶんの結果を捨てるための合図
-        self._stats_token += 1
-        if len(text) <= ASYNC_STATS_CHARS:
-            self._show_stats(count_text(text))
-            return
-        QThreadPool.globalInstance().start(StatsTask(text, self._stats_token, self._stats_reporter))
+        self._status.update_stats()
 
     def _on_stats_counted(self, token: int, stats) -> None:
-        """背景で数え終わった結果を出す。
+        self._status.on_stats_counted(token, stats)
 
-        **古い結果は捨てる。** 数え終わる前に別のノートへ移れるので、
-        遅れて届いた前のノートの数字を出すと、今見ているものと食い違う。
-        """
-        if self._closing or token != self._stats_token:
-            return
-        self._show_stats(stats)
-
-    def _show_stats(self, stats) -> None:
-        self._stats_label.setText(f"{stats.characters:,} 文字 / {stats.lines:,} 行")
+    @property
+    def _stats_token(self) -> int:
+        """テストが「今の合図」を読むために残している別名。"""
+        return self._status.token
 
     def status_text(self) -> str:
-        return self._stats_label.text()
+        return self._status.status_text()
 
     def dispatch_edit(self, name: str) -> None:
         """編集操作をフォーカスのあるウィジェットへ渡す。
