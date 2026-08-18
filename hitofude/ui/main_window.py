@@ -1276,6 +1276,12 @@ class MainWindow(QMainWindow):
             case Resolution.TAKE_MINE:
                 return True
             case _:
+                # キャンセルは「まだ決めない」であって「保存できた」ではない。
+                # `flush()` は保存の前に待ちを解除しているので、ここで戻さないと
+                # 未保存の編集が「保存済み」扱いになり、終了時の「両方残す」も
+                # 走らず、書いた内容が消える。退避（_maybe_stash）も pending を
+                # 見ているため、戻すことで保険も生き返る
+                self._debouncer.touch()
                 return False
 
     def _keep_both(self, note: Note, text: str) -> Path:

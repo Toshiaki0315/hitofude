@@ -112,6 +112,33 @@ class TestConflict:
         window.flush()
         assert "外部で書いた内容" in path.read_text(encoding="utf-8")
 
+    def test_キャンセルしても未保存のまま(self, window, monkeypatch) -> None:
+        """キャンセルは「まだ決めない」であって「保存できた」ではない。
+
+        flush() が保存の前に待ちを解除するため、キャンセル後は
+        未保存の編集が「保存済み」扱いになっていた（回帰）。
+        """
+        path = opened_note(window)
+        make_conflict(window, path)
+        answer_with(monkeypatch, Resolution.CANCEL)
+
+        window.flush()
+        assert window._debouncer.pending
+
+    def test_キャンセルして閉じても自分の内容が残る(self, window, monkeypatch) -> None:
+        """キャンセル → 終了で、終了時の「両方残す」が走らず
+        こちらで書いた内容が消えていた（回帰）。"""
+        path = opened_note(window)
+        make_conflict(window, path)
+        answer_with(monkeypatch, Resolution.CANCEL)
+
+        window.flush()  # 競合ダイアログ → キャンセル
+        window.flush(interactive=False)  # closeEvent と同じ経路
+
+        everything = "".join(p.read_text(encoding="utf-8") for p in window.vault.root.glob("*.md"))
+        assert "こちらで書いた内容" in everything
+        assert "外部で書いた内容" in everything
+
     def test_聞けないときは両方残す(self, window) -> None:
         """終了処理からはモーダルを開けない。書いたものを失わない側に倒す。"""
         path = opened_note(window)
