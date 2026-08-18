@@ -740,6 +740,8 @@ class MainWindow(QMainWindow):
         """開いているノートを閉じる。**保存はしない**（消す直前に呼ぶため）。"""
         self._note = None
         self._editor.clear()
+        # 待ちを残すと、次のノートを開くまで 200ms ごとに flush が空振りする
+        self._debouncer.clear()
         self._remember_note(None)
         self._update_title()
         self._update_stats()
@@ -1034,12 +1036,8 @@ class MainWindow(QMainWindow):
         self._watcher.suppress(path)
         self._vault.trash(path)
         self._db.remove_path(self._vault.root, path)
-        self._note = None
-        self._editor.clear()
-        self._remember_note(None)
+        self._close_current()
         self.refresh()
-        self._update_title()
-        self._update_stats()
         return True
 
     def _on_text_changed(self) -> None:
@@ -1339,9 +1337,14 @@ class MainWindow(QMainWindow):
             self._vault.write(path, self._editor.toPlainText())
             self._note = self._vault.read(path)
             self._db.upsert_note(self._note, self._vault.root)
+            # 作り直した時点で編集中の内容は書けている
+            self._editor.document().setModified(False)
+            self._debouncer.clear()
+            self._update_title()
         else:
-            self._note = None
-            self._editor.clear()
+            # 本文を消すだけだと、タイトル・last_note・未保存の待ちに
+            # 消えたノートが残り、表示が嘘をつく
+            self._close_current()
 
     # ------------------------------------------------------------------ 検索
 

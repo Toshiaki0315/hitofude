@@ -177,6 +177,46 @@ class TestExternalDelete:
         window._on_external_change(_deleted_kind(), path)
         assert all(row.title != "競合するノート" for row in window.vault_index.notes())
 
+    def test_閉じたらタイトルからも消える(self, window, monkeypatch) -> None:
+        """No の分岐が本文を消すだけで、タイトル・last_note・未保存の
+        待ちの後始末をしていなかった（回帰）。消えたノート名が
+        ウィンドウに残り、表示が嘘をつく。"""
+        path = opened_note(window)
+        monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No)
+
+        path.unlink()
+        window._on_note_deleted(path)
+        assert "競合するノート" not in window.windowTitle()
+
+    def test_閉じたら次回起動の対象からも外す(self, window, monkeypatch) -> None:
+        path = opened_note(window)
+        monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No)
+
+        path.unlink()
+        window._on_note_deleted(path)
+        assert window._config.last_note is None
+
+    def test_閉じたら未保存の待ちも解消する(self, window, monkeypatch) -> None:
+        path = opened_note(window)
+        window.editor.moveCursor(window.editor.textCursor().MoveOperation.End)
+        window.editor.textCursor().insertText("打ちかけ")
+        monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No)
+
+        path.unlink()
+        window._on_note_deleted(path)
+        assert not window._debouncer.pending  # 200ms ごとの空振り flush を残さない
+
+    def test_作り直したら保存済み扱いになる(self, window, monkeypatch) -> None:
+        path = opened_note(window)
+        window.editor.moveCursor(window.editor.textCursor().MoveOperation.End)
+        window.editor.textCursor().insertText("打ちかけ")
+        monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+
+        path.unlink()
+        window._on_note_deleted(path)
+        assert path.is_file()  # 作り直しで書けている
+        assert not window._debouncer.pending
+
 
 def _deleted_kind():
     from hitofude.storage.watcher import ChangeKind
