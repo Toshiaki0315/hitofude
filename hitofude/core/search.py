@@ -14,8 +14,22 @@ type Match = tuple[int, int]
 """一致範囲。半開区間 `[start, end)`。`InlineSpan` と同じ約束。"""
 
 
-def _fold(text: str, *, case_sensitive: bool) -> str:
-    return text if case_sensitive else text.casefold()
+def _fold_with_origins(text: str) -> tuple[str, list[int]]:
+    """casefold した文字列と、折り畳み後の各位置 → 元の位置の対応表。
+
+    casefold は長さを変えることがある（`ﬁ`→`fi`、`ß`→`ss`）。折り畳んだ
+    文字列上の一致位置を元の本文にそのまま使うと、合字より後ろの位置が
+    全部ずれ、置換が本文を壊す。末尾に番兵として `len(text)` を足してあり、
+    半開区間の終端をそのまま引ける。
+    """
+    pieces: list[str] = []
+    origins: list[int] = []
+    for index, char in enumerate(text):
+        folded = char.casefold()
+        pieces.append(folded)
+        origins.extend([index] * len(folded))
+    origins.append(len(text))
+    return "".join(pieces), origins
 
 
 def find_all(text: str, query: str, *, case_sensitive: bool = False) -> list[Match]:
@@ -29,14 +43,30 @@ def find_all(text: str, query: str, *, case_sensitive: bool = False) -> list[Mat
         # 光り、置換すれば本文が壊れるので、一致なしとして扱う
         return []
 
-    haystack = _fold(text, case_sensitive=case_sensitive)
-    needle = _fold(query, case_sensitive=case_sensitive)
+    if case_sensitive:
+        matches: list[Match] = []
+        start = text.find(query)
+        while start != -1:
+            matches.append((start, start + len(query)))
+            start = text.find(query, start + len(query))
+        return matches
 
-    matches: list[Match] = []
-    start = haystack.find(needle)
-    while start != -1:
-        matches.append((start, start + len(needle)))
-        start = haystack.find(needle, start + len(needle))
+    haystack, origins = _fold_with_origins(text)
+    needle = query.casefold()
+
+    matches = []
+    found = haystack.find(needle)
+    while found != -1:
+        end = found + len(needle)
+        # 元の文字の境界に揃った一致だけ返す。`ﬁ` の `i` だけは置換できない
+        # （半分だけ消すか、`f` を巻き添えにするかの二択になる）ので捨てる
+        aligned_start = found == 0 or origins[found] != origins[found - 1]
+        aligned_end = end == len(haystack) or origins[end] != origins[end - 1]
+        if aligned_start and aligned_end:
+            matches.append((origins[found], origins[end]))
+            found = haystack.find(needle, end)
+        else:
+            found = haystack.find(needle, found + 1)
     return matches
 
 

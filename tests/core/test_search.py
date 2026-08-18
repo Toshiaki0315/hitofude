@@ -43,6 +43,36 @@ class TestFindAll:
         assert find_all("a.c abc", ".") == [(1, 2)]
 
 
+class TestCasefoldで長さが変わる文字:
+    """casefold は長さを変えることがある（ﬁ→fi、ß→ss）。
+
+    折り畳んだ文字列上の位置を元の本文にそのまま使うと、合字より
+    後ろの一致位置が全部ずれ、置換が本文を壊していた（回帰）。
+    """
+
+    def test_合字より後ろの一致位置がずれない(self) -> None:
+        text = "ﬁle と ß を含む行 x"
+        assert find_all(text, "x") == [(13, 14)]
+
+    def test_合字を挟んだ置換が本文を壊さない(self) -> None:
+        text = "ﬁle と ß を含む行 x"
+        assert replace_all(text, "x", "Y") == ("ﬁle と ß を含む行 Y", 1)
+
+    def test_合字は折り畳んだ形でも引ける(self) -> None:
+        """`FILE` で `ﬁle` が見つかる。一致範囲は元の文字を丸ごと覆う。"""
+        assert find_all("ﬁle を開く", "FILE") == [(0, 3)]
+
+    def test_エスツェットはSSでも引ける(self) -> None:
+        assert find_all("groß", "GROSS") == [(0, 4)]
+
+    def test_合字の内側だけの一致は返さない(self) -> None:
+        """`ﬁ` の `i` だけを置換することはできない。半端な一致は捨てる。"""
+        assert find_all("ﬁle", "i") == []
+
+    def test_区別する検索は折り畳まない(self) -> None:
+        assert find_all("ﬁle x", "x", case_sensitive=True) == [(4, 5)]
+
+
 class TestFindNext:
     def test_カーソルより後ろを探す(self) -> None:
         assert find_next(TEXT, "りんご", 1) == (8, 11)
