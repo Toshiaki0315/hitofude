@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import (
     QColor,
     QFont,
+    QFontMetricsF,
     QSyntaxHighlighter,
     QTextBlock,
     QTextBlockUserData,
@@ -35,11 +36,13 @@ from hitofude.core.models import (
     InlineSpan,
     SpanType,
 )
-from hitofude.core.table import fits
+from hitofude.core.table import WrappedRow, fits, wrap_row, wrapped_columns
 from hitofude.core.textpos import py_to_utf16, utf16_to_py
 from hitofude.editor.painter_overlay import (
     CHECKBOX_GAP_RATIO,
     CODE_NAME_SCALE,
+    TABLE_FAMILIES,
+    WRAP_CELL_PADDING,
     checkbox_size,
 )
 from hitofude.theme import LIGHT, ThemeColors
@@ -105,11 +108,6 @@ DEFAULT_MONO_FAMILY = "Menlo"
 # 実在するものへ順に落とす。指定フォントが無い環境でも行の高さが暴れない
 MONO_FALLBACKS = ["Menlo", "Monaco", "Courier New"]
 
-# 表は**日本語も含めて**等幅でないと縦線が揃わない。Menlo など通常の
-# 等幅フォントは CJK グリフを持たず、フォールバック先の全角幅が半角の
-# ちょうど 2 倍にならないため桁がずれる（実測: Menlo 1.66 倍）。
-# BIZ UDGothic は macOS 標準で、全角:半角 = 2:1 が成立する数少ないフォント。
-TABLE_FAMILIES = ["BIZ UDGothic", "Menlo", "Monaco", "Courier New"]
 
 # セルの余白。文字が罫線に接していると読みにくい。
 # **テキストは変えない**（R1）。`|` は罫線として描くので画面に出ないから、
@@ -172,10 +170,17 @@ class BlockData(QTextBlockUserData):
     （余白・インデント）はここから読む。Qt での標準的なやり方。
     """
 
-    def __init__(self, info: BlockInfo, spans: list[InlineSpan]) -> None:
+    def __init__(
+        self,
+        info: BlockInfo,
+        spans: list[InlineSpan],
+        wrapped: WrappedRow | None = None,
+    ) -> None:
         super().__init__()
         self.info = info
         self.spans = spans
+        self.wrapped = wrapped
+        """収まらない表の折り返し内容（ADR-0017）。折り返し表示中の行だけ持つ。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,6 +229,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         # `setFormat` の位置変換用。`highlightBlock` の先頭で更新する
         self._line = ""
         self._line_is_bmp_only = True
+        # 折り返し表示中の表の行（ADR-0017）。highlightBlock ごとに詰め直す
+        self._pending_wrapped: WrappedRow | None = None
+        self._table_spacing_cache: tuple[float, float] | None = None
         self._build_formats()
 
     # ------------------------------------------------------------------ 設定
@@ -320,6 +328,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         # `setFormat` / `format` のオーバーライドが境界で変換する
         self._line = text
         self._line_is_bmp_only = text.isascii() or all(ord(char) < 0x10000 for char in text)
+        self._pending_wrapped = None
         state = BlockState.decode(self.previousBlockState())
         info, next_state = classify_line(text, block.blockNumber(), state)
 
@@ -333,7 +342,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         if image is True:
             # 絵として描くので記号は見せない。**カーソルが入っても高さを変えない**
             # （行高が動くと下の全部が飛ぶ。§2 の「行の高さが変わらない」約束）
-            self.setCurrentBlockUserData(BlockData(info, spans))
+            self.setCurrentBlockUserData(BlockData(info, spans, self._pending_wrapped))
             self.setCurrentBlockState(next_state.encode())
             return
         if image is False:
@@ -349,7 +358,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             self._apply_spans(text, spans, reveal)
         self._hide_block_markers(text, info, reveal)
 
-        self.setCurrentBlockUserData(BlockData(info, spans))
+        self.setCurrentBlockUserData(BlockData(info, spans, self._pending_wrapped))
         self.setCurrentBlockState(next_state.encode())
 
     def _pad_cells(self, text: str) -> None:
@@ -422,6 +431,58 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         """その高さの行になる文字サイズ。"""
         ratio = line_height_ratio(self.document().defaultFont())
         return max(1.0, height / ratio)
+
+    def _table_run_texts(self) -> list[str]:
+        """このブロックが属する表の全行。折り返しの列幅は表全体から決まる。
+
+        userData には頼らない（初回パスではまだ無い。`_fence_body` と同じ理由）。
+        `|` で始まる行の連続を表の並びと見なす。上限は保険（巨大な表で
+        打鍵ごとの走査が膨らまないように）。
+        """
+        block = self.currentBlock()
+        rows = [block.text()]
+        probe = block.previous()
+        while probe.isValid() and probe.text().lstrip().startswith("|") and len(rows) < 200:
+            rows.insert(0, probe.text())
+            probe = probe.previous()
+        probe = block.next()
+        while probe.isValid() and probe.text().lstrip().startswith("|") and len(rows) < 200:
+            rows.append(probe.text())
+            probe = probe.next()
+        return rows
+
+    def _reserve_wrapped_row(self, text: str, run: list[str]) -> None:
+        """収まらない表の行を隠し、折り返しぶんの高さを予約する（ADR-0017）。
+
+        画像（ADR-0004）と同じ手口: 全文字を 0.5pt に潰し、先頭 1 文字だけを
+        **透明のまま**拡大して高さを作る。中身は paintEvent が
+        `BlockData.wrapped` から描くので、ソースには触らない（R1/R4 無傷）。
+        """
+        widths = wrapped_columns(run, self._table_columns)
+        if not widths:
+            return
+        cells = wrap_row(text, widths)
+        wrapped = WrappedRow(tuple(widths), tuple(tuple(lines) for lines in cells))
+
+        self._hide(0, len(text))
+        tall = QTextCharFormat()
+        height = wrapped.lines * self._table_line_spacing() + WRAP_CELL_PADDING * 2
+        tall.setFontPointSize(self._point_size_for(height))
+        tall.setForeground(QColor("transparent"))
+        self.setFormat(0, 1, tall)
+        self._pending_wrapped = wrapped
+
+    def _table_line_spacing(self) -> float:
+        """折り返しセル 1 行ぶんの高さ。描画側（paintEvent）と同じフォントで測る。"""
+        size = self.document().defaultFont().pointSizeF()
+        if self._table_spacing_cache and self._table_spacing_cache[0] == size:
+            return self._table_spacing_cache[1]
+        font = QFont()
+        font.setFamilies(TABLE_FAMILIES)
+        font.setPointSizeF(size)
+        spacing = float(QFontMetricsF(font).lineSpacing())
+        self._table_spacing_cache = (size, spacing)
+        return spacing
 
     def _reveal_for(self, block_start: int, block_length: int, text: str) -> _Reveal:
         if self._source_mode:
@@ -500,25 +561,30 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         elif info.type is BlockType.NOTE_DELIMITER:
             if info.note_kind != UNKNOWN_NOTE_KIND:
                 self._hide(0, len(text))
-        elif info.type is BlockType.TABLE_DELIMITER:
-            # 収まらない表は生の Markdown を見せる。区切り行だけ隠すと
-            # 表の形が読めなくなる
-            if fits(text, self._table_columns):
-                self._hide(0, len(text))
-        elif info.type in _FULLY_HIDDEN_TYPES:
+        elif info.type in _FULLY_HIDDEN_TYPES and info.type is not BlockType.TABLE_DELIMITER:
             self._hide(0, len(text))
         elif info.type in _HIDDEN_MARKER_TYPES:
             self._hide(0, info.marker_len)
-        elif info.type is BlockType.TABLE_ROW:
-            # `|` は罫線として描く（§5.2 の描画フック）。文字は残すので
-            # キャレット位置とソースのオフセットは 1:1 のまま（R4）。
-            # **幅に収まらない行では隠さない。** 折り返すと罫線が引けず、
-            # 隠したままだと列の区切りが画面から消える（ユーザー報告）
-            if not fits(text, self._table_columns):
-                return
-            for index, character in enumerate(text):
-                if character == "|":
-                    self._hide(index, 1)
+        elif info.type in (BlockType.TABLE_ROW, BlockType.TABLE_DELIMITER):
+            # 折り返すか（ADR-0017）は**表全体**で決める。1 行だけ折り返すと
+            # 列の線が行ごとにずれて表にならない
+            run = self._table_run_texts()
+            wrapped_mode = self._table_columns > 0 and any(
+                not fits(row, self._table_columns) for row in run
+            )
+            if info.type is BlockType.TABLE_DELIMITER:
+                # 区切り行は折り返し表示でも隠す（線は paintEvent が引く）。
+                # 収まる表と同じ扱いで、薄い 1 行として残る
+                if wrapped_mode or fits(text, self._table_columns):
+                    self._hide(0, len(text))
+            elif wrapped_mode:
+                self._reserve_wrapped_row(text, run)
+            else:
+                # `|` は罫線として描く（§5.2 の描画フック）。文字は残すので
+                # キャレット位置とソースのオフセットは 1:1 のまま（R4）
+                for index, character in enumerate(text):
+                    if character == "|":
+                        self._hide(index, 1)
         elif info.type is BlockType.TASK_LIST_ITEM:
             # `- ` は残し `[ ]` だけ潰す。箱は paintEvent が描く（§6.4）
             bracket = text.find("[", 0, info.marker_len)

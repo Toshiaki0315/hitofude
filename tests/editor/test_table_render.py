@@ -496,39 +496,33 @@ WIDE_TABLE = (
 
 
 class TestTooWide:
-    """幅に収まらない表は**生の Markdown を見せる**（ユーザー報告 / ADR-0003 追記）。
+    """幅に収まらない表は**セルを折り返して描く**（ADR-0017）。
 
-    行が折り返すと「ソースの 1 行 = 画面の 1 行」が崩れ、`|` の x 座標が
-    折り返し先の行の座標に戻る。実測（viewport 720px）:
-
-        ふつうの行   : 表示 1 行  | の x = [4, 168, 331, 474]
-        長いセルの行 : 表示 3 行  | の x = [4, 168, 766, 126]
-
-    この位置に罫線を引いても意味を持たない。**描けないときは描かない**で、
-    記号を出してソースとして直せるようにする（キャレットを表に入れたときと
-    同じ見え方。覚えることが増えない）。
+    以前は生の Markdown へ落としていた（ADR-0003 追記）。ソースの行が
+    折り返すと「ソースの 1 行 = 画面の 1 行」が崩れ、`|` の x 座標に線を
+    引けなかったため。折り返し表示は列の位置を桁数から決め直すので、
+    この制約を受けない。キャレットを入れた行だけ生に戻るのは今まで通り。
     """
 
-    def test_縦線を隠さない(self, editor) -> None:
+    def test_縦線ごと行を隠す(self, editor) -> None:
         editor.setPlainText(WIDE_TABLE)
         move_to(editor, 4)
-        assert hidden_ranges(editor, 0) == [], "収まらないのに `|` を隠している"
+        assert hidden_ranges(editor, 0), "折り返し表示なのに生の行が見えている"
 
-    def test_区切り行も見せる(self, editor) -> None:
-        """`|---|---|` を隠したままだと、表の形が読めない。"""
+    def test_区切り行も隠す(self, editor) -> None:
         editor.setPlainText(WIDE_TABLE)
         move_to(editor, 4)
-        assert hidden_ranges(editor, 1) == []
+        assert hidden_ranges(editor, 1)
 
-    def test_罫線を引かない(self, editor) -> None:
+    def test_罫線を引く(self, editor) -> None:
         editor.setPlainText(WIDE_TABLE)
         move_to(editor, 4)
-        assert DecorationKind.TABLE_RULE not in kinds(editor)
+        assert DecorationKind.TABLE_RULE in kinds(editor)
 
-    def test_ヘッダ背景も敷かない(self, editor) -> None:
+    def test_ヘッダ背景も敷く(self, editor) -> None:
         editor.setPlainText(WIDE_TABLE)
         move_to(editor, 4)
-        assert DecorationKind.TABLE_HEADER not in kinds(editor)
+        assert DecorationKind.TABLE_HEADER in kinds(editor)
 
     def test_収まる表は今まで通り(self, editor) -> None:
         """狭い表を巻き添えにしない。"""
@@ -543,14 +537,15 @@ class TestTooWide:
         move_to(editor, 4)
         assert editor.toPlainText() == WIDE_TABLE
 
-    def test_短くすれば表に戻る(self, editor) -> None:
-        """収まる幅まで縮めれば、そのまま表として描かれる。"""
+    def test_短くすれば通常の描画に戻る(self, editor) -> None:
+        """収まる幅まで縮めれば、折り返しをやめてそのまま描く。"""
         editor.setPlainText(WIDE_TABLE)
         move_to(editor, 4)
-        assert DecorationKind.TABLE_RULE not in kinds(editor)
+        assert DecorationKind.TABLE_TEXT in kinds(editor)
 
         editor.setPlainText(TABLE)
         move_to(editor, 5)
+        assert DecorationKind.TABLE_TEXT not in kinds(editor)
         assert DecorationKind.TABLE_RULE in kinds(editor)
         assert hidden_ranges(editor, 0)
 
@@ -670,3 +665,80 @@ class TestManualFits:
             line for line in manual.split("\n") if line.startswith("|") and not fits(line, columns)
         ]
         assert not over, [f"{display_width(line)} 桁 > {columns}: {line[:40]}" for line in over[:3]]
+
+
+WIDE_CELLS = (
+    "| 項目 | 説明 |\n| --- | --- |\n| 短い | " + "長い説明が続きます " * 12 + "|\n\n末尾\n"
+)
+
+
+class TestWrappedTable:
+    """収まらない表はセルを折り返して描く（案 B / ADR-0017）。
+
+    以前は生の Markdown へ落としていた。ソースは触らず（R1）、
+    画像と同じ手口（ADR-0004: 先頭 1 文字の拡大で行高を予約し、
+    絵は paintEvent で描く）で表示だけを折り返す。
+    カーソルが入った行は今まで通り生で編集できる。
+    """
+
+    def wrapped_of(self, editor: MarkdownEditor, line: int):
+        data = editor.document().findBlockByNumber(line).userData()
+        return getattr(data, "wrapped", None)
+
+    def test_収まらない行は隠して高さを予約する(self, editor) -> None:
+        editor.setPlainText(WIDE_CELLS)
+        move_to(editor, 4)  # 表の外へ
+
+        block = editor.document().findBlockByNumber(2)
+        formats = block.layout().formats()
+        base = editor.font().pointSizeF()
+        assert any(f.format.fontPointSize() == pytest.approx(0.5) for f in formats)  # 隠し
+        assert any(f.format.fontPointSize() > base * 1.5 for f in formats)  # 高さの予約
+
+    def test_行の高さが折り返しぶん高くなる(self, editor) -> None:
+        editor.setPlainText(WIDE_CELLS)
+        move_to(editor, 4)
+
+        normal = editor.blockBoundingGeometry(editor.document().findBlockByNumber(4)).height()
+        wrapped = editor.blockBoundingGeometry(editor.document().findBlockByNumber(2)).height()
+        assert wrapped > normal * 2  # 少なくとも 2 行ぶんは折り返している
+
+    def test_BlockDataに折り返しの中身が載る(self, editor) -> None:
+        editor.setPlainText(WIDE_CELLS)
+        move_to(editor, 4)
+
+        wrapped = self.wrapped_of(editor, 2)
+        assert wrapped is not None
+        assert "短い" in wrapped.cells[0][0]
+        assert len(wrapped.cells[1]) >= 2  # 長いセルは複数行に折れている
+
+    def test_カーソルを入れると生の行に戻る(self, editor) -> None:
+        editor.setPlainText(WIDE_CELLS)
+        move_to(editor, 4)
+        move_to(editor, 2)  # 折り返し行へ
+
+        block = editor.document().findBlockByNumber(2)
+        formats = block.layout().formats()
+        assert not any(f.format.fontPointSize() == pytest.approx(0.5) for f in formats)
+        assert self.wrapped_of(editor, 2) is None
+
+    def test_収まる表は今まで通り(self, editor) -> None:
+        editor.setPlainText(TABLE)
+        move_to(editor, 5)
+        assert self.wrapped_of(editor, 0) is None
+
+    def test_Rawでは生のまま(self, editor) -> None:
+        editor.setPlainText(WIDE_CELLS)
+        editor.set_source_mode(True)
+        move_to(editor, 4)
+        assert self.wrapped_of(editor, 2) is None
+
+    def test_折り返したセルの文字が描かれる(self, editor) -> None:
+        from hitofude.editor.painter_overlay import DecorationKind, visible_decorations
+
+        editor.setPlainText(WIDE_CELLS)
+        move_to(editor, 4)
+
+        texts = [d.text for d in visible_decorations(editor) if d.kind is DecorationKind.TABLE_TEXT]
+        assert any("短い" in t for t in texts)
+        assert any("長い説明" in t for t in texts)

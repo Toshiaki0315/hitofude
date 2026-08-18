@@ -381,6 +381,17 @@ class MarkdownEditor(QPlainTextEdit):
         finally:
             self._formatting = False
 
+        # 折り返し表示（ADR-0017）の列幅は表全体から決まる。編集した行の
+        # 影響を他の行にも反映するため、収まらない表を離れたら表の行だけ
+        # 掛け直す（全体再ハイライトはしない。R7）
+        start, end = found
+        if any(not table.fits(line, self._table_columns) for line in lines[start:end]):
+            document = self.document()
+            for number in range(start, end):
+                block = document.findBlockByNumber(number)
+                if block.isValid():
+                    self._highlighter.rehighlightBlock(block)
+
     def _apply_table_format(self, lines: list[str], found: tuple[int, int]) -> bool:
         """表の範囲を整形する。キャレットは今いる場所に残す。"""
         start, end = found
@@ -1365,6 +1376,13 @@ class MarkdownEditor(QPlainTextEdit):
         self._update_content_margins()
         self._update_table_columns()
 
+    def table_font(self) -> QFont:
+        """表の描画に使う等幅フォント。折り返したセルの中身もこれで描く。"""
+        font = QFont()
+        font.setFamilies(TABLE_FAMILIES)
+        font.setPointSizeF(self.font().pointSizeF())
+        return font
+
     def table_columns(self) -> int:
         """表 1 行に使える桁数（半角換算）。**覚えた値を返すだけ**。
 
@@ -1380,10 +1398,7 @@ class MarkdownEditor(QPlainTextEdit):
         実測）なので、桁数で数えれば画面の幅と 1 対 1 で対応する。
         """
         available = self.viewport().width() - self.document().documentMargin() * 2
-        font = QFont()
-        font.setFamilies(TABLE_FAMILIES)
-        font.setPointSizeF(self.font().pointSizeF())
-        advance = QFontMetricsF(font).horizontalAdvance("0")
+        advance = QFontMetricsF(self.table_font()).horizontalAdvance("0")
         if advance <= 0:
             return 0
         return int(available / advance)

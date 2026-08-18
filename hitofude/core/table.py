@@ -214,3 +214,119 @@ def find_table(lines: list[str], line: int) -> tuple[int, int] | None:
     if len(block) < 2 or not any(_is_delimiter(entry) for entry in block[1:]):
         return None
     return start, end
+
+
+# ------------------------------------------------------- セル折り返し（ADR-0017）
+#
+# 幅に収まらない表は、以前は生の Markdown へ落としていた。案 B では
+# 表示側だけ折り返して描く（ソースは触らない = R1 無傷）。ここはその
+# 「何をどこで折るか」の純ロジックで、描画は editor/ 側の仕事。
+
+# 折り返しでもこれより狭くしない（全角 3 文字ぶん）。これを下回ると
+# 1 行 1〜2 文字の縦書きのようになり、読めない
+MIN_WRAP_COLUMN = 6
+
+# 1 列あたりの飾りの取り分（縦線 1 + 左右の余白 2）。行末の縦線に +1
+CELL_OVERHEAD = 3
+
+
+def wrap_cell(text: str, width: int) -> list[str]:
+    """セルの中身を表示幅 `width`（半角換算）で折り返す。
+
+    空白があればそこで折る（英単語の途中で切らない）。1 語が幅を
+    超えるときだけ字の途中で切る。全角は 2 桁で数える（ADR-0003）。
+    """
+    if width <= 0:
+        return [text]
+    lines: list[str] = []
+    current = ""
+    current_width = 0
+    for word in _wrap_pieces(text):
+        piece_width = display_width(word)
+        if current and current_width + piece_width > width:
+            lines.append(current.rstrip())
+            current, current_width = "", 0
+            if word == " ":
+                continue  # 折り目の空白は行頭に持ち込まない
+        if piece_width > width:
+            # 1 語が幅より長い。字単位で詰める
+            for char in word:
+                char_width = display_width(char)
+                if current and current_width + char_width > width:
+                    lines.append(current.rstrip())
+                    current, current_width = "", 0
+                current += char
+                current_width += char_width
+            continue
+        current += word
+        current_width += piece_width
+    lines.append(current.rstrip())
+    return lines or [""]
+
+
+def _wrap_pieces(text: str) -> list[str]:
+    """折り返しの単位。空白を独立した piece にして折り目の候補にする。"""
+    pieces: list[str] = []
+    current = ""
+    for char in text:
+        if char == " ":
+            if current:
+                pieces.append(current)
+                current = ""
+            pieces.append(" ")
+        else:
+            current += char
+    if current:
+        pieces.append(current)
+    return pieces
+
+
+def wrapped_columns(rows: list[str], available: int) -> list[int]:
+    """収まらない表の列幅（半角換算）を決める。
+
+    自然幅（各列の最長セル。区切り行は書き手の癖なので数えない）が
+    使える幅に収まればそのまま。溢れたら**いちばん広い列から** 1 ずつ
+    削る。狭い列を道連れにしないため。`MIN_WRAP_COLUMN` より下には
+    削らない（全列が最低幅でも収まらないなら、そこで止める）。
+    """
+    bodies = [_split_row(line).cells for line in rows if not _is_delimiter(line)]
+    count = max((len(cells) for cells in bodies), default=0)
+    if count == 0:
+        return []
+
+    widths = [
+        max((display_width(cells[i]) for cells in bodies if i < len(cells)), default=0)
+        for i in range(count)
+    ]
+    usable = available - (CELL_OVERHEAD * count + 1)
+    while sum(widths) > usable:
+        widest = max(range(count), key=lambda i: widths[i])
+        if widths[widest] <= MIN_WRAP_COLUMN:
+            break  # これ以上削ると読めない。溢れは描画側がはみ出しで吸収する
+        widths[widest] -= 1
+    return widths
+
+
+def wrap_row(line: str, col_widths: list[int]) -> list[list[str]]:
+    """1 行ぶんのセルを列幅で折り返す。列数が足りない分は空セル。"""
+    cells = _split_row(line).cells
+    return [
+        wrap_cell(cells[i] if i < len(cells) else "", col_widths[i]) for i in range(len(col_widths))
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class WrappedRow:
+    """折り返した 1 行ぶんの表示内容（ADR-0017）。
+
+    ハイライタが組み立てて `BlockData` に載せ、描画（paintEvent）が読む。
+    ソースには一切触れない（R1）。
+    """
+
+    col_widths: tuple[int, ...]
+    cells: tuple[tuple[str, ...], ...]
+
+    @property
+    def lines(self) -> int:
+        """この行が使う見た目の行数 = いちばん高いセル。"""
+        return max((len(cell) for cell in self.cells), default=1)
