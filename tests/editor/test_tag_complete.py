@@ -152,3 +152,58 @@ class TestPopupLifecycle:
         type_tag(editor, "メモ #日")
         qtbot.mouseClick(editor.viewport(), Qt.MouseButton.LeftButton)
         assert editor.tag_candidates() == []
+
+
+class TestKeyboardSelection:
+    """マニュアルの約束「矢印で選んで」（H-3）。
+
+    候補の表示中だけ ↑↓ / Enter / Tab を横取りする。Return を食うのは
+    候補が出ているときに限る（改行したければ Esc で閉じてから）。
+    """
+
+    def test_下キーで次の候補が選ばれる(self, editor, qtbot) -> None:
+        type_tag(editor, "メモ #日")  # 候補: 日報, 日記
+        assert editor._tag_popup.currentRow() == 0
+        qtbot.keyClick(editor, Qt.Key.Key_Down)
+        assert editor._tag_popup.currentRow() == 1
+
+    def test_上下は端で止まる(self, editor, qtbot) -> None:
+        type_tag(editor, "メモ #日")
+        qtbot.keyClick(editor, Qt.Key.Key_Up)
+        assert editor._tag_popup.currentRow() == 0
+        for _ in range(5):
+            qtbot.keyClick(editor, Qt.Key.Key_Down)
+        assert editor._tag_popup.currentRow() == 1  # 候補は 2 件
+
+    def test_Enterで現在の候補が確定する(self, editor, qtbot) -> None:
+        type_tag(editor, "メモ #日")
+        qtbot.keyClick(editor, Qt.Key.Key_Down)
+        qtbot.keyClick(editor, Qt.Key.Key_Return)
+        assert editor.toPlainText() == "メモ #日記"
+        assert not editor._tag_popup.isVisible()
+
+    def test_最初の候補はEnter一発で決まる(self, editor, qtbot) -> None:
+        type_tag(editor, "メモ #日")
+        qtbot.keyClick(editor, Qt.Key.Key_Return)
+        assert editor.toPlainText() == "メモ #日報"
+
+    def test_Tabでも確定する(self, editor, qtbot) -> None:
+        type_tag(editor, "#仕事/")
+        qtbot.keyClick(editor, Qt.Key.Key_Tab)
+        assert editor.toPlainText() == "#仕事/日報"
+
+    def test_候補が無いときのReturnは通常の改行(self, editor, qtbot) -> None:
+        """リスト継続（§5.5）を横取りしない。"""
+        type_tag(editor, "- 項目")
+        qtbot.keyClick(editor, Qt.Key.Key_Return)
+        assert editor.toPlainText() == "- 項目\n- "
+
+    def test_変換中は候補を動かさない(self, editor, qtbot) -> None:
+        """R6: プリエディット中の ↑↓ は変換候補の操作。横取りしない。"""
+        from PySide6.QtGui import QInputMethodEvent
+        from PySide6.QtWidgets import QApplication
+
+        type_tag(editor, "メモ #日")
+        QApplication.sendEvent(editor, QInputMethodEvent("にほんご", []))
+        qtbot.keyClick(editor, Qt.Key.Key_Down)
+        assert editor._tag_popup.currentRow() == 0

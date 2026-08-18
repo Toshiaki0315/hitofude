@@ -458,6 +458,10 @@ class MarkdownEditor(QPlainTextEdit):
             super().keyPressEvent(event)
             return
 
+        if self._handle_tag_popup_keys(event):
+            event.accept()
+            return
+
         if event.matches(QKeySequence.StandardKey.SelectAll):
             # `cut()` と同じ理由。標準のキー割り当ては仮想メソッドを通らない
             self.selectAll()
@@ -833,6 +837,33 @@ class MarkdownEditor(QPlainTextEdit):
     def _hide_tag_popup(self) -> None:
         if self._tag_popup.isVisible():
             self._tag_popup.hide()
+
+    def _handle_tag_popup_keys(self, event: QKeyEvent) -> bool:
+        """候補が出ているときの ↑↓ / Enter / Tab（C-4 / H-3）。
+
+        マニュアルは「矢印で選んで」と約束している。横取りするのは
+        **候補の表示中だけ**で、Return を食うのも候補が出ているときに限る
+        （改行したければ Esc で閉じてから。リスト継続を邪魔しない）。
+        変換中はここへ来ない（`keyPressEvent` の R6 ガードが先）。
+        """
+        if not self._tag_candidates or not self._tag_popup.isVisible():
+            return False
+
+        popup = self._tag_popup
+        match event.key():
+            case Qt.Key.Key_Down:
+                # 端で止める。macOS の補完 UI は回り込まない
+                popup.setCurrentRow(min(popup.currentRow() + 1, popup.count() - 1))
+                return True
+            case Qt.Key.Key_Up:
+                popup.setCurrentRow(max(popup.currentRow() - 1, 0))
+                return True
+            case Qt.Key.Key_Return | Qt.Key.Key_Enter | Qt.Key.Key_Tab:
+                item = popup.currentItem()
+                if item is not None:
+                    self.complete_tag(item.text())
+                return True
+        return False
 
     def _dismiss_tag_popup(self) -> None:
         """候補ごと閉じる。
