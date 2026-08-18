@@ -140,7 +140,8 @@ x = 1
 
 加えて Qt 公式ドキュメントも「`toMarkdown()` は無効化を指定しても GitHub 拡張を出力してしまうことがある（将来修正されうる）」「QTextDocument が表現できても純粋な Markdown に書けない属性は欠落する」「YAML front matter のパーサは同梱していない」と明記している。
 
-> **結論**: `setMarkdown()` は **読み取り専用のエクスポート/プレビュー用途に限定**する。編集モデルには絶対に使わない。
+> **結論**: ~~`setMarkdown()` は **読み取り専用のエクスポート/プレビュー用途に限定**する。~~ 編集モデルには絶対に使わない。
+> → **ADR-0007 で変更**: エクスポート用途も含め**どこでも使用禁止**。フェンスの言語・生 HTML・脚注・空 alt の画像も落とすため、書き出しも markdown-it-py（`core/html.py`）に移した。`tests/test_architecture.py` が全ファイルを検査している。
 
 #### 方式 Q2: `QPlainTextEdit` + `QSyntaxHighlighter` でソース文字列に装飾を重ねる（＝ B 方式）
 
@@ -357,6 +358,10 @@ inline         | map=[0, 1]
 
 ### 6.1 モジュール構成
 
+> → **2026-08-18 に現状化**: 実装が進んで増えたモジュールを反映した
+> （B〜G 群のタスクで追加されたもの）。`block_decorator.py` は ADR-0002 で
+> 廃止。`styles.qss` は使わない方針（QSS はネイティブな見た目を壊す）。
+
 ```
 hitofude/
 ├── __main__.py              # エントリポイント
@@ -365,37 +370,69 @@ hitofude/
 ├── theme.py                 # ThemeColors dataclass, ライト/ダーク定義
 │
 ├── core/                    # ── GUI に依存しない層（ここは pytest で完全にテストできる）
-│   ├── document.py          #   Note: パス/本文/front matter/mtime
+│   ├── models.py            #   BlockInfo, InlineSpan, BlockType, SpanType
+│   ├── document.py          #   Note: パス/本文/front matter/派生情報（title/preview/digest）
 │   ├── frontmatter.py       #   YAML front matter の分離と再結合
-│   ├── block_parser.py      #   markdown-it-py ラッパ → BlockInfo のリスト
-│   ├── inline_scanner.py    #   1 行 → InlineSpan のリスト（正規表現）
+│   ├── block_parser.py      #   markdown-it-py ラッパ → BlockInfo のリスト + 行単位分類
+│   ├── inline_scanner.py    #   1 行 → InlineSpan のリスト（正規表現。ADR-0001）
+│   ├── code_tokens.py       #   コードの字句解析（B-6 / 画面の色分け）
+│   ├── html.py              #   Markdown → HTML（B-2 / ADR-0007。書き出しの本流）
 │   ├── tags.py              #   #tag の抽出、階層タグの分解
-│   └── models.py            #   BlockInfo, InlineSpan, BlockType, SpanType
+│   ├── wikilink.py          #   [[ノート名]] の名前の扱い（E-6）
+│   ├── activation.py        #   Cmd+クリックで何を起こすかの判定（D-1 / D-2）
+│   ├── search.py            #   ノート内検索（Cmd+F）
+│   ├── outline.py           #   見出しの一覧（C-2）
+│   ├── table.py             #   表の整形（ADR-0003）
+│   ├── stats.py             #   文字数と行数
+│   ├── template.py          #   テンプレートの差し込み（E-4）
+│   ├── references.py        #   本文が指す添付の集計（E-5）
+│   ├── paths.py             #   vault 外を指す参照を弾く
+│   ├── textpos.py           #   Python ↔ UTF-16 の位置変換（R4 の境界）
+│   ├── imported.py          #   取り込んだ文字の Markdown 整形（F-1）
+│   └── slides.py            #   Markdown をスライド構造に割る（F-4）
 │
 ├── storage/                 # ── 永続化層
 │   ├── vault.py             #   ノートフォルダの走査、CRUD、ゴミ箱
 │   ├── index_db.py          #   SQLite + FTS5。検索、タグ集計
-│   ├── watcher.py           #   watchdog。外部変更の検知
-│   └── autosave.py          #   デバウンス保存、アトミック書き込み
+│   ├── watcher.py           #   watchdog。外部変更の検知（Qt 橋渡しのみ例外的に Qt 依存）
+│   └── autosave.py          #   デバウンス保存、アトミック書き込み、クラッシュ退避
 │
 ├── editor/                  # ── エディタウィジェット層
 │   ├── editor_widget.py     #   MarkdownEditor(QPlainTextEdit)
 │   ├── highlighter.py       #   MarkdownHighlighter(QSyntaxHighlighter)
-│   ├── block_decorator.py   #   QTextBlockFormat の適用（余白/インデント）
-│   ├── painter_overlay.py   #   paintEvent での背景バー・チェックボックス描画
-│   ├── input_handler.py     #   keyPressEvent のロジック（リスト継続等）
-│   └── commands.py          #   Cmd+B などのテキスト変換コマンド
+│   ├── painter_overlay.py   #   paintEvent での背景バー・チェックボックス描画（ADR-0002）
+│   ├── input_handler.py     #   Enter / Tab の入力補助（リスト継続等）
+│   ├── commands.py          #   Cmd+B などのテキスト変換コマンド
+│   ├── attachments.py       #   貼り付け元から添付を取り出す（A-2）
+│   ├── image_cache.py       #   本文に描く画像の読み込みとキャッシュ（A-2）
+│   ├── exporter.py          #   HTML / PDF への書き出し（ADR-0007）
+│   ├── importer.py          #   外の形式からの取り込み（F 群）
+│   ├── pptx_import.py       #   PowerPoint → Markdown（F-3）
+│   └── pptx_export.py       #   Markdown → PowerPoint（F-5）
 │
 ├── ui/                      # ── アプリケーション UI 層
-│   ├── main_window.py
+│   ├── main_window.py       #   メインウィンドウ。保存フロー・競合・外部変更の束ね役
+│   ├── panes.py             #   3 ペインの分割と幅の保存・復元
 │   ├── sidebar.py           #   タグツリー
 │   ├── note_list.py         #   ノート一覧（QListView + カスタムデリゲート）
-│   ├── quick_open.py        #   Cmd+O のパレット
-│   └── preferences.py
+│   ├── note_list_pane.py    #   一覧とヘッダ（並び順・新規ボタン）
+│   ├── editor_pane.py       #   エディタと検索バーの束
+│   ├── find_bar.py          #   ノート内検索のバー（Cmd+F）
+│   ├── format_toolbar.py    #   書式ツールバー（B-1）
+│   ├── backlink_bar.py      #   バックリンクの帯（E-6 / ADR-0011）
+│   ├── quick_open.py        #   Cmd+O / Cmd+Shift+F のパレット
+│   ├── conflict_dialog.py   #   競合ダイアログ（§7.5）
+│   ├── preferences.py       #   環境設定
+│   ├── menus.py             #   メニューバーの組み立て（ショートカットの一元管理）
+│   ├── shortcut_sheet.py    #   ショートカット一覧（C-7）
+│   ├── index_sync.py        #   重い処理の背景実行（§6.6, §7.3）
+│   └── icons.py             #   線で描くアイコンと共通寸法
 │
 └── resources/
-    ├── icons/
-    └── styles.qss
+    ├── icons/               #   アプリアイコン
+    ├── templates/           #   同梱テンプレート
+    ├── vendor/              #   同梱 JS（Mermaid）
+    └── manual.md            #   同梱マニュアル
 ```
 
 **設計原則**: `core/` と `storage/` は PySide6 に依存させない（`storage/watcher.py` の Qt シグナル橋渡し部分を除く）。これによりパーサ・保存ロジックをヘッドレスでテストできる。
@@ -549,6 +586,12 @@ QUOTE_SHIFT = 4  # 上位ビットに引用の深さを詰める
 
 **処理順（重要 — 先に確定したものが優先）**:
 
+> → **ADR-0001 で変更**: 2 と 3 の順を入れ替えた（`[text](https://...)` の URL 部分を
+> 自動リンクが先に食うため、画像/リンクを先に確定する）。また B-3（脚注）・
+> B-5（数式）・E-6（`[[wikilink]]`）で走査パスが増え、実装の順は
+> コード → 脚注 → 数式 → wikilink → 画像/リンク → 自動リンク → 強調類 → タグ。
+> 真実は `core/inline_scanner.py` の `scan()`。
+
 1. **インラインコード** `` `...` `` / ` ``...`` ` を最優先で確定。この範囲内では他の記法を一切解釈しない。
 2. **自動リンク** `<https://...>` と裸の URL。
 3. **画像** `![alt](url)` → その後 **リンク** `[text](url)`（`!` の有無で区別）。
@@ -575,6 +618,9 @@ def scan(text: str) -> list[InlineSpan]:
 ```
 
 ネストした強調（`**bold *and italic* here**`）は、マスク方式では内側が拾えない。**v1 は「1 段のネストまで」を許容範囲とし、コード内では `mask` を「排他マスク」と「内容マスク」に分けて、内容領域内での再スキャンを 1 回だけ許す**。完全な再帰は v1.1。
+
+> → **Phase 1 で解消**: 「コードは全体マスク・強調はマーカーのみマスク」の
+> 粒度分けにより、段数制限なしで成立した（docs/TASKS.md 1-8）。R8 も同様。
 
 ### 6.6 性能設計
 
@@ -992,7 +1038,7 @@ DMG 自体も署名 + 公証すること。
 | R5 | `trigram` で 2 文字の日本語が検索できない | 検索が使い物にならない | `LIKE` フォールバックを `index_db.search()` に内蔵（§7.3） |
 | R6 | py2app で公証に失敗する | 配布できない | Phase 0 の時点で**最小構成のアプリで署名・公証を 1 度通しておく**。最後にまとめてやると詰む |
 | R7 | 巨大ファイルで固まる | UX 崩壊 | 2MB 超は装飾を無効化して警告（§6.6） |
-| R8 | ネストした強調が拾えない | 軽微 | v1 は 1 段まで。制限として文書化 |
+| R8 | ネストした強調が拾えない | 軽微 | ~~v1 は 1 段まで。制限として文書化~~ → マーカーのみマスクする方式で制限なしに解消（§6.5 追記） |
 | R9 | `QSyntaxHighlighter` は行またぎの構造（表・入れ子リスト）を単独で判断できない | 表の装飾がずれる | ブロック状態のビットフラグ + デバウンスした `block_parser` の結果を併用（§6.3） |
 
 ---
