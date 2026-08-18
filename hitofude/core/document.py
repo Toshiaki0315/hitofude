@@ -191,9 +191,13 @@ class Note:
     @classmethod
     def read(cls, path: Path) -> "Note":
         stat = path.stat()
+        # utf-8-sig: BOM があれば剥がし、無ければ何もしない（spec §7.2）。
+        # 書き込み側（save_atomic）は utf-8 のままなので、「読みで許容・
+        # 書きで付けない」が成立する。BOM を text に残すと題名判定が壊れ、
+        # R1 により保存時に書き戻されてしまう
         return cls.from_text(
             path,
-            path.read_text(encoding="utf-8"),
+            path.read_text(encoding="utf-8-sig"),
             mtime_ns=stat.st_mtime_ns,
             size_bytes=stat.st_size,
         )

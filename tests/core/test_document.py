@@ -132,6 +132,24 @@ class TestNote:
         assert self.make("---\npinned: true\n---\n本文\n").pinned is True
         assert self.make("本文\n").pinned is False
 
+    def test_BOM付きファイルを読める(self, tmp_path: Path) -> None:
+        """spec §7.2「読み込み時のみ BOM 付きを許容」（回帰）。
+
+        BOM が text に残ると、先頭 H1 が `﻿#` になって題名判定が
+        壊れ、R1（ソースをそのまま保存）により保存時に BOM が書き戻されて
+        「UTF-8（BOM なし）で書く」という約束にも反していた。
+        """
+        path = tmp_path / "メモ.md"
+        path.write_text("# 見出し\n\n本文\n", encoding="utf-8-sig")
+        note = Note.read(path)
+        assert not note.text.startswith("﻿")
+        assert note.title == "見出し"
+
+    def test_BOMなしファイルはそのまま(self, tmp_path: Path) -> None:
+        path = tmp_path / "メモ.md"
+        path.write_text("# 見出し\n\n本文\n", encoding="utf-8")
+        assert Note.read(path).text == "# 見出し\n\n本文\n"
+
 
 class TestNewId:
     """spec §7.2: ULID。ファイル名変更に耐える永続 ID。"""
