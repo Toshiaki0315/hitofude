@@ -248,6 +248,7 @@ class MainWindow(QMainWindow):
         self._sidebar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._sidebar.customContextMenuRequested.connect(self._show_sidebar_menu)
         self._note_list.note_activated.connect(self._on_note_activated)
+        self._note_list.files_dropped.connect(self._notes.import_note_files)
         self._editor.textChanged.connect(self._on_text_changed)
         self._theme_watcher.changed.connect(self._on_theme_changed)
 

@@ -383,3 +383,84 @@ class TestRowHeight:
     def test_高さを1回で済ませる設定は保つ(self, view) -> None:
         """**外すと 5,000 件で 906ms**（実測）。一覧は保存のたびに引き直す。"""
         assert view.uniformItemSizes() is True
+
+
+def drop_event(paths: list[Path], *, kind: str = "drop"):
+    """ローカルファイルのドロップイベントを組み立てる。
+
+    **QMimeData も一緒に返す。** イベントは mime を所有しないので、
+    参照を持たずに返すと GC で解放され、Qt が触った瞬間に segfault する
+    （conftest の `png_bytes` と同じ罠。実際に落ちた）。
+    """
+    from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
+    from PySide6.QtGui import QDragEnterEvent, QDropEvent
+
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(path)) for path in paths])
+    if kind == "enter":
+        event = QDragEnterEvent(
+            QPointF(10, 10).toPoint(),
+            Qt.DropAction.CopyAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    else:
+        event = QDropEvent(
+            QPointF(10, 10),
+            Qt.DropAction.CopyAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    return event, mime
+
+
+class TestDropMarkdown:
+    """一覧へ .md をドラッグ＆ドロップしてノートを追加する（ユーザー要望 2026-08-18）。
+
+    一覧は取り込むファイルを知らせるだけ。vault へのコピーは MainWindow
+    側（NoteActions）の仕事。
+    """
+
+    @pytest.fixture
+    def view(self, qtbot) -> NoteListView:
+        widget = NoteListView()
+        qtbot.addWidget(widget)
+        return widget
+
+    def test_mdファイルのドロップを受け入れる(self, view, tmp_path) -> None:
+        source = tmp_path / "持ち込み.md"
+        source.write_text("# 持ち込み\n", encoding="utf-8")
+        event, _keepalive = drop_event([source], kind="enter")
+        view.dragEnterEvent(event)
+        assert event.isAccepted()
+
+    def test_ドロップでシグナルが出る(self, view, qtbot, tmp_path) -> None:
+        first = tmp_path / "一つ目.md"
+        first.write_text("# 一つ目\n", encoding="utf-8")
+        second = tmp_path / "二つ目.md"
+        second.write_text("# 二つ目\n", encoding="utf-8")
+
+        event, _keepalive = drop_event([first, second])
+        with qtbot.waitSignal(view.files_dropped, timeout=1000) as blocker:
+            view.dropEvent(event)
+        assert blocker.args[0] == [first, second]
+
+    def test_md以外は受け入れない(self, view, tmp_path) -> None:
+        image = tmp_path / "画像.png"
+        image.write_bytes(b"x")
+        event, _keepalive = drop_event([image], kind="enter")
+        view.dragEnterEvent(event)
+        assert not event.isAccepted()
+
+    def test_混在なら_mdだけを知らせる(self, view, qtbot, tmp_path) -> None:
+        note = tmp_path / "ノート.md"
+        note.write_text("# ノート\n", encoding="utf-8")
+        image = tmp_path / "画像.png"
+        image.write_bytes(b"x")
+
+        event, _keepalive = drop_event([image, note])
+        with qtbot.waitSignal(view.files_dropped, timeout=1000) as blocker:
+            view.dropEvent(event)
+        assert blocker.args[0] == [note]

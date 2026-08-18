@@ -18,8 +18,29 @@ from PySide6.QtWidgets import QListView, QStyle, QStyledItemDelegate, QStyleOpti
 
 from hitofude.config import LineSpacing
 from hitofude.storage.index_db import NoteRow
+from hitofude.storage.vault import MARKDOWN_SUFFIXES
 from hitofude.theme import LIGHT, ThemeColors
 from hitofude.ui.icons import Glyph, glyph_icon
+
+
+def dropped_markdown(mime) -> list[Path]:
+    """ドロップに含まれるローカルの `.md` を取り出す。
+
+    一覧は「何が落ちてきたか」を知らせるだけで、vault へのコピーは
+    MainWindow 側（NoteActions）の仕事。画像などは対象外
+    （画像の受け口はエディタで、添付として保存される）。
+    """
+    if not mime.hasUrls():
+        return []
+    found: list[Path] = []
+    for url in mime.urls():
+        if not url.isLocalFile():
+            continue
+        path = Path(url.toLocalFile())
+        if path.suffix.lower() in MARKDOWN_SUFFIXES and path.is_file():
+            found.append(path)
+    return found
+
 
 # ピン留めの印。星は小さく出すので塗り潰す（輪郭だけだと形が読めない）
 PIN_SIZE = 12
@@ -174,14 +195,13 @@ class NoteItemDelegate(QStyledItemDelegate):
     def _draw_separator(self, painter: QPainter, option, index: QModelIndex) -> None:
         """行の下に 1px の仕切り線を引く（ユーザー要望）。
 
-        **いちばん下の行には引かない。** 下に何も無いところへ線を引くと、
-        宙に浮いて見える。
+        **いちばん下の行にも引く**（ユーザー要望 2026-08-18）。以前は
+        「宙に浮いて見える」として最後だけ引いていなかったが、最後の
+        ノートの領域がどこで終わるか分からない、という指摘で全行に揃えた。
 
         色は罫線（`theme.rule`）と同じ。同じ役目の線に色を増やさない。
         本文の左端に合わせて内側に寄せる（端まで引くと窓の枠に見える）。
         """
-        if index.row() >= index.model().rowCount() - 1:
-            return
         inset = self._metrics.padding
         painter.fillRect(
             option.rect.left() + inset,
@@ -278,6 +298,10 @@ class NoteListView(QListView):
     note_activated = Signal(object)
     """選択されたノートの `Path`。"""
 
+    files_dropped = Signal(list)
+    """ドロップされた `.md` の `list[Path]`（ユーザー要望 2026-08-18）。
+    取り込み（vault へのコピー）は MainWindow の仕事。"""
+
     def __init__(self, parent: QWidget | None = None, *, theme: ThemeColors = LIGHT) -> None:
         super().__init__(parent)
         # setModel() の途中で currentChanged が呼ばれるので、
@@ -291,6 +315,29 @@ class NoteListView(QListView):
         self.setSelectionMode(QListView.SelectionMode.SingleSelection)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setFrameShape(QListView.Shape.NoFrame)
+        self.setAcceptDrops(True)
+
+    # ------------------------------------------------- ドラッグ＆ドロップ
+
+    def dragEnterEvent(self, event) -> None:
+        if dropped_markdown(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:
+        if dropped_markdown(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event) -> None:
+        found = dropped_markdown(event.mimeData())
+        if not found:
+            super().dropEvent(event)
+            return
+        event.acceptProposedAction()
+        self.files_dropped.emit(found)
 
     def set_line_spacing(self, spacing: LineSpacing) -> None:
         """行間を変える（環境設定）。

@@ -664,3 +664,46 @@ class TestPreviewAndCopy:
         QApplication.clipboard().setText("目印")
         window.copy_as_html()
         assert QApplication.clipboard().text() == "目印"
+
+
+class TestImportNoteFiles:
+    """ドロップされた .md の取り込み（ユーザー要望 2026-08-18）。"""
+
+    def test_vaultへコピーして開く(self, window, tmp_path) -> None:
+        source = tmp_path / "持ち込みメモ.md"
+        source.write_text("# 持ち込みメモ\n\n本文\n", encoding="utf-8")
+
+        added = window._notes.import_note_files([source])
+
+        assert [p.name for p in added] == ["持ち込みメモ.md"]
+        assert (window.vault.root / "持ち込みメモ.md").is_file()
+        assert source.is_file()  # 元のファイルは触らない
+        assert window.current_note is not None
+        assert window.current_note.path.name == "持ち込みメモ.md"
+
+    def test_複数なら最後の1件を開く(self, window, tmp_path) -> None:
+        first = tmp_path / "一つ目.md"
+        first.write_text("# 一つ目\n", encoding="utf-8")
+        second = tmp_path / "二つ目.md"
+        second.write_text("# 二つ目\n", encoding="utf-8")
+
+        window._notes.import_note_files([first, second])
+
+        assert (window.vault.root / "一つ目.md").is_file()
+        assert window.current_note.path.name == "二つ目.md"
+        assert window.note_list.model().rowCount() == 2
+
+    def test_名前が衝突したら連番を付ける(self, window, tmp_path) -> None:
+        window.vault.create("持ち込みメモ")
+        source = tmp_path / "持ち込みメモ.md"
+        source.write_text("# 持ち込みメモ\n", encoding="utf-8")
+
+        added = window._notes.import_note_files([source])
+        assert [p.name for p in added] == ["持ち込みメモ-2.md"]
+
+    def test_一覧からのドロップが繋がっている(self, window, tmp_path) -> None:
+        source = tmp_path / "ドロップ.md"
+        source.write_text("# ドロップ\n", encoding="utf-8")
+
+        window.note_list.files_dropped.emit([source])
+        assert (window.vault.root / "ドロップ.md").is_file()

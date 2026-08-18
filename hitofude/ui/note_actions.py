@@ -7,6 +7,7 @@
 """
 
 import logging
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import QInputDialog, QMenu, QMessageBox
 
 from hitofude.core.document import Note, with_title
 from hitofude.storage.index_db import NoteRow
+from hitofude.storage.vault import MARKDOWN_SUFFIXES, sanitize_filename, unique_path
 from hitofude.ui.icons import apply_menu_font
 from hitofude.ui.note_list import NoteRole
 from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
@@ -424,6 +426,39 @@ class NoteActions:
             if line.startswith("#"):
                 return line.lstrip("# ").strip()
         return ""
+
+    # ------------------------------------------------------------- 取り込み
+
+    def import_note_files(self, paths: list[Path]) -> list[Path]:
+        """一覧へドロップされた `.md` を vault へ取り込む（ユーザー要望 2026-08-18）。
+
+        **元のファイルは触らない**（F 群の取り込みと同じ約束）。コピーして
+        vault のノートにする。front matter もそのまま持ち込む（id が既存
+        ノートと重複していても、索引が別ノートとして扱う）。名前が衝突
+        したら連番。最後の 1 件を開く。
+        """
+        window = self._window
+        added: list[Note] = []
+        for source in paths:
+            if source.suffix.lower() not in MARKDOWN_SUFFIXES or not source.is_file():
+                continue
+            target = unique_path(window._vault.root, sanitize_filename(source.stem))
+            window._watcher.suppress(target)
+            try:
+                shutil.copyfile(source, target)
+            except OSError:
+                logger.warning("取り込めなかった: %s", source, exc_info=True)
+                continue
+            added.append(window._vault.read(target))
+
+        if not added:
+            return []
+        for note in added[:-1]:
+            window._db.upsert_note(note, window._vault.root)
+        window._open_created(added[-1])  # upsert・一覧更新・開く・選択まで
+        window.statusBar().showMessage(f"{len(added)} 件のノートを取り込みました", NOTICE_MS)
+        logger.info("ドロップから取り込んだ: %d 件", len(added))
+        return [note.path for note in added]
 
     # ------------------------------------------------------------- 添付の片づけ
 

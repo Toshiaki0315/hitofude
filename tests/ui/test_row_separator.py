@@ -68,13 +68,17 @@ class TestSeparator:
 
         assert LIGHT.rule.lower() not in line_colors(image, height - 3)
 
-    def test_最後の行の下には引かない(self, view) -> None:
-        """下に何も無いところへ線を引くと、宙に浮いて見える。"""
+    def test_最後の行の下にも引く(self, view) -> None:
+        """**最後にも引く**（ユーザー要望 2026-08-18）。
+
+        以前は「宙に浮いて見える」として引いていなかったが、最後の
+        ノートの領域がどこで終わるか分からない、という指摘で全行に揃えた。
+        """
         view.set_rows(rows(2))
         image = shot(view)
         bottom = view.visualRect(view.model().index(1)).bottom()
 
-        assert LIGHT.rule.lower() not in line_colors(image, bottom)
+        assert LIGHT.rule.lower() in line_colors(image, bottom)
 
     def test_テーマに追従する(self, view) -> None:
         view.set_theme(DARK)
