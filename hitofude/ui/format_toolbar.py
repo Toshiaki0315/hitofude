@@ -115,6 +115,18 @@ class FormatToolbar(QWidget):
         self._editor.source_mode_changed.connect(self._raw.setChecked)
         layout.addWidget(self._raw)
 
+        # メニューを開く歯車（ユーザー要望）。メニューバーまで手を伸ばさずに
+        # 済む入口。**中身はここでは決めない。** ツールバーはエディタしか
+        # 知らない層なので、メニューはウィンドウ側が挿す（`menus.build_gear_menu`）
+        self._menu_button = QToolButton(self)
+        self._menu_button.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
+        self._menu_button.setFixedSize(BUTTON_SIZE + 8, BUTTON_SIZE)
+        self._menu_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self._menu_button.setToolTip("メニュー")
+        self._menu_button.setAccessibleName("メニュー")
+        layout.addWidget(self._menu_button)
+
         self._apply_theme()
 
     # ------------------------------------------------------------------ 参照
@@ -125,6 +137,10 @@ class FormatToolbar(QWidget):
     @property
     def raw_button(self) -> QToolButton:
         return self._raw
+
+    @property
+    def menu_button(self) -> QToolButton:
+        return self._menu_button
 
     # ------------------------------------------------------------------ 見た目
 
@@ -156,6 +172,7 @@ class FormatToolbar(QWidget):
             found.setIcon(glyph_icon(action.glyph, self._theme.foreground))
         for line in self._separators:
             line.setStyleSheet(f"color: {self._theme.rule};")
+        self._menu_button.setIcon(glyph_icon(Glyph.GEAR, self._theme.foreground))
         self.setStyleSheet(
             f"QWidget {{ background: {self._theme.background}; }}"
             # **薄い枠を付ける**（ユーザー要望）。押せる場所がどこまでかが
@@ -166,6 +183,8 @@ class FormatToolbar(QWidget):
             # 押しっぱなしの状態が見えないと、今どちらのモードか分からない
             f"QToolButton:checked {{ background: {self._theme.selection_background}; "
             f"color: {self._theme.foreground}; }}"
+            # 歯車の右に付く小さな矢印を消す。絵が 2 つ並ぶと窮屈になる
+            "QToolButton::menu-indicator { image: none; }"
         )
 
     # ------------------------------------------------------------------ 組み立て

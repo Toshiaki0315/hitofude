@@ -9,6 +9,7 @@
 from functools import partial
 
 from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtWidgets import QMenu
 
 from hitofude import APP_NAME
 
@@ -20,12 +21,17 @@ def build_menus(window) -> None:
     メニューを開かなくてもショートカットが効くようにするため。
     """
 
+    # 歯車メニュー（build_gear_menu）が同じアクションを使い回すための台帳。
+    # 別のアクションを作ると、ショートカット表示や状態が二重管理になる
+    window.menu_actions = {}
+
     def add(menu, label: str, shortcut, slot) -> QAction:
         action = QAction(label, window)
         action.setShortcut(QKeySequence(shortcut))
         action.triggered.connect(slot)
         menu.addAction(action)
         window.addAction(action)
+        window.menu_actions[label] = action
         return action
 
     file_menu = window.menuBar().addMenu("ファイル")
@@ -114,3 +120,24 @@ def build_menus(window) -> None:
     add(help_menu, "使い方のノートを置き直す", "", window.place_manual)
     help_menu.addSeparator()
     add(help_menu, f"{APP_NAME} について", "", window.show_about)
+
+
+def build_gear_menu(window) -> QMenu:
+    """ツールバー右端の歯車が開くメニュー（ユーザー要望）。
+
+    メニューバーの**同じアクションを使い回す**。よく使うものだけを選ぶ。
+    全メニューの写しにすると、探す手間がメニューバーと変わらなくなる。
+    """
+    menu = QMenu(window)
+    groups = (
+        ("環境設定…",),
+        ("サイドバー", "ノートリスト", "書式ツールバー", "バックリンク"),
+        ("ソースモード（Raw）", "フォーカスモード", "タイプライタモード"),
+        ("ショートカット一覧", f"{APP_NAME} について"),
+    )
+    for index, labels in enumerate(groups):
+        if index:
+            menu.addSeparator()
+        for label in labels:
+            menu.addAction(window.menu_actions[label])
+    return menu

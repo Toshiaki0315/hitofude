@@ -11,6 +11,7 @@
 """
 
 from enum import Enum, auto
+from math import cos, radians, sin
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (
@@ -54,6 +55,9 @@ class Glyph(Enum):
 
     NEW_NOTE = auto()
     """新規ノート。＋。"""
+
+    GEAR = auto()
+    """メニュー。歯車。"""
 
     # ------------------------------------------- 書式ツールバー（B-1）
 
@@ -323,9 +327,20 @@ def _draw_new_note(painter: QPainter) -> None:
     painter.drawLine(QPointF(14, 32), QPointF(50, 32))
 
 
+def _draw_gear(painter: QPainter) -> None:
+    """メニュー。歯車。輪 + 8 本の歯 + 軸穴。"""
+    painter.drawEllipse(QRectF(20, 20, 24, 24))
+    painter.drawEllipse(QRectF(28, 28, 8, 8))
+    for step in range(8):
+        angle = radians(step * 45)
+        x, y = cos(angle), sin(angle)
+        painter.drawLine(QPointF(32 + 12 * x, 32 + 12 * y), QPointF(32 + 19 * x, 32 + 19 * y))
+
+
 _DRAW = {
     Glyph.SORT: _draw_sort,
     Glyph.NEW_NOTE: _draw_new_note,
+    Glyph.GEAR: _draw_gear,
     Glyph.ALL: _draw_all,
     Glyph.PINNED: _draw_pinned,
     Glyph.TRASH: _draw_trash,

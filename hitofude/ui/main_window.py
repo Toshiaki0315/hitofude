@@ -55,7 +55,7 @@ from hitofude.ui.backlink_bar import Backlink
 from hitofude.ui.editor_pane import EditorPane
 from hitofude.ui.export_actions import ExportActions
 from hitofude.ui.index_sync import IndexSyncTask, SyncReporter
-from hitofude.ui.menus import build_menus
+from hitofude.ui.menus import build_gear_menu, build_menus
 from hitofude.ui.note_actions import NoteActions
 from hitofude.ui.note_list import NoteListView
 from hitofude.ui.note_list_pane import EMPTY_NOTICE, NoteListPane
@@ -271,6 +271,9 @@ class MainWindow(QMainWindow):
 
     def _build_menus(self) -> None:
         build_menus(self)
+        # ツールバー右端の歯車（ユーザー要望）。メニューバーと同じ
+        # アクションを使い回すので、build_menus のあとで挿す
+        self._pane.toolbar.menu_button.setMenu(build_gear_menu(self))
 
     def _restore_layout(self) -> None:
         geometry = self._config.window_geometry

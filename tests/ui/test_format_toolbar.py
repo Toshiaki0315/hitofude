@@ -224,3 +224,38 @@ class TestRawToggle:
         pane.editor.setPlainText("**強調**")
         pane.toolbar.raw_button.click()
         assert pane.editor.highlighter.source_mode is True
+
+
+class TestMenuButton:
+    """右端の歯車（ユーザー要望）。メニューバーまで手を伸ばさずに済む入口。"""
+
+    def test_歯車ボタンがある(self, pane) -> None:
+        button = pane.toolbar.menu_button
+        assert button.accessibleName() == "メニュー"
+        assert not button.icon().isNull()
+
+    def test_押した瞬間に開く(self, pane) -> None:
+        from PySide6.QtWidgets import QToolButton
+
+        assert pane.toolbar.menu_button.popupMode() is QToolButton.ToolButtonPopupMode.InstantPopup
+
+    def test_他のボタンと高さが揃う(self, pane) -> None:
+        from hitofude.ui.format_toolbar import BUTTON_SIZE
+
+        assert pane.toolbar.menu_button.height() == BUTTON_SIZE
+
+    def test_ウィンドウで歯車にメニューが付く(self, qtbot, window) -> None:
+        menu = window._pane.toolbar.menu_button.menu()
+        assert menu is not None
+        labels = [a.text() for a in menu.actions() if a.text()]
+        assert "環境設定…" in labels
+        assert "サイドバー" in labels
+        assert "ショートカット一覧" in labels
+
+    def test_歯車のメニューはメニューバーと同じアクションを使う(self, qtbot, window) -> None:
+        """別のアクションを作ると、ショートカット表示や状態が二重管理になる。"""
+        menu = window._pane.toolbar.menu_button.menu()
+        registered = set(map(id, window.actions()))
+        for action in menu.actions():
+            if action.text():
+                assert id(action) in registered, action.text()
