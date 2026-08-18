@@ -214,6 +214,56 @@ class TestTrash:
         window.trash_current()
 
 
+class TestDirtyTracking:
+    """「編集中」は文字が変わったときだけ（C-5）。
+
+    リビール（カーソル移動時の rehighlightBlock）は書式を変えるので
+    textChanged を発火させる。それを編集と数えると、読んでいるだけで
+    800ms 後に保存が走り、front matter の modified が嘘をつく。
+    """
+
+    def opened(self, window):
+        note = window.vault.create("移動メモ", "# 移動メモ\n\n**強調**と*斜体*の行\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        window.open_note(note.path)
+        return note
+
+    def move_around(self, window) -> None:
+        """マーカーの中や外へ動かしてリビールを起こす。"""
+        end = window.editor.document().characterCount() - 1
+        for position in (end, end - 5, end - 10, end - 15):
+            cursor = window.editor.textCursor()
+            cursor.setPosition(max(0, position))
+            window.editor.setTextCursor(cursor)
+
+    def test_カーソル移動だけでは編集中にならない(self, window) -> None:
+        self.opened(window)
+        self.move_around(window)
+        assert not window._debouncer.pending
+
+    def test_保存後のカーソル移動でも編集中に戻らない(self, window) -> None:
+        from PySide6.QtGui import QTextCursor
+
+        self.opened(window)
+        cursor = window.editor.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText("追記")
+        window.flush()
+        self.move_around(window)
+        assert not window._debouncer.pending
+
+    def test_文字を打てば編集中になる(self, window) -> None:
+        """ガードが効きすぎないことの確認。"""
+        from PySide6.QtGui import QTextCursor
+
+        self.opened(window)
+        cursor = window.editor.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText("追記")
+        assert window._debouncer.pending
+
+
 class TestExternalChange:
     """spec §7.5。watchdog を待たず、シグナル相当を直接呼んで判定を見る。"""
 
@@ -247,10 +297,6 @@ class TestExternalChange:
         cursor.movePosition(QTextCursor.MoveOperation.End)
         window.editor.setTextCursor(cursor)
         position = window.editor.textCursor().position()
-        # カーソル移動はリビールの rehighlightBlock を起こし、それが
-        # textChanged を発火させて「編集中」扱いになる。ここで見たいのは
-        # 未編集の読み直しなので、書き出して待ちを解消しておく
-        window.flush()
 
         # 外部で末尾に追記する（見出しは変えない → 保存時の自動改名を起こさない）
         source = note.path.read_text(encoding="utf-8")

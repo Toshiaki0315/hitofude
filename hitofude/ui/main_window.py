@@ -1045,6 +1045,12 @@ class MainWindow(QMainWindow):
     def _on_text_changed(self) -> None:
         if self._loading or self._note is None:
             return
+        # textChanged は**書式の変更でも**発火する。リビール（カーソル移動時の
+        # rehighlightBlock）を編集と数えると、読んでいるだけで 800ms 後に保存が
+        # 走り、front matter の modified が嘘をつく（C-5）。ハイライタの書式変更は
+        # isModified を立てないので、文字が実際に変わったときだけ通す
+        if not self._editor.document().isModified():
+            return
         self._debouncer.touch()
         self._update_title()
         self._stats_timer.start()
@@ -1232,6 +1238,9 @@ class MainWindow(QMainWindow):
         payload = self._vault.touch_modified(text)
         self._watcher.suppress(note.path)
         self._vault.write(note.path, payload)
+        # 書けた時点で「ここが保存済みの状態」。これを怠ると、保存後の
+        # カーソル移動（リビールの textChanged）が編集扱いに戻ってしまう
+        self._editor.document().setModified(False)
 
         autosave.discard(self._recovery_root, note.path)
         self._note = self._rename_if_title_changed(note, self._vault.read(note.path))
