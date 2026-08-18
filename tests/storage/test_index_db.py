@@ -239,6 +239,45 @@ class TestSync:
         db.sync(vault)
         assert db.notes() == []
 
+    def test_同じidの複製が両方一覧に出る(self, db, vault) -> None:
+        """Finder でコピーすると同じ ULID の 2 ファイルができる（回帰）。
+
+        id を奪い合うと、複製を取り込んだ時点で元ノートの行が上書きされ、
+        次の sync では逆向きに上書きされて、同期のたびに見える側が
+        入れ替わっていた。
+        """
+        note = vault.create("元ノート")
+        db.sync(vault)
+        copy = note.path.with_name("元ノート のコピー.md")
+        copy.write_bytes(note.path.read_bytes())
+
+        db.sync(vault)
+        assert len(db.notes()) == 2
+
+    def test_複製があっても同期のたびに入れ替わらない(self, db, vault) -> None:
+        note = vault.create("元ノート")
+        db.sync(vault)
+        note.path.with_name("元ノート のコピー.md").write_bytes(note.path.read_bytes())
+
+        db.sync(vault)
+        first = sorted(row.path for row in db.notes())
+        db.sync(vault)
+        second = sorted(row.path for row in db.notes())
+        assert first == second
+        assert len(first) == 2
+
+    def test_改名は今まで通りidを引き継ぐ(self, db, vault) -> None:
+        """複製対策が改名・移動（元ファイルが消えている）を巻き込まないこと。"""
+        note = vault.create("旧名")
+        old_id = db.sync(vault) and db.notes()[0].id
+        target = note.path.with_name("新名.md")
+        note.path.replace(target)
+
+        db.sync(vault)
+        rows = db.notes()
+        assert len(rows) == 1
+        assert rows[0].id == old_id
+
     def test_壊れたファイルが混ざっていても他のノートは索引される(self, db, vault) -> None:
         """1 ファイルの故障で索引更新全体を止めない（回帰）。
 

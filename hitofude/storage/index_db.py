@@ -212,6 +212,7 @@ class IndexDb:
         """1 つのノートを索引に入れ直す。ID を返す。"""
         note_id = _note_id(note, root)
         relative = note.relative_to(root)
+        note_id = self._resolve_duplicate_id(note_id, relative, root)
         parsed = note.meta
 
         self._forget_conflicting(note_id, relative)
@@ -265,6 +266,21 @@ class IndexDb:
             (note.title, searchable_text(note.text), note_id),
         )
         self._connection.commit()
+        return note_id
+
+    def _resolve_duplicate_id(self, note_id: str, relative: str, root: Path) -> str:
+        """同じ id が**実在する別ファイル**に付いているなら、パス合成 id に落とす。
+
+        Finder でコピーすると同じ ULID の 2 ファイルができる。id を奪い合うと
+        `ON CONFLICT(id)` が行を上書きし、sync のたびに見える側が入れ替わる。
+        元の行のファイルが実在するなら複製と見なし、後から来たほうをパスで
+        区別する。ファイルが消えているなら改名・移動なので、そのまま引き継ぐ。
+        """
+        row = self._connection.execute("SELECT path FROM notes WHERE id = ?", (note_id,)).fetchone()
+        if row is None or row["path"] == relative:
+            return note_id
+        if (root / row["path"]).is_file():
+            return f"path:{relative}"
         return note_id
 
     def _forget_conflicting(self, note_id: str, relative: str) -> None:
