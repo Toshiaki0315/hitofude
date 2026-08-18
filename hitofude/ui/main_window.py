@@ -43,8 +43,6 @@ from hitofude.config import (
 from hitofude.core import frontmatter, textpos
 from hitofude.core.activation import ALLOWED_SCHEMES
 from hitofude.core.document import Note, with_title
-from hitofude.core.outline import headings
-from hitofude.core.search import matching_line
 from hitofude.core.stats import count as count_text
 from hitofude.core.stats import is_huge
 from hitofude.core.wikilink import context_line, normalize, resolve
@@ -77,6 +75,7 @@ from hitofude.ui.panes import (
 )
 from hitofude.ui.preferences import PreferencesDialog
 from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
+from hitofude.ui.search_actions import SearchActions
 from hitofude.ui.shortcut_sheet import ShortcutSheet
 from hitofude.ui.sidebar import ALL, Filter, FilterKind, Sidebar
 
@@ -246,6 +245,8 @@ class MainWindow(QMainWindow):
         # 書き出し・印刷・取り込みは束ごと切り出してある（ui/export_actions.py）。
         # G-4 の知らせ（ボタンとタイマ）も書き出しの一部なので、部品ごと持たせる
         self._exports = ExportActions(self)
+        # 探す系（Cmd+O / Cmd+Shift+F / Cmd+R）も同じ作りで別モジュールに
+        self._search = SearchActions(self)
 
         # **文字数より左に置く。** 右端は文字数の場所で、あとから増えたものを
         # 右へ足すと、保存のたびに文字数が横へ動いて見える
@@ -1344,10 +1345,8 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ 検索
 
     def quick_open(self) -> None:
-        """`Cmd+O`。タイトルへのあいまい一致で開く（spec §5.4）。"""
-        palette = self._make_palette("ノートを開く…")
-        palette.set_provider(self._quick_open_items)
-        palette.open_with()
+        """`Cmd+O`（spec §5.4）。"""
+        self._search.quick_open()
 
     def preview_in_browser(self) -> None:
         """書き出さずに既定のブラウザで確認する（E-2）。"""
@@ -1457,14 +1456,8 @@ class MainWindow(QMainWindow):
         self.set_filter(target)
 
     def open_outline(self) -> None:
-        """`Cmd+R`。このノートの見出しへ飛ぶ（C-2）。
-
-        ノート横断のクイックオープンと同じ道具を使う。入口が増えても
-        操作を覚え直さずに済む。
-        """
-        palette = self._make_palette("見出しへ飛ぶ…")
-        palette.set_provider(self._outline_items)
-        palette.open_with()
+        """`Cmd+R`（C-2）。"""
+        self._search.open_outline()
 
     def _known_tags(self) -> list[str]:
         """索引にあるタグ（C-4 / 補完の候補）。件数の多い順ではなく名前順。
@@ -1473,83 +1466,13 @@ class MainWindow(QMainWindow):
         """
         return sorted(entry.tag for entry in self._db.tag_tree())
 
-    def _outline_items(self, query: str) -> list[PaletteItem]:
-        items = [
-            PaletteItem(
-                title=found.text or "（無題の見出し）",
-                # 字下げで階層を見せる。深さを数字で出しても読み取りにくい
-                subtitle="　" * (found.level - 1) + "#" * found.level,
-                path=self._note.path if self._note else Path(),
-                line=found.line,
-            )
-            for found in headings(self._editor.toPlainText())
-        ]
-        return fuzzy_filter(query, items)
-
     def jump_to_line(self, line: int) -> None:
-        """その行の先頭へカーソルを移す（C-2）。無い行番号なら何もしない。"""
-        block = self._editor.document().findBlockByNumber(line)
-        if not block.isValid():
-            return
-        cursor = self._editor.textCursor()
-        cursor.setPosition(block.position())
-        self._editor.setTextCursor(cursor)
-        self._editor.centerCursor()
-        self._editor.setFocus()
+        """その行の先頭へカーソルを移す（C-2）。"""
+        self._search.jump_to_line(line)
 
     def full_text_search(self) -> None:
-        """`Cmd+Shift+F`。本文を検索する（spec §5.4）。
-
-        **選んだら、その箇所へ飛ぶ**（G-1）。抜粋を見て選んだのに先頭が
-        開くと、`Cmd+F` で探し直しになる。
-        """
-        palette = Palette(self, placeholder="本文を検索…", theme=self._theme_watcher.colors)
-        palette.set_provider(self._search_items)
-        palette.chosen.connect(self._on_search_chosen)
-        palette.finished.connect(palette.deleteLater)
-        palette.open_with()
-
-    def _make_palette(self, placeholder: str) -> Palette:
-        palette = Palette(self, placeholder=placeholder, theme=self._theme_watcher.colors)
-        palette.chosen.connect(self._on_palette_chosen)
-        # 開くたびに作り直す。前回の入力と結果が残っていると誤操作の元になる
-        palette.finished.connect(palette.deleteLater)
-        return palette
-
-    def _quick_open_items(self, query: str) -> list[PaletteItem]:
-        items = [
-            PaletteItem(title=row.title, subtitle=row.preview, path=row.path)
-            for row in self._db.notes()
-        ]
-        return fuzzy_filter(query, items)
-
-    def _search_items(self, query: str) -> list[PaletteItem]:
-        # 飛び先を探すのに要る。**索引には行番号を持たせない**（作りが
-        # 変わって作り直しが要る。開いたノートで数え直せば足りる）
-        self._search_query = query
-        return [
-            PaletteItem(title=hit.title, subtitle=hit.snippet, path=hit.path)
-            for hit in self._db.search(query)
-        ]
-
-    def _on_search_chosen(self, item: PaletteItem) -> None:
-        """検索の結果を開いて、一致した行へキャレットを置く（G-1）。
-
-        **見つからなくても開く。** 飛べないだけで、開けないより開くほうがよい。
-        """
-        self.open_note(self._vault.root / item.path)
-        self._note_list.select_path(item.path)
-
-        line = matching_line(self._editor.toPlainText(), self._search_query)
-        if line is not None:
-            self.jump_to_line(line)
-
-    def _on_palette_chosen(self, item: PaletteItem) -> None:
-        if item.line is not None:
-            self.jump_to_line(item.line)
-            return
-        self.open_note(self._vault.root / item.path)
-        self._note_list.select_path(item.path)
+        """`Cmd+Shift+F`（spec §5.4 / G-1）。"""
+        self._search.full_text_search()
 
     # ------------------------------------------------------------ エクスポート
 

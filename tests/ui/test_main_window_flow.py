@@ -457,20 +457,22 @@ class TestQuickOpen:
 
     def test_タイトルで絞り込める(self, window) -> None:
         self._prepare(window)
-        assert [i.title for i in window._quick_open_items("会議")] == ["会議メモ"]
+        assert [i.title for i in window._search._quick_open_items("会議")] == ["会議メモ"]
 
     def test_飛び飛びの入力でも引ける(self, window) -> None:
         self._prepare(window)
-        assert "会議メモ" in [i.title for i in window._quick_open_items("会モ")]
+        assert "会議メモ" in [i.title for i in window._search._quick_open_items("会モ")]
 
     def test_空なら全部出る(self, window) -> None:
         self._prepare(window)
-        assert len(window._quick_open_items("")) == 2
+        assert len(window._search._quick_open_items("")) == 2
 
     def test_選ぶとそのノートが開く(self, window) -> None:
         self._prepare(window)
-        target = window._quick_open_items("会議")[0]
-        window._on_palette_chosen(PaletteItem(title=target.title, subtitle="", path=target.path))
+        target = window._search._quick_open_items("会議")[0]
+        window._search._on_palette_chosen(
+            PaletteItem(title=target.title, subtitle="", path=target.path)
+        )
         assert "来期の予算について" in window.editor.toPlainText()
 
 
@@ -487,30 +489,32 @@ class TestFullTextSearch:
 
     def test_本文で引ける(self, window) -> None:
         self._prepare(window)
-        assert [i.title for i in window._search_items("予算について")] == ["会議メモ"]
+        assert [i.title for i in window._search._search_items("予算について")] == ["会議メモ"]
 
     def test_装飾をまたいでも引ける(self, window) -> None:
         self._prepare(window)
-        assert len(window._search_items("予算について")) == 1
+        assert len(window._search._search_items("予算について")) == 1
 
     def test_スニペットが付く(self, window) -> None:
         self._prepare(window)
-        assert window._search_items("予算について")[0].subtitle
+        assert window._search._search_items("予算について")[0].subtitle
 
     def test_スニペットに一致部分の印が入る(self, window) -> None:
         from hitofude.storage.index_db import HIGHLIGHT_START
 
         self._prepare(window)
-        assert HIGHLIGHT_START in window._search_items("予算について")[0].subtitle
+        assert HIGHLIGHT_START in window._search._search_items("予算について")[0].subtitle
 
     def test_一致しなければ空(self, window) -> None:
         self._prepare(window)
-        assert window._search_items("存在しない語") == []
+        assert window._search._search_items("存在しない語") == []
 
     def test_選ぶとそのノートが開く(self, window) -> None:
         self._prepare(window)
-        target = window._search_items("予算について")[0]
-        window._on_palette_chosen(PaletteItem(title=target.title, subtitle="", path=target.path))
+        target = window._search._search_items("予算について")[0]
+        window._search._on_palette_chosen(
+            PaletteItem(title=target.title, subtitle="", path=target.path)
+        )
         assert "予算" in window.editor.toPlainText()
 
 

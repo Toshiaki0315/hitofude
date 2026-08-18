@@ -195,7 +195,7 @@ class TestOutline:
 
     def test_見出しが並ぶ(self, window) -> None:
         window.editor.setPlainText(self.SOURCE)
-        assert [item.title for item in window._outline_items("")] == [
+        assert [item.title for item in window._search._outline_items("")] == [
             "大見出し",
             "中見出し",
             "小見出し",
@@ -204,12 +204,12 @@ class TestOutline:
     def test_深さが分かる(self, window) -> None:
         """字下げで階層を見せる。"""
         window.editor.setPlainText(self.SOURCE)
-        items = window._outline_items("")
+        items = window._search._outline_items("")
         assert items[0].subtitle != items[2].subtitle
 
     def test_絞り込める(self, window) -> None:
         window.editor.setPlainText(self.SOURCE)
-        assert [item.title for item in window._outline_items("中")] == ["中見出し"]
+        assert [item.title for item in window._search._outline_items("中")] == ["中見出し"]
 
     def test_選ぶとその行へ飛ぶ(self, window) -> None:
         window.editor.setPlainText(self.SOURCE)
@@ -228,7 +228,7 @@ class TestOutline:
 
     def test_見出しが無ければ空(self, window) -> None:
         window.editor.setPlainText("ただの段落\n")
-        assert window._outline_items("") == []
+        assert window._search._outline_items("") == []
 
     def test_開ける(self, window, qtbot) -> None:
         window.editor.setPlainText(self.SOURCE)
