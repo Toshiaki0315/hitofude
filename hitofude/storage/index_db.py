@@ -8,15 +8,18 @@
 まるごと 1 トークンになり、部分一致で引けなくなる。
 """
 
+import logging
 import sqlite3
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
 from hitofude.core import tags as tag_utils
 from hitofude.core import wikilink
 from hitofude.core.document import Note, searchable_text
+
+logger = logging.getLogger(__name__)
 
 # trigram は 3 文字単位で索引するため、2 文字以下のクエリは構造上ヒットしない
 MIN_TRIGRAM_QUERY = 3
@@ -140,6 +143,8 @@ class SyncResult:
     added: list[Path]
     updated: list[Path]
     removed: list[Path]
+    skipped: list[Path] = field(default_factory=list)
+    """読めずに飛ばしたファイル。索引の既存行は消さずに残す。"""
 
     @property
     def changed(self) -> int:
@@ -302,25 +307,34 @@ class IndexDb:
 
         added: list[Path] = []
         updated: list[Path] = []
+        skipped: list[Path] = []
         seen: set[str] = set()
 
         for path in vault.scan():
             relative = str(path.relative_to(vault.root))
             seen.add(relative)
-            stat = path.stat()
-            current = (stat.st_mtime_ns, stat.st_size)
-            previous = known.get(relative)
-            if previous == current:
-                continue
+            # 1 ファイルの故障（非 UTF-8・走査後に消えた等）で索引更新全体を
+            # 止めない。飛ばしても seen には入れてあるので、既に索引済みの
+            # 行は消えずに残る（一覧から見えなくなるより古いままのほうがいい）
+            try:
+                stat = path.stat()
+                current = (stat.st_mtime_ns, stat.st_size)
+                previous = known.get(relative)
+                if previous == current:
+                    continue
 
-            self.upsert_note(Note.read(path), vault.root)
+                self.upsert_note(Note.read(path), vault.root)
+            except (OSError, UnicodeDecodeError):
+                logger.warning("読めないので索引から飛ばす: %s", path, exc_info=True)
+                skipped.append(path)
+                continue
             (added if previous is None else updated).append(path)
 
         removed = [vault.root / relative for relative in sorted(set(known) - seen)]
         for path in removed:
             self.remove_path(vault.root, path)
 
-        return SyncResult(added=added, updated=updated, removed=removed)
+        return SyncResult(added=added, updated=updated, removed=removed, skipped=skipped)
 
     # -------------------------------------------------------------------- 参照
 

@@ -239,6 +239,38 @@ class TestSync:
         db.sync(vault)
         assert db.notes() == []
 
+    def test_壊れたファイルが混ざっていても他のノートは索引される(self, db, vault) -> None:
+        """1 ファイルの故障で索引更新全体を止めない（回帰）。
+
+        非 UTF-8 の `.md`（Shift-JIS で書き出したファイル等）が 1 つあると
+        UnicodeDecodeError で sync 全体が失敗し、取り除くまで索引が
+        一切更新されなくなっていた。
+        """
+        vault.create("正常なメモ")
+        broken = vault.root / "壊れたメモ.md"
+        broken.write_bytes("# シフトJISのメモ\n".encode("shift-jis"))
+
+        result = db.sync(vault)
+
+        assert len(result.added) == 1
+        assert result.skipped == [broken]
+        assert len(db.notes()) == 1
+
+    def test_読めないファイルは索引の既存行を残す(self, db, vault) -> None:
+        """一度索引されたノートが壊れても、行を消さずに古いまま残す。
+
+        消すと一覧から見えなくなり、ユーザーが気づく手段を失う。
+        """
+        note = vault.create("メモ")
+        db.sync(vault)
+        note.path.write_bytes("後から壊れた\n".encode("shift-jis"))
+
+        result = db.sync(vault)
+
+        assert result.skipped == [note.path]
+        assert result.removed == []
+        assert len(db.notes()) == 1
+
     def test_触っていないファイルは開かない(self, db, vault, monkeypatch) -> None:
         """5,000 ノートで全件読み直すと起動が数秒かかる（§7.3）。"""
         vault.create("メモ")
