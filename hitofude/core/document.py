@@ -123,7 +123,9 @@ def with_title(text: str, title: str) -> str:
         lines[heading] = f"{marker}{cleaned}"
         body = "\n".join(lines)
 
-    return frontmatter.join(parsed.meta, body) if parsed.present else body
+    # メタデータは触らないので原文のまま付け直す。`join()` で再ダンプすると
+    # 壊れた YAML が丸ごと消え、正しい YAML でも書式が変わって diff が出る
+    return parsed.raw + body
 
 
 def _heading_marker(line: str) -> int:

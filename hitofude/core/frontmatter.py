@@ -70,6 +70,14 @@ class FrontMatter:
     invalid: bool = False
     """区切りはあったが YAML として解釈できなかったか。"""
 
+    raw: str = ""
+    """front matter ブロックの原文（区切り込み、正規化後）。
+
+    メタデータを**変えない**書き換え（タイトル差し替え等）はこれを
+    そのまま先頭に付け直す。`join()` で再ダンプすると、壊れた YAML が
+    丸ごと消え、正しい YAML でもコメントや引用符が失われる。
+    """
+
     def get(self, key: str, default: Any = None) -> Any:
         return self.meta.get(key, default)
 
@@ -105,22 +113,27 @@ def split(text: str) -> FrontMatter:
 
     body_offset = match.end()
     body = normalized[body_offset:]
-    raw = match.group("yaml")
+    block = normalized[:body_offset]
+    yaml_text = match.group("yaml")
 
-    if not raw.strip():
+    if not yaml_text.strip():
         # `---` が 2 行続くだけの空の front matter。壊れてはいない。
-        return FrontMatter(meta={}, body=body, body_offset=body_offset, present=True)
+        return FrontMatter(meta={}, body=body, body_offset=body_offset, present=True, raw=block)
 
     try:
-        loaded = yaml.load(raw, Loader=_Loader)
+        loaded = yaml.load(yaml_text, Loader=_Loader)
     except yaml.YAMLError:
-        return FrontMatter(meta={}, body=body, body_offset=body_offset, present=True, invalid=True)
+        return FrontMatter(
+            meta={}, body=body, body_offset=body_offset, present=True, invalid=True, raw=block
+        )
 
     if not isinstance(loaded, dict):
         # リストやスカラは front matter として意味を成さない
-        return FrontMatter(meta={}, body=body, body_offset=body_offset, present=True, invalid=True)
+        return FrontMatter(
+            meta={}, body=body, body_offset=body_offset, present=True, invalid=True, raw=block
+        )
 
-    return FrontMatter(meta=loaded, body=body, body_offset=body_offset, present=True)
+    return FrontMatter(meta=loaded, body=body, body_offset=body_offset, present=True, raw=block)
 
 
 def join(meta: Mapping[str, Any], body: str) -> str:

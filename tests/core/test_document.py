@@ -207,6 +207,30 @@ class TestWithTitle:
     def test_front_matterが無ければ足さない(self) -> None:
         assert not with_title("# 元の題\n", "新しい題").startswith("---")
 
+    def test_壊れたfront_matterを消さない(self) -> None:
+        """メタデータが壊れていても本文（とメタデータ自身）は必ず残す。
+
+        壊れた YAML は `split()` が `meta={}` にするため、再ダンプ経由だと
+        front matter が丸ごと消えていた（回帰）。タイトル変更のたびに
+        発火しうるデータ喪失。
+        """
+        source = "---\n[broken yaml: [\n---\n# 元の題\n\n本文\n"
+        got = with_title(source, "新しい題")
+        assert got.startswith("---\n[broken yaml: [\n---\n")
+        assert title_of(got, "fallback") == "新しい題"
+
+    def test_空のfront_matterを消さない(self) -> None:
+        source = "---\n---\n# 元の題\n\n本文\n"
+        got = with_title(source, "新しい題")
+        assert got.startswith("---\n---\n")
+
+    def test_front_matterの書式を保つ(self) -> None:
+        """YAML を再ダンプするとコメント・引用符・並びが失われ、
+        タイトルを変えるたびに無関係な diff が出る（G3 に反する）。"""
+        source = "---\n# 管理情報\nid: 'ABC123'\n---\n# 元の題\n"
+        got = with_title(source, "新しい題")
+        assert got.startswith("---\n# 管理情報\nid: 'ABC123'\n---\n")
+
     def test_コードブロックの中の見出しは書き換えない(self) -> None:
         source = "```\n# コードの中\n```\n\n# 元の題\n"
         got = with_title(source, "新しい題")
