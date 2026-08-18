@@ -216,6 +216,8 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._table_columns = 0
         self._selection: tuple[int, int] | None = None
         self._source_mode = False
+        # 巨大ファイルガード（§6.6 / R7）。True の間は何も描かない
+        self._plain_mode = False
         self._cell_pad: QTextCharFormat | None = None
         self._checkbox_pad: QTextCharFormat | None = None
         self._code_name_pad: QTextCharFormat | None = None
@@ -292,9 +294,26 @@ class MarkdownHighlighter(QSyntaxHighlighter):
     def source_mode(self) -> bool:
         return self._source_mode
 
+    def set_plain_mode(self, enabled: bool) -> None:
+        """巨大ファイルガード（§6.6 / R7）。装飾を丸ごと止める。
+
+        **ここでは再ハイライトしない。** ノートを開く直前に切り替える前提で、
+        直後の `setPlainText()` が初回ハイライトを走らせる（走っても即
+        return するので何も起きない）。
+        """
+        self._plain_mode = enabled
+
+    @property
+    def plain_mode(self) -> bool:
+        return self._plain_mode
+
     # ------------------------------------------------------------- ハイライト
 
     def highlightBlock(self, text: str) -> None:
+        if self._plain_mode:
+            # 巨大ファイル（§6.6 / R7）。解析ごと止める。userData を
+            # 付けないので paintEvent の装飾も何も描かれない
+            return
         block = self.currentBlock()
         # `text` は Python 単位（🍎 = 1 文字）、`setFormat` と `block.position()`
         # は UTF-16 単位（🍎 = 2）。この行の解析はすべて Python 単位で行い、

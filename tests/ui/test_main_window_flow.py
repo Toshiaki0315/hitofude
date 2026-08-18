@@ -882,3 +882,45 @@ class TestIndexSyncTask:
         task, _ = self.build(window)
         assert task._db_path == window._db.path
         assert not hasattr(task, "_db")
+
+
+class TestHugeFileGuard:
+    """巨大ファイルガード（spec §6.6 / R7、TASKS 6-7）。"""
+
+    def open_note_with(self, window, text: str):
+        note = window.vault.create("大きなノート", text)
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        window.open_note(note.path)
+        return note
+
+    def test_巨大なノートは装飾を止めて開く(self, window) -> None:
+        from hitofude.core.stats import HUGE_FILE_LINES
+
+        self.open_note_with(window, "# 見出し\n" + "本文\n" * HUGE_FILE_LINES)
+        assert window.editor.highlighter.plain_mode is True
+        assert "装飾を無効" in window.statusBar().currentMessage()
+
+    def test_巨大なノートでも編集して保存できる(self, window) -> None:
+        from PySide6.QtGui import QTextCursor
+
+        from hitofude.core.stats import HUGE_FILE_LINES
+
+        note = self.open_note_with(window, "# 見出し\n" + "本文\n" * HUGE_FILE_LINES)
+        cursor = window.editor.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText("追記した行")
+        window.flush()
+        assert "追記した行" in note.path.read_text(encoding="utf-8")
+
+    def test_ふつうのノートに戻ると装飾も戻る(self, window) -> None:
+        from hitofude.core.stats import HUGE_FILE_LINES
+
+        self.open_note_with(window, "# 見出し\n" + "本文\n" * HUGE_FILE_LINES)
+        small = window.vault.create("ふつうのノート", "# ふつうのノート\n\n**強調**\n")
+        window.vault_index.upsert_note(small, window.vault.root)
+        window.refresh()
+        window.open_note(small.path)
+        assert window.editor.highlighter.plain_mode is False
+        data = window.editor.document().findBlockByNumber(2).userData()
+        assert data is not None  # 解析が走っている

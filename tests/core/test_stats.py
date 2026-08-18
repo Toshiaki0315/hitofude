@@ -6,7 +6,7 @@ CJK は 1 文字を 1 語として数える。
 
 import pytest
 
-from hitofude.core.stats import count
+from hitofude.core.stats import HUGE_FILE_BYTES, HUGE_FILE_LINES, count, is_huge
 
 
 class TestCharacters:
@@ -152,3 +152,27 @@ class TestLinesWithFrontMatter:
 
     def test_front_matterが無ければそのまま(self) -> None:
         assert count("一行目\n二行目\n").lines == 2
+
+
+class TestIsHuge:
+    """巨大ファイルガード（spec §6.6 / R7、TASKS 6-7）。
+
+    装飾（scan + classify + setFormat）は行数に比例して効く。
+    上限を超えたら装飾を諦め、素のテキストとして開く。
+    """
+
+    def test_ふつうのノートは巨大ではない(self) -> None:
+        assert is_huge("# 見出し\n\n本文\n") is False
+
+    def test_行数の上限を超えると巨大(self) -> None:
+        assert is_huge("x\n" * (HUGE_FILE_LINES + 1)) is True
+
+    def test_行数の上限ちょうどは巨大ではない(self) -> None:
+        assert is_huge("x\n" * (HUGE_FILE_LINES - 1)) is False
+
+    def test_バイト数の上限を超えると巨大(self) -> None:
+        # 1 行が長い巨大ファイル（行数では引っかからない）
+        assert is_huge("あ" * (HUGE_FILE_BYTES // 3 + 1)) is True
+
+    def test_空文字は巨大ではない(self) -> None:
+        assert is_huge("") is False

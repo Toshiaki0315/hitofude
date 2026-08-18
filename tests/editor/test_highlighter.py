@@ -511,3 +511,22 @@ class TestBMP外の文字:
         highlighter.rehighlightBlock(document.firstBlock())
         assert not is_hidden(document, 0, 2)  # 開きマーカーが現れる
         assert not is_hidden(document, 0, 6)  # 閉じマーカーも現れる
+
+
+class TestPlainMode:
+    """巨大ファイルガード（spec §6.6 / R7）。装飾を丸ごと止める。"""
+
+    def test_装飾もマーカー隠蔽もしない(self, document, highlighter) -> None:
+        highlighter.set_plain_mode(True)
+        set_text(document, "# 見出し\n**強調**")
+        assert not is_hidden(document, 0, 0)  # `#` を潰さない
+        assert not is_hidden(document, 1, 0)  # `**` を潰さない
+        weight = char_format(document, 1, 2).fontWeight()
+        assert weight == QTextCharFormat().fontWeight()  # 太字にしない
+
+    def test_解除すると装飾が戻る(self, document, highlighter) -> None:
+        highlighter.set_plain_mode(True)
+        set_text(document, "**強調**")
+        highlighter.set_plain_mode(False)
+        highlighter.rehighlight()
+        assert is_hidden(document, 0, 0)

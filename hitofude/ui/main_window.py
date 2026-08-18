@@ -50,6 +50,7 @@ from hitofude.core.document import Note, with_title
 from hitofude.core.outline import headings
 from hitofude.core.search import matching_line
 from hitofude.core.stats import count as count_text
+from hitofude.core.stats import is_huge
 from hitofude.core.wikilink import context_line, normalize, resolve
 from hitofude.editor import exporter, importer, pptx_export
 from hitofude.editor.editor_widget import MarkdownEditor
@@ -117,6 +118,7 @@ CLEANUP_PREVIEW = 10
 
 NEW_NOTE_TITLE = "無題"
 PINNED_NOTICE = "ピン留めしているノートは削除できません。先にピン留めを外してください。"
+HUGE_NOTE_NOTICE = "大きなノートのため、装飾を無効にして開きました（編集と保存はできます）"
 NOTICE_MS = 5000
 
 # `Cmd +` / `Cmd -` の 1 押しで動く量（G-5）。環境設定の刻みは 0.5pt だが、
@@ -852,6 +854,19 @@ class MainWindow(QMainWindow):
         """黙って無視すると、押し間違いなのか壊れたのか分からない。"""
         self.statusBar().showMessage(PINNED_NOTICE, NOTICE_MS)
 
+    def _apply_huge_guard(self, text: str) -> None:
+        """巨大ファイルガード（spec §6.6 / R7、TASKS 6-7）。
+
+        装飾（scan + classify + setFormat）は行数に比例して効く。上限を
+        超えたノートは装飾を止めて素のテキストとして開き、そのことを知らせる。
+        編集と保存は今まで通りできる。**setPlainText の前に呼ぶ**こと
+        （初回ハイライトが走る前にモードを決める）。
+        """
+        huge = is_huge(text)
+        self._editor.highlighter.set_plain_mode(huge)
+        if huge:
+            self.statusBar().showMessage(HUGE_NOTE_NOTICE, NOTICE_MS)
+
     def _place_cursor_at_body(self, text: str) -> None:
         offset = frontmatter.body_offset(text)
         if offset == 0:
@@ -871,6 +886,7 @@ class MainWindow(QMainWindow):
         self._note = note
         self._loading = True
         try:
+            self._apply_huge_guard(note.text)
             self._editor.setPlainText(note.text)
             cursor = self._editor.textCursor()
             limit = self._editor.document().characterCount() - 1
@@ -911,6 +927,7 @@ class MainWindow(QMainWindow):
         self._note = note
         self._loading = True
         try:
+            self._apply_huge_guard(note.text)
             self._editor.setPlainText(note.text)
             # `setPlainText()` はカーソルを位置 0 に置くが、そこは front matter の
             # 前にあたる。front matter は画面に見えないので、ユーザーは本文の
