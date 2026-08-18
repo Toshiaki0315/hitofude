@@ -834,6 +834,21 @@ class MarkdownEditor(QPlainTextEdit):
         if self._tag_popup.isVisible():
             self._tag_popup.hide()
 
+    def _dismiss_tag_popup(self) -> None:
+        """候補ごと閉じる。
+
+        ポップアップは独立ウィンドウ（ToolTip）なので、閉じ忘れると画面に
+        浮いたまま残る。出し直す契機（打鍵）以外でキャレットが動いたり、
+        エディタから離れたりしたらここで畳む。候補も消すのは、残っていると
+        Esc がポップアップ閉じに吸われて本文へ届かないため。
+        """
+        self._tag_candidates = []
+        self._hide_tag_popup()
+
+    def focusOutEvent(self, event) -> None:
+        self._dismiss_tag_popup()
+        super().focusOutEvent(event)
+
     def set_attachment_handler(self, handler: Callable[[bytes, str], str | None] | None) -> None:
         """画像を受け取ったときの保存先を差し込む。
 
@@ -1081,6 +1096,7 @@ class MarkdownEditor(QPlainTextEdit):
         素のクリックは今まで通り（判定を挟むと編集の邪魔になる）。
         """
         super().mousePressEvent(event)
+        self._dismiss_tag_popup()  # クリックでキャレットが動く。候補は打鍵で出し直す
         point = event.position().toPoint()
         if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             self._maybe_toggle_checkbox(point)
@@ -1167,6 +1183,7 @@ class MarkdownEditor(QPlainTextEdit):
         スクロール、273 回）。60fps の 16.7ms に対して十分収まる。
         """
         super().scrollContentsBy(dx, dy)
+        self._dismiss_tag_popup()  # 画面に置き去りにしない（キャレット位置とずれる）
         self.viewport().update()
 
     def paintEvent(self, event: QPaintEvent) -> None:

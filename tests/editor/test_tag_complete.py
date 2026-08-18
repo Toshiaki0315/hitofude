@@ -115,3 +115,40 @@ class TestKeys:
         type_tag(editor, "メモ #日")
         qtbot.keyClick(editor, Qt.Key.Key_Escape)
         assert editor.tag_candidates() == []
+
+
+class TestPopupLifecycle:
+    """ポップアップは独立ウィンドウ（ToolTip）なので、閉じ忘れると
+    画面に浮いたまま残る（回帰）。出し直す契機（打鍵）以外でキャレットが
+    動いたり、エディタから離れたりしたら閉じる。"""
+
+    def test_クリックで閉じる(self, editor, qtbot) -> None:
+        type_tag(editor, "メモ #日")
+        assert editor._tag_popup.isVisible()
+
+        qtbot.mouseClick(editor.viewport(), Qt.MouseButton.LeftButton)
+        assert not editor._tag_popup.isVisible()
+
+    def test_フォーカスを失ったら閉じる(self, editor) -> None:
+        from PySide6.QtCore import QEvent
+        from PySide6.QtGui import QFocusEvent
+        from PySide6.QtWidgets import QApplication
+
+        type_tag(editor, "メモ #日")
+        assert editor._tag_popup.isVisible()
+
+        QApplication.sendEvent(editor, QFocusEvent(QEvent.Type.FocusOut))
+        assert not editor._tag_popup.isVisible()
+
+    def test_スクロールで閉じる(self, editor) -> None:
+        type_tag(editor, "メモ #日")
+        assert editor._tag_popup.isVisible()
+
+        editor.scrollContentsBy(0, 10)
+        assert not editor._tag_popup.isVisible()
+
+    def test_閉じたら候補も消えてEscが本文に届く(self, editor, qtbot) -> None:
+        """候補が残っていると Esc がポップアップ閉じに吸われる。"""
+        type_tag(editor, "メモ #日")
+        qtbot.mouseClick(editor.viewport(), Qt.MouseButton.LeftButton)
+        assert editor.tag_candidates() == []
