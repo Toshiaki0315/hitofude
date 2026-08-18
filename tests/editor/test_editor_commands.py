@@ -223,6 +223,44 @@ class TestImeGuardStillApplies:
         qtbot.keyClick(editor, Qt.Key.Key_B, CMD)
         assert "**" not in editor.toPlainText()
 
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "toggle_strong",
+            "toggle_emphasis",
+            "toggle_code",
+            "toggle_strike",
+            "toggle_highlight",
+            "insert_link",
+            "toggle_checkbox",
+            "format_table",
+        ],
+    )
+    def test_変換中はツールバー経由でも本文に触らない(self, editor, command: str) -> None:
+        """R6 の穴（回帰）。ツールバーのボタンは NoFocus なので、
+        プリエディットが生きたままクリックでき、`keyPressEvent` の
+        ガードを通らずに本文が書き換わっていた。"""
+        from PySide6.QtGui import QInputMethodEvent, QTextCursor
+        from PySide6.QtWidgets import QApplication
+
+        editor.setPlainText("| こんにちは |\n| --- |\n| 世界 |")
+        editor.moveCursor(QTextCursor.MoveOperation.End)
+        QApplication.sendEvent(editor, QInputMethodEvent("にほんご", []))
+
+        before = editor.toPlainText()
+        assert getattr(editor, command)() is False
+        assert editor.toPlainText() == before
+
+    def test_変換中は見出しレベルも変えない(self, editor) -> None:
+        from PySide6.QtGui import QInputMethodEvent
+        from PySide6.QtWidgets import QApplication
+
+        editor.setPlainText("# 見出し")
+        QApplication.sendEvent(editor, QInputMethodEvent("にほんご", []))
+
+        assert editor.shift_heading(1) is False
+        assert editor.toPlainText() == "# 見出し"
+
 
 class TestUnknownCommandKeys:
     """未処理の Cmd 組み合わせで文字を入れない（回帰テスト）。

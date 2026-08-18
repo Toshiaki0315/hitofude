@@ -303,6 +303,8 @@ class MarkdownEditor(QPlainTextEdit):
         WYSIWYG な表エディタは作らない代わりに、ソースを整えて等幅で見せる。
         日本語は全角 2 桁で数えるので、文字数ではなく表示幅で揃う。
         """
+        if self._composing:
+            return False  # R6: メニューからも呼ばれる。打鍵経路のガードでは足りない
         cursor = self.textCursor()
         lines = self.toPlainText().split("\n")
         found = table.find_table(lines, self._table_anchor_line(cursor))
@@ -569,6 +571,10 @@ class MarkdownEditor(QPlainTextEdit):
         return self._toggle_wrap("::")
 
     def _toggle_wrap(self, marker: str) -> bool:
+        if self._composing:
+            # R6: ツールバーのボタンは NoFocus なので、プリエディットが
+            # 生きたままクリックできる。keyPressEvent のガードだけでは足りない
+            return False
         cursor = self.textCursor()
         source = self.toPlainText()
         # 選択位置は UTF-16 単位、commands は Python 文字列を切り貼りする
@@ -583,6 +589,8 @@ class MarkdownEditor(QPlainTextEdit):
 
     def insert_link(self, url: str = "") -> bool:
         """`Cmd+K`。選択文字を `[選択](url)` にする（spec §5.4）。"""
+        if self._composing:
+            return False  # R6
         cursor = self.textCursor()
         source = self.toPlainText()
         replacement = commands.insert_link(
@@ -597,6 +605,8 @@ class MarkdownEditor(QPlainTextEdit):
     def shift_heading(self, delta: int) -> bool:
         """見出しレベルの増減。`delta` が負だと `#` が減って見出しが大きくなる。"""
         block = self.textCursor().block()
+        if self._composing:
+            return False  # R6
         new_line = commands.shift_heading(block.text(), delta)
         if new_line is None:
             return False
@@ -604,6 +614,8 @@ class MarkdownEditor(QPlainTextEdit):
         return True
 
     def toggle_checkbox(self) -> bool:
+        if self._composing:
+            return False  # R6
         block = self.textCursor().block()
         new_line = commands.toggle_checkbox(block.text(), self._current_info())
         if new_line is None:
