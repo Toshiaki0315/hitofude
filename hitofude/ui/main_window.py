@@ -1628,7 +1628,19 @@ class MainWindow(QMainWindow):
         chosen, _ = QFileDialog.getSaveFileName(self, caption, suggested, filter_)
         if not chosen:
             return None
-        target = writer(Path(chosen), self._editor.toPlainText())
+        try:
+            target = writer(Path(chosen), self._editor.toPlainText())
+        except OSError:
+            # ディスクフルや権限。黙って無反応だと「書けたのかどうか」が
+            # 画面から分からない（G-4 と同じ理由で、失敗も知らせる）
+            logger.warning("書き出せなかった: %s", chosen, exc_info=True)
+            QMessageBox.warning(
+                self,
+                "書き出せませんでした",
+                f"{_short_path(Path(chosen))} に書き出せませんでした。\n"
+                "保存先に書き込めるか、空き容量があるかを確かめてください。",
+            )
+            return None
         self._notify_export(target)
         return target
 

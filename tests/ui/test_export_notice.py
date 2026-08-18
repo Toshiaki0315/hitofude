@@ -118,6 +118,38 @@ class TestReveal:
         assert revealed == []
 
 
+class TestFailure:
+    """**失敗したら黙らない。** 成功時の導線（G-4）を作った経緯と同じで、
+    ディスクフルや権限で書けなかったときに無反応では、書けたのかどうかが
+    画面から分からない。"""
+
+    def test_書けない場所なら警告を出す(self, window, monkeypatch, tmp_path: Path) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        warnings: list[tuple] = []
+        monkeypatch.setattr(
+            QMessageBox, "warning", staticmethod(lambda *a, **k: warnings.append(a))
+        )
+        save_to(monkeypatch, tmp_path / "存在しない階層" / "out.md")
+
+        window.export_markdown()
+
+        assert warnings, "警告が出ていない"
+        assert window.reveal_button.isVisible() is False  # 成功の導線は出さない
+
+    def test_失敗後も編集を続けられる(self, window, monkeypatch, tmp_path: Path) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: None))
+        save_to(monkeypatch, tmp_path / "存在しない階層" / "out.md")
+        window.export_markdown()
+
+        # 例外で処理が途切れていないこと（後続の書き出しが成功する）
+        save_to(monkeypatch, tmp_path / "out.md")
+        window.export_markdown()
+        assert (tmp_path / "out.md").is_file()
+
+
 class TestEveryFormat:
     """**4 つとも同じ扱い。** 形式によって導線が有る無いになると、
     「押しても何も起きない」に見えるものが残る。"""
