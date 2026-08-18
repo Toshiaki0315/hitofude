@@ -145,3 +145,21 @@ class TestImeGuard:
         editor.setTextCursor(cursor)
         editor.replace_all_text("りんご", "なし")
         assert editor.toPlainText().count("なし") == 3
+
+
+class TestBMP外の文字:
+    """🍎 は Python では 1 文字、UTF-16（QTextCursor）では 2 単位。
+
+    `core/search` の返す位置（Python 単位）をそのままカーソルへ渡すと、
+    絵文字より後ろの一致の選択・置換が 1 ずれていた（回帰）。
+    """
+
+    def test_絵文字の後ろの一致を正しく選択する(self, editor) -> None:
+        editor.setPlainText("🍎 apple")
+        assert editor.find_text("apple")
+        assert selected(editor) == "apple"
+
+    def test_絵文字の後ろの一致を正しく置換する(self, editor) -> None:
+        editor.setPlainText("🍎 apple")
+        assert editor.replace_all_text("apple", "りんご") == 1
+        assert editor.toPlainText() == "🍎 りんご"

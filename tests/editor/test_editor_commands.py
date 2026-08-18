@@ -350,3 +350,24 @@ class TestLineToggles:
         editor._composing = True
         assert editor.toggle_bullet() is False
         assert editor.toPlainText() == "りんご"
+
+
+class TestBMP外の文字:
+    """🍎 は Python では 1 文字、UTF-16（QTextCursor）では 2 単位。
+
+    選択位置（UTF-16）をそのまま Python 文字列の添字に使うと、
+    絵文字より後ろの選択を囲む操作が 1 ずれていた（回帰）。
+    """
+
+    def test_絵文字の後ろの選択を囲める(self, editor, qtbot) -> None:
+        editor.setPlainText("🍎これは強調です")
+        # UTF-16: 🍎=0,1  これは=2,3,4  強調=5,6
+        select(editor, 5, 7)
+        qtbot.keyClick(editor, Qt.Key.Key_B, CMD)
+        assert editor.toPlainText() == "🍎これは**強調**です"
+
+    def test_囲んだあとも同じ文字が選ばれている(self, editor, qtbot) -> None:
+        editor.setPlainText("🍎これは強調です")
+        select(editor, 5, 7)
+        qtbot.keyClick(editor, Qt.Key.Key_B, CMD)
+        assert editor.textCursor().selectedText() == "強調"

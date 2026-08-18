@@ -22,6 +22,7 @@ from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen, QTextBlo
 from hitofude.core.inline_scanner import image_only_line
 from hitofude.core.models import BlockType
 from hitofude.core.table import fits
+from hitofude.core.textpos import py_to_utf16
 from hitofude.theme import ThemeColors
 
 # spec §5.2
@@ -356,14 +357,17 @@ def _checkbox(editor, block: QTextBlock, info, geometry: QRectF) -> Decoration:
 
 
 def _column_x(block: QTextBlock, column: int) -> float:
-    """ブロック内の文字位置の x 座標。レイアウトが無ければ 0。"""
+    """ブロック内の文字位置（Python 単位）の x 座標。レイアウトが無ければ 0。"""
     layout = block.layout()
     if layout is None or layout.lineCount() == 0:
         return 0.0
-    line = layout.lineForTextPosition(column)
+    # 呼び出し側は `block.text()`（Python 単位）で数えた位置を渡してくる。
+    # レイアウトの API は UTF-16 単位なので、絵文字を含む行では変換が要る
+    position = py_to_utf16(block.text(), column)
+    line = layout.lineForTextPosition(position)
     if not line.isValid():
         return 0.0
-    x = line.cursorToX(column)
+    x = line.cursorToX(position)
     # PySide6 は (x, cursorPos) のタプルを返すことがある
     return float(x[0]) if isinstance(x, tuple) else float(x)
 

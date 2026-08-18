@@ -44,7 +44,7 @@ from hitofude.config import (
     MIN_POINT_SIZE,
     Config,
 )
-from hitofude.core import frontmatter
+from hitofude.core import frontmatter, textpos
 from hitofude.core.activation import ALLOWED_SCHEMES
 from hitofude.core.document import Note, with_title
 from hitofude.core.outline import headings
@@ -855,7 +855,8 @@ class MainWindow(QMainWindow):
         if offset == 0:
             return
         cursor = self._editor.textCursor()
-        cursor.setPosition(offset)
+        # body_offset は Python 単位、setPosition は UTF-16 単位
+        cursor.setPosition(textpos.py_to_utf16(text, offset))
         self._editor.setTextCursor(cursor)
 
     def _reload_open_note(self, note: Note) -> None:
@@ -871,7 +872,7 @@ class MainWindow(QMainWindow):
             self._editor.setPlainText(note.text)
             cursor = self._editor.textCursor()
             limit = self._editor.document().characterCount() - 1
-            body = frontmatter.body_offset(note.text)
+            body = textpos.py_to_utf16(note.text, frontmatter.body_offset(note.text))
             cursor.setPosition(max(body, min(position, limit)))
             self._editor.setTextCursor(cursor)
             self._editor.document().setModified(False)

@@ -472,3 +472,31 @@ class TestFrontMatterStaysHidden:
         highlighter.set_source_mode(True)
         set_text(document, "# 見出し\n\n本文\n")
         assert not is_hidden(document, 0, 0)
+
+
+class TestBMP外の文字:
+    """🍎 や 𠮷 は Python では 1 文字、UTF-16（QString）では 2 単位。
+
+    スキャナは Python 単位で位置を返すため、変換せずに `setFormat()` へ
+    渡すと、絵文字 1 個につき装飾範囲が 1 ずれていた（回帰）。
+    `layout().formats()` は UTF-16 で数えるので、ここの column は
+    UTF-16 の値で書く。
+    """
+
+    def test_絵文字の後ろの強調がずれない(self, document, highlighter) -> None:
+        # UTF-16: 🍎=0,1  は=2  *=3  *=4  強=5  調=6  *=7  *=8  で=9  す=10
+        set_text(document, "🍎は**強調**です")
+        assert is_hidden(document, 0, 3)  # 開き ** の 1 文字目
+        assert is_hidden(document, 0, 4)  # 開き ** の 2 文字目
+        assert not is_hidden(document, 0, 6)  # 「調」は潰さない
+        assert is_hidden(document, 0, 8)  # 閉じ ** の 2 文字目
+        assert char_format(document, 0, 6).fontWeight() > QTextCharFormat().fontWeight()
+
+    def test_絵文字の行でもキャレットでマーカーが現れる(self, document, highlighter) -> None:
+        """キャレット位置（UTF-16）とスパン（Python 単位）の突き合わせも変換する。"""
+        # UTF-16: 🍎=0,1  *=2  *=3  b=4  *=5  *=6 → 行末は 7
+        set_text(document, "🍎**b**")
+        highlighter.set_reveal(7)
+        highlighter.rehighlightBlock(document.firstBlock())
+        assert not is_hidden(document, 0, 2)  # 開きマーカーが現れる
+        assert not is_hidden(document, 0, 6)  # 閉じマーカーも現れる

@@ -29,6 +29,7 @@ from hitofude.core import frontmatter, search, table, tags
 from hitofude.core.activation import ActivationKind, activation_at
 from hitofude.core.document import plain_text
 from hitofude.core.models import BlockInfo
+from hitofude.core.textpos import py_to_utf16, utf16_to_py
 from hitofude.editor import attachments, commands, painter_overlay
 from hitofude.editor.highlighter import TABLE_FAMILIES, MarkdownHighlighter
 from hitofude.editor.image_cache import ImageCache
@@ -478,9 +479,11 @@ class MarkdownEditor(QPlainTextEdit):
         選択があるときは**始点だけ**を本文の先頭へ丸める。`Cmd+A` で選んで
         打ち直す操作を、front matter を残したまま成立させるため。
         """
-        offset = frontmatter.body_offset(self.toPlainText())
+        source = self.toPlainText()
+        offset = frontmatter.body_offset(source)
         if offset == 0:
             return False
+        offset = py_to_utf16(source, offset)  # カーソル位置（UTF-16）と比べる
 
         cursor = self.textCursor()
         start, end = cursor.selectionStart(), cursor.selectionEnd()
@@ -567,8 +570,13 @@ class MarkdownEditor(QPlainTextEdit):
 
     def _toggle_wrap(self, marker: str) -> bool:
         cursor = self.textCursor()
+        source = self.toPlainText()
+        # 選択位置は UTF-16 単位、commands は Python 文字列を切り貼りする
         replacement = commands.toggle_wrap(
-            self.toPlainText(), cursor.selectionStart(), cursor.selectionEnd(), marker
+            source,
+            utf16_to_py(source, cursor.selectionStart()),
+            utf16_to_py(source, cursor.selectionEnd()),
+            marker,
         )
         self._apply(replacement)
         return True
@@ -576,8 +584,12 @@ class MarkdownEditor(QPlainTextEdit):
     def insert_link(self, url: str = "") -> bool:
         """`Cmd+K`。選択文字を `[選択](url)` にする（spec §5.4）。"""
         cursor = self.textCursor()
+        source = self.toPlainText()
         replacement = commands.insert_link(
-            self.toPlainText(), cursor.selectionStart(), cursor.selectionEnd(), url
+            source,
+            utf16_to_py(source, cursor.selectionStart()),
+            utf16_to_py(source, cursor.selectionEnd()),
+            url,
         )
         self._apply(replacement)
         return True
@@ -719,7 +731,8 @@ class MarkdownEditor(QPlainTextEdit):
             return
 
         cursor = self.textCursor()
-        prefix = tags.prefix_at(cursor.block().text(), cursor.positionInBlock())
+        line = cursor.block().text()
+        prefix = tags.prefix_at(line, utf16_to_py(line, cursor.positionInBlock()))
         if prefix is None:
             self._hide_tag_popup()
             return
@@ -733,12 +746,15 @@ class MarkdownEditor(QPlainTextEdit):
     def complete_tag(self, tag: str) -> None:
         """打ちかけのタグを候補で置き換える（C-4）。"""
         cursor = self.textCursor()
-        prefix = tags.prefix_at(cursor.block().text(), cursor.positionInBlock())
+        line = cursor.block().text()
+        prefix = tags.prefix_at(line, utf16_to_py(line, cursor.positionInBlock()))
         if prefix is None:
             return
 
         cursor.beginEditBlock()
-        cursor.setPosition(cursor.position() - len(prefix), QTextCursor.MoveMode.KeepAnchor)
+        # 戻る距離は UTF-16 単位で数える（タグに BMP 外の文字が入っても壊さない）
+        prefix_units = py_to_utf16(prefix, len(prefix))
+        cursor.setPosition(cursor.position() - prefix_units, QTextCursor.MoveMode.KeepAnchor)
         cursor.insertText(tag)
         cursor.endEditBlock()
         self.setTextCursor(cursor)
@@ -780,13 +796,14 @@ class MarkdownEditor(QPlainTextEdit):
         丸めているので消えはしないが、**消えるように見える**し、コピーすれば
         実際に混ざる。ユーザーにとっての「すべて」は本文。
         """
-        offset = frontmatter.body_offset(self.toPlainText())
+        source = self.toPlainText()
+        offset = frontmatter.body_offset(source)
         if offset == 0:
             super().selectAll()
             return
 
         cursor = self.textCursor()
-        cursor.setPosition(offset)
+        cursor.setPosition(py_to_utf16(source, offset))
         cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
         self.setTextCursor(cursor)
 
@@ -849,19 +866,26 @@ class MarkdownEditor(QPlainTextEdit):
         super().insertFromMimeData(source)
 
     def _apply(self, replacement: commands.Replacement) -> None:
+        # `Replacement` の位置は Python 単位。start/end は置き換え前、
+        # select_* は置き換え後のテキストに対する位置なので、別々に直す
+        source = self.toPlainText()
+        updated = source[: replacement.start] + replacement.text + source[replacement.end :]
         cursor = self.textCursor()
         cursor.beginEditBlock()
-        cursor.setPosition(replacement.start)
-        cursor.setPosition(replacement.end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.setPosition(py_to_utf16(source, replacement.start))
+        cursor.setPosition(py_to_utf16(source, replacement.end), QTextCursor.MoveMode.KeepAnchor)
         cursor.insertText(replacement.text)
         cursor.endEditBlock()
-        cursor.setPosition(replacement.select_start)
-        cursor.setPosition(replacement.select_end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.setPosition(py_to_utf16(updated, replacement.select_start))
+        cursor.setPosition(
+            py_to_utf16(updated, replacement.select_end), QTextCursor.MoveMode.KeepAnchor
+        )
         self.setTextCursor(cursor)
 
     def _replace_current_block(self, text: str) -> None:
         cursor = self.textCursor()
-        column = cursor.positionInBlock() + len(text) - len(cursor.block().text())
+        line = cursor.block().text()
+        column = utf16_to_py(line, cursor.positionInBlock()) + len(text) - len(line)
         self._replace_block(cursor, text, column=max(0, column))
         self.setTextCursor(cursor)
 
@@ -875,7 +899,8 @@ class MarkdownEditor(QPlainTextEdit):
             return False  # 選択の置き換えという通常の挙動を邪魔しない
 
         block = cursor.block()
-        action = enter_action(block.text(), cursor.positionInBlock(), self._current_info())
+        column = utf16_to_py(block.text(), cursor.positionInBlock())
+        action = enter_action(block.text(), column, self._current_info())
 
         match action.kind:
             case EnterKind.DEFAULT:
@@ -899,19 +924,22 @@ class MarkdownEditor(QPlainTextEdit):
 
         # 同じ文字の上にキャレットを残す。行頭の空白が増減した分だけずらす
         shift = len(new_line) - len(block.text())
-        column = max(0, cursor.positionInBlock() + shift)
+        column = max(0, utf16_to_py(block.text(), cursor.positionInBlock()) + shift)
         self._replace_block(cursor, new_line, column=column)
         self.setTextCursor(cursor)
         return True
 
     def _replace_block(self, cursor: QTextCursor, text: str, *, column: int) -> None:
-        """現在行の中身を差し替える。Undo は 1 手にまとめる。"""
+        """現在行の中身を差し替える。Undo は 1 手にまとめる。
+
+        `column` は Python 単位（`text` の文字位置）で受け取る。
+        """
         cursor.beginEditBlock()
         cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
         cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
         cursor.insertText(text)
         cursor.endEditBlock()
-        cursor.setPosition(cursor.block().position() + min(column, len(text)))
+        cursor.setPosition(cursor.block().position() + py_to_utf16(text, min(column, len(text))))
 
     # ------------------------------------------------------------- リビール
 
@@ -1031,7 +1059,8 @@ class MarkdownEditor(QPlainTextEdit):
         data = cursor.block().userData()
         if data is None:
             return None
-        return activation_at(data.spans, cursor.positionInBlock())
+        line = cursor.block().text()
+        return activation_at(data.spans, utf16_to_py(line, cursor.positionInBlock()))
 
     def _maybe_toggle_checkbox(self, point) -> None:
         """印の上を押したらチェックを切り替える（E-1）。
@@ -1116,16 +1145,18 @@ class MarkdownEditor(QPlainTextEdit):
         **空振りではカーソルを動かさない。** 打ちかけの場所を見失うため。
         """
         cursor = self.textCursor()
-        origin = cursor.selectionStart() if backward else cursor.selectionEnd()
+        source = self.toPlainText()
+        # カーソル位置は UTF-16 単位、`core/search` は Python 単位（🍎 = 1 文字）
+        origin = utf16_to_py(source, cursor.selectionStart() if backward else cursor.selectionEnd())
         found = search.find_next(
-            self.toPlainText(), query, origin, backward=backward, case_sensitive=case_sensitive
+            source, query, origin, backward=backward, case_sensitive=case_sensitive
         )
         if found is None:
             return False
 
         begin, end = found
-        cursor.setPosition(begin)
-        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.setPosition(py_to_utf16(source, begin))
+        cursor.setPosition(py_to_utf16(source, end), QTextCursor.MoveMode.KeepAnchor)
         self.setTextCursor(cursor)
         self.ensureCursorVisible()
         return True
@@ -1162,16 +1193,19 @@ class MarkdownEditor(QPlainTextEdit):
 
         後ろから置き換える。前から書き換えると、以降の位置がずれる。
         """
-        matches = search.find_all(self.toPlainText(), query, case_sensitive=case_sensitive)
+        source = self.toPlainText()
+        matches = search.find_all(source, query, case_sensitive=case_sensitive)
         if not matches:
             return 0
 
         cursor = self.textCursor()
         cursor.beginEditBlock()
         try:
+            # 後ろから置き換えるので、置き換え前のテキストで直した位置が
+            # そのまま使える（編集は常に自分より後ろで起きている）
             for begin, end in reversed(matches):
-                cursor.setPosition(begin)
-                cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+                cursor.setPosition(py_to_utf16(source, begin))
+                cursor.setPosition(py_to_utf16(source, end), QTextCursor.MoveMode.KeepAnchor)
                 cursor.insertText(replacement)
         finally:
             cursor.endEditBlock()
@@ -1183,15 +1217,16 @@ class MarkdownEditor(QPlainTextEdit):
         `extraSelections` は文書を書き換えないので、マーカーの隠蔽（R4）にも
         ブロックの解析結果にも触らない。空のクエリで消える。
         """
-        matches = search.find_all(self.toPlainText(), query, case_sensitive=case_sensitive)
+        source = self.toPlainText()
+        matches = search.find_all(source, query, case_sensitive=case_sensitive)
         # ExtraSelection は QTextEdit 側に定義されている（QPlainTextEdit には無い）
         selections: list[QTextEdit.ExtraSelection] = []
         for begin, end in matches:
             selection = QTextEdit.ExtraSelection()
             selection.format.setBackground(QColor(self._theme.search_highlight))
             cursor = QTextCursor(self.document())
-            cursor.setPosition(begin)
-            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+            cursor.setPosition(py_to_utf16(source, begin))
+            cursor.setPosition(py_to_utf16(source, end), QTextCursor.MoveMode.KeepAnchor)
             selection.cursor = cursor
             selections.append(selection)
         self.setExtraSelections(selections)

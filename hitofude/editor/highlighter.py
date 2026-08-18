@@ -36,6 +36,7 @@ from hitofude.core.models import (
     SpanType,
 )
 from hitofude.core.table import fits
+from hitofude.core.textpos import py_to_utf16, utf16_to_py
 from hitofude.editor.painter_overlay import (
     CHECKBOX_GAP_RATIO,
     CODE_NAME_SCALE,
@@ -218,6 +219,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._cell_pad: QTextCharFormat | None = None
         self._checkbox_pad: QTextCharFormat | None = None
         self._code_name_pad: QTextCharFormat | None = None
+        # `setFormat` の位置変換用。`highlightBlock` の先頭で更新する
+        self._line = ""
+        self._line_is_bmp_only = True
         self._build_formats()
 
     # ------------------------------------------------------------------ 設定
@@ -292,12 +296,17 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
     def highlightBlock(self, text: str) -> None:
         block = self.currentBlock()
+        # `text` は Python 単位（🍎 = 1 文字）、`setFormat` と `block.position()`
+        # は UTF-16 単位（🍎 = 2）。この行の解析はすべて Python 単位で行い、
+        # `setFormat` / `format` のオーバーライドが境界で変換する
+        self._line = text
+        self._line_is_bmp_only = text.isascii() or all(ord(char) < 0x10000 for char in text)
         state = BlockState.decode(self.previousBlockState())
         info, next_state = classify_line(text, block.blockNumber(), state)
 
         in_code = info.type in _CODE_BLOCK_TYPES
         spans = [] if in_code else scan(text)
-        reveal = self._reveal_for(block.position(), block.length())
+        reveal = self._reveal_for(block.position(), block.length(), text)
 
         # 区切り行より前にある表の行がヘッダ。区切り行が in_table を立てるので、
         # 引き継いだ状態が False なら「まだ区切り行に達していない」= ヘッダ
@@ -395,7 +404,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         ratio = line_height_ratio(self.document().defaultFont())
         return max(1.0, height / ratio)
 
-    def _reveal_for(self, block_start: int, block_length: int) -> _Reveal:
+    def _reveal_for(self, block_start: int, block_length: int, text: str) -> _Reveal:
         if self._source_mode:
             return _Reveal(everything=True, caret_column=None)
 
@@ -409,7 +418,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             return _Reveal(everything=False, caret_column=None)
 
         if self._reveal_position is not None and block_start <= self._reveal_position <= block_end:
-            return _Reveal(everything=False, caret_column=self._reveal_position - block_start)
+            # キャレット位置は UTF-16 単位。スパン（Python 単位）と比べる前に直す
+            column = utf16_to_py(text, self._reveal_position - block_start)
+            return _Reveal(everything=False, caret_column=column)
         return _Reveal(everything=False, caret_column=None)
 
     # ----------------------------------------------------------- 書式の適用
@@ -609,6 +620,28 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         # 行の高さ計算が跳ねる（§3.3 の注意点）。
         merged.setFontPointSize(HIDDEN_POINT_SIZE)
         self.setFormat(start, length, merged)
+
+    # ------------------------------------------------- 位置の単位変換（R4 の境界）
+
+    def setFormat(self, start: int, count: int, char_format: QTextCharFormat) -> None:
+        """Python 単位の位置を UTF-16 へ直してから Qt に渡す。
+
+        この行の解析（スキャナ・`len(text)`・`enumerate`）はすべて
+        Python 単位なので、境界をここ 1 か所に集める。BMP 内だけの行は
+        単位が一致するので、そのまま通す（大半の行がこちら）。
+        """
+        if self._line_is_bmp_only:
+            super().setFormat(start, count, char_format)
+            return
+        begin = py_to_utf16(self._line, start)
+        end = py_to_utf16(self._line, start + count)
+        super().setFormat(begin, end - begin, char_format)
+
+    def format(self, position: int) -> QTextCharFormat:
+        """`setFormat` の逆向き。読むときも同じ変換を通す（`_merge` / `_hide`）。"""
+        if self._line_is_bmp_only:
+            return super().format(position)
+        return super().format(py_to_utf16(self._line, position))
 
     # --------------------------------------------------------------- 書式定義
 
