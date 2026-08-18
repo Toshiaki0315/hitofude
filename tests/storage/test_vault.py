@@ -486,3 +486,17 @@ class TestScanSymlinkLoop:
         # リンクを辿った先の `loop/メモ.md` `loop/loop/メモ.md` … が
         # 重複して出てはいけない。同じ実体は 1 回だけ
         assert found == [note.path]
+
+
+class TestEmptyTrashWithDirectories:
+    def test_手で入れたフォルダも消える(self, vault) -> None:
+        """empty_trash がファイルしか見ず、Finder で .trash に入れた
+        フォルダが永久に残っていた（回帰）。「空にする」と言った以上は空にする。"""
+        vault.trash(vault.create("メモ").path)
+        stray = vault.trash_dir / "手で入れた"
+        stray.mkdir()
+        (stray / "中身.txt").write_text("x", encoding="utf-8")
+
+        removed = vault.empty_trash()
+        assert list(vault.trash_dir.iterdir()) == []
+        assert stray in removed

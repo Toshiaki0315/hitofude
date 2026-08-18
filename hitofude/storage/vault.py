@@ -20,6 +20,7 @@ HitofudeNotes/
 import logging
 import os
 import re
+import shutil
 import time
 import unicodedata
 from collections.abc import Iterator
@@ -591,7 +592,12 @@ class Vault:
 
         removed: list[Path] = []
         for entry in sorted(self.trash_dir.iterdir()):
-            if entry.is_file():
+            if entry.is_dir():
+                # Finder で手で入れられたフォルダ。「空にする」と言った以上、
+                # 残すほうが嘘になる（自動の purge_trash は今まで通り触らない）
+                shutil.rmtree(entry, ignore_errors=True)
+                removed.append(entry)
+            elif entry.is_file():
                 entry.unlink()
                 removed.append(entry)
         return removed
