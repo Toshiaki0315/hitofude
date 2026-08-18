@@ -76,6 +76,19 @@ class TestList:
         blocks = parse("- 親\n    - 子\n        - 孫\n")
         assert [b.level for b in blocks[:3]] == [1, 2, 3]
 
+    def test_入れ子の番号リストの後は箇条書きに戻る(self) -> None:
+        """ordered フラグが単一のブールで、入れ子を閉じても戻らなかった
+        （回帰）。後続の `- c` が ORDERED_LIST_ITEM / marker_len=0 になり、
+        ぶら下げ描画とマーカー補正が壊れていた。"""
+        blocks = parse("- a\n  1. b\n- c")
+        assert blocks[2].type is BlockType.BULLET_LIST_ITEM
+        assert blocks[2].marker_len == 2
+
+    def test_入れ子の箇条書きの後は番号リストに戻る(self) -> None:
+        blocks = parse("1. a\n   - b\n2. c")
+        assert blocks[2].type is BlockType.ORDERED_LIST_ITEM
+        assert blocks[2].marker_len == 3
+
     @pytest.mark.parametrize(
         ("text", "checked"),
         [("- [ ] やること", False), ("- [x] 済み", True), ("- [X] 済み", True)],

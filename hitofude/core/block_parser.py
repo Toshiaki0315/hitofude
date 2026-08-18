@@ -158,8 +158,10 @@ def _collect(tokens, offset: int, quote_depths: list[int]) -> _Collected:
     """トークンを種別ごとに仕分ける。引用の深さだけはここで確定する。"""
     found = _Collected()
     quote_depth = 0
-    list_depth = 0
-    ordered = False
+    # True = 番号付き。**スタックで持つ。** 単一のブールだと、入れ子の
+    # 番号リストを閉じたあとも True のままになり、外側の箇条書きの
+    # 後続項目が番号付き扱いになる
+    list_stack: list[bool] = []
 
     for token in tokens:
         span = (token.map[0] + offset, token.map[1] + offset) if token.map is not None else (0, 0)
@@ -171,12 +173,13 @@ def _collect(tokens, offset: int, quote_depths: list[int]) -> _Collected:
             case "blockquote_close":
                 quote_depth -= 1
             case "bullet_list_open" | "ordered_list_open":
-                list_depth += 1
-                ordered = token.type == "ordered_list_open"
+                list_stack.append(token.type == "ordered_list_open")
             case "bullet_list_close" | "ordered_list_close":
-                list_depth -= 1
+                if list_stack:
+                    list_stack.pop()
             case "list_item_open":
-                found.items.append((span[0], list_depth, ordered))
+                ordered = bool(list_stack) and list_stack[-1]
+                found.items.append((span[0], len(list_stack), ordered))
             case "paragraph_open":
                 found.paragraphs.append(span)
             case "heading_open":
