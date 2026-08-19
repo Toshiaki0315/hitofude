@@ -81,6 +81,12 @@ def hello() -> str:
 言語を書かなければ色は付きません。とても長いコード（200 行より上）は、
 打つのが重くならないよう色を付けません。
 
+言語名は [Pygments の一覧](https://pygments.org/languages/)（約 600 言語）が
+そのまま使えます。`python` `javascript` `html` `css` `json` `yaml` `bash`
+`sql` `go` `rust` `java` `c` `cpp` `ruby` `php` `diff` など。`py` `js` `ts`
+`sh` のような**別名も効きます**。知らない言語名を書いてもエラーには
+ならず、色なしでそのまま表示されます。
+
 ### 表
 
 表は縦線を揃えると読みやすくなります。行から離れると**自動で揃い、罫線が付きます**。
