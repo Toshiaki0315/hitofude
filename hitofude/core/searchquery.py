@@ -38,6 +38,14 @@ class SearchQuery:
     before: date | None = None
     """この日以前に更新したものだけ。**その日を含む。**"""
 
+    unreadable_dates: tuple[str, ...] = ()
+    """日付として読めなかった `after:` / `before:`（案 1）。
+
+    **探すのはやめない**（言葉として残す）が、書き方が違うことは
+    呼び出し側から知らせられるように覚えておく。0 件になった理由が
+    画面から読めないと、打ち間違いに気づけない。
+    """
+
     @property
     def filter_only(self) -> bool:
         """絞り込みだけで、本文の言葉が無いか。"""
@@ -59,10 +67,12 @@ def parse(query: str) -> SearchQuery:
             tags.append(name)
 
     edges: dict[str, date] = {}
+    unreadable: list[str] = []
 
     def take_date(found: re.Match[str]) -> str:
         day = _read_date(found.group("value"))
         if day is None:
+            unreadable.append(found.group(0))
             return found.group(0)  # 読めないものは言葉として残す
         edges[found.group("edge").lower()] = day
         return " "
@@ -74,6 +84,7 @@ def parse(query: str) -> SearchQuery:
         tags=tuple(tags),
         after=edges.get("after"),
         before=edges.get("before"),
+        unreadable_dates=tuple(unreadable),
     )
 
 

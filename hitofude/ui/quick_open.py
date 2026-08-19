@@ -17,6 +17,7 @@ from PySide6.QtCore import QModelIndex, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QKeyEvent, QPainter, QTextDocument
 from PySide6.QtWidgets import (
     QDialog,
+    QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -130,9 +131,16 @@ class Palette(QDialog):
         self._results.setItemDelegate(_ResultDelegate(theme, self._results))
         self._results.setFrameShape(QListWidget.Shape.NoFrame)
 
+        # 書き方の案内（案 1）。**要らないときは場所を取らない**（一覧が狭くなる）
+        self._hint = QLabel(self)
+        self._hint.setWordWrap(True)
+        self._hint.setStyleSheet(f"QLabel {{ color: {theme.muted_foreground}; padding: 2px 4px; }}")
+        self._hint.hide()
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.addWidget(self._input)
+        layout.addWidget(self._hint)
         layout.addWidget(self._results)
 
         self._input.textChanged.connect(self._refresh)
@@ -174,7 +182,21 @@ class Palette(QDialog):
 
     # ------------------------------------------------------------------ 動作
 
+    def set_hint(self, text: str) -> None:
+        """入力欄の下に一言出す。空にすると消える（案 1）。"""
+        self._hint.setText(text)
+        self._hint.setVisible(bool(text))
+
+    def hint_text(self) -> str:
+        return self._hint.text()
+
+    def hint_visible(self) -> bool:
+        return not self._hint.isHidden()
+
     def _refresh(self, query: str) -> None:
+        # **前の案内を残さない。** 直したのに出たままだと、直っていない
+        # ように見える。出すかどうかは候補を作る側が決める
+        self.set_hint("")
         self._items = self._provider(query)
         self._results.clear()
         for item in self._items:

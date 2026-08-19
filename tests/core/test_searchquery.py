@@ -126,3 +126,32 @@ class TestDates:
 
     def test_大文字でも効く(self) -> None:
         assert parse("After:2026-08-01").after == date(2026, 8, 1)
+
+
+class TestBadDates:
+    """日付として読めなかったことを覚えておく（案 1）。
+
+    読めない書き方はそのまま探す言葉にするが、**そのままだと 0 件の理由が
+    画面から読めない**（ユーザー指摘）。`after:` と書いた以上、絞り込みの
+    つもりだったことは分かるので、そこだけ拾って呼び出し側に渡す。
+    """
+
+    def test_読めない日付を覚える(self) -> None:
+        found = parse("after:きのう")
+        assert found.unreadable_dates == ("after:きのう",)
+
+    def test_読めれば覚えない(self) -> None:
+        assert parse("after:2026-08-01").unreadable_dates == ()
+
+    def test_複数あれば全部(self) -> None:
+        found = parse("after:きのう before:あした")
+        assert found.unreadable_dates == ("after:きのう", "before:あした")
+
+    def test_言葉としては残っている(self) -> None:
+        """**探すのはやめない。** そう書いたものを探した結果が出るほうが辿れる。"""
+        found = parse("after:きのう")
+        assert found.text == "after:きのう"
+
+    def test_日付の形をしていなければ何も覚えない(self) -> None:
+        """`after` と書いていなければ、そもそも絞り込みのつもりではない。"""
+        assert parse("きのうの予算").unreadable_dates == ()

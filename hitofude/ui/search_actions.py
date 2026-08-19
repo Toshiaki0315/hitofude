@@ -17,6 +17,10 @@ from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
 # 代わりに、絞り込みが書けることは案内で伝える
 SEARCH_PLACEHOLDER = "本文を検索…（#タグ after:2026-08-01 で絞れます）"
 
+# 日付として読めない `after:` / `before:` を書いたときの案内（案 1）。
+# **探すのはやめない**が、書き方が違うことは伝える
+DATE_HINT = "日付は after:2026-08-01 の形で書いてください（絞り込みはしていません）"
+
 
 class SearchActions:
     """探す入口とパレットの結線。`MainWindow` が薄く委譲する。"""
@@ -26,6 +30,9 @@ class SearchActions:
         # 飛び先を探すのに要る。**索引には行番号を持たせない**（作りが
         # 変わって作り直しが要る。開いたノートで数え直せば足りる）
         self._search_query = ""
+        # 書き方の案内（案 1）。出す先のパレットは開くたびに作り直す
+        self._hint = ""
+        self._palette: Palette | None = None
 
     # ------------------------------------------------------------- 入口
 
@@ -45,6 +52,7 @@ class SearchActions:
         palette = Palette(
             window, placeholder=SEARCH_PLACEHOLDER, theme=window._theme_watcher.colors
         )
+        self._palette = palette
         palette.set_provider(self._search_items)
         palette.chosen.connect(self._on_search_chosen)
         palette.finished.connect(palette.deleteLater)
@@ -93,8 +101,15 @@ class SearchActions:
         """検索欄の案内。**書き方を知らせる**（説明が無いと誰も使わない）。"""
         return SEARCH_PLACEHOLDER
 
+    def last_hint(self) -> str:
+        """直前の検索で出した案内。空なら出していない。"""
+        return self._hint
+
     def _search_items(self, query: str) -> list[PaletteItem]:
         parsed = searchquery.parse(query)
+        self._hint = DATE_HINT if parsed.unreadable_dates else ""
+        if self._palette is not None:
+            self._palette.set_hint(self._hint)
         # 飛び先（G-1）は**言葉のほう**で探す。`#仕事` は本文に無いので、
         # そのまま渡すと一致する行が見つからず先頭が開く
         self._search_query = parsed.text
