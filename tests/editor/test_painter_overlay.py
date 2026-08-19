@@ -437,3 +437,66 @@ class TestBlockInset:
         editor.setPlainText("> 引用\n")
         bar = of_kind(editor, DecorationKind.QUOTE_BAR)[0].rect
         assert bar.right() <= self.body_left(editor, 0)
+
+
+class TestNoteBackground:
+    """`:::note` の背景の帯（ユーザー要望）。
+
+    コードブロックと同じく、行の背景を種類の色で塗る。
+    info は薄い緑 / warn は薄い黄 / alert は薄い赤。縦線は今まで通り残す。
+    """
+
+    def test_囲みの行に背景を敷く(self, editor) -> None:
+        editor.setPlainText(":::note info\n本文\n:::")
+        assert kinds(editor).count(DecorationKind.NOTE_BACKGROUND) == 3
+
+    def test_背景も種類を持ち歩く(self, editor) -> None:
+        editor.setPlainText(":::note alert\n本文\n:::")
+        found = {d.text for d in of_kind(editor, DecorationKind.NOTE_BACKGROUND)}
+        assert found == {"alert"}
+
+    def test_種類ごとの背景色が描かれる(self, editor) -> None:
+        from PySide6.QtGui import QColor, QImage
+
+        from hitofude.theme import LIGHT
+
+        def colors(kind: str) -> set[int]:
+            editor.setPlainText(f":::note {kind}\n本文\n:::")
+            image = QImage(editor.size(), QImage.Format.Format_ARGB32)
+            image.fill(QColor("white"))
+            editor.render(image)
+            return {
+                image.pixel(x, y)
+                for x in range(min(120, image.width()))
+                for y in range(min(80, image.height()))
+            }
+
+        for kind, color in (
+            ("info", LIGHT.note_info_background),
+            ("warn", LIGHT.note_warn_background),
+            ("alert", LIGHT.note_alert_background),
+        ):
+            assert QColor(color).rgb() in colors(kind), f"{kind} の背景が出ていない"
+
+    def test_知らない綴りの背景は無彩色(self, editor) -> None:
+        """種類の色を出すと、綴りの間違いに気づけない（縦線と同じ理屈）。"""
+        editor.setPlainText(":::note warm\n本文\n:::")
+        found = of_kind(editor, DecorationKind.NOTE_BACKGROUND)
+        assert found, "背景の帯そのものは出る"
+
+    def test_縦線は背景の上に残る(self, editor) -> None:
+        editor.setPlainText(":::note info\n本文\n:::")
+        found = kinds(editor)
+        assert found.index(DecorationKind.NOTE_BACKGROUND) < found.index(DecorationKind.NOTE_BAR)
+
+
+class TestNoteBackgroundExport:
+    def test_書き出しのCSSも背景を塗る(self) -> None:
+        """画面と書き出しで囲みの見た目を揃える（B-3 と同じ方針）。"""
+        from hitofude.editor.exporter import _stylesheet
+        from hitofude.theme import LIGHT
+
+        css = _stylesheet(LIGHT)
+        assert LIGHT.note_info_background in css
+        assert LIGHT.note_warn_background in css
+        assert LIGHT.note_alert_background in css

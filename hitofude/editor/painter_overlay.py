@@ -99,6 +99,9 @@ class DecorationKind(Enum):
     """` ```python:aaa.py ` のファイル名（B-3）。"""
 
     QUOTE_BAR = auto()
+    NOTE_BACKGROUND = auto()
+    """`:::note` の背景の帯（ユーザー要望）。種類は `text` に入れる。"""
+
     NOTE_BAR = auto()
     """`:::note` の囲み（B-3）。種類は `Decoration.text` に入れる。"""
 
@@ -395,7 +398,8 @@ def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decora
 
     if info.note_kind:
         # 種類は `text` に載せる。色を決めるのは描く側（`paint`）で、
-        # ここはテーマを知らないままでいられる
+        # ここはテーマを知らないままでいられる。帯を先に、縦線をその上に
+        result.append(Decoration(DecorationKind.NOTE_BACKGROUND, QRectF(geometry), info.note_kind))
         result.append(
             Decoration(
                 DecorationKind.NOTE_BAR,
@@ -519,6 +523,19 @@ def _note_color(kind: str, theme: ThemeColors) -> str:
     }.get(kind, theme.muted_foreground)
 
 
+def _note_background(kind: str, theme: ThemeColors) -> str:
+    """`:::note` の背景色（ユーザー要望）。
+
+    知らない綴りは**コードブロックと同じ無彩色**。種類の色を出すと、
+    綴りの間違いに気づけない（縦線の灰色と同じ理屈）。
+    """
+    return {
+        "info": theme.note_info_background,
+        "warn": theme.note_warn_background,
+        "alert": theme.note_alert_background,
+    }.get(kind, theme.code_background)
+
+
 def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) -> None:
     """組み立てた装飾を描く。背景に属するものだけを扱う。"""
     painter.save()
@@ -535,6 +552,8 @@ def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) 
                 painter.fillRect(decoration.rect, QColor(theme.code_background))
             case DecorationKind.QUOTE_BAR:
                 painter.fillRect(decoration.rect, QColor(theme.quote_bar))
+            case DecorationKind.NOTE_BACKGROUND:
+                painter.fillRect(decoration.rect, QColor(_note_background(decoration.text, theme)))
             case DecorationKind.NOTE_BAR:
                 painter.fillRect(decoration.rect, QColor(_note_color(decoration.text, theme)))
             case DecorationKind.RULE:

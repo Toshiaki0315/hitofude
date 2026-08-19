@@ -328,9 +328,13 @@ def _stylesheet(theme: ThemeColors) -> str:
         # 囲みは**左の縦線で表す**。全面の背景は Qt では箱にならず
         # （`background` はブロックを塗らない）、色だけ変わって理由が読めない
         f".note {{ border-left: 4px solid {theme.rule}; padding: 2px 12px; margin: 12px 0; }}"
-        f".note-info {{ border-left-color: {theme.note_info}; }}"
-        f".note-warn {{ border-left-color: {theme.note_warn}; }}"
-        f".note-alert {{ border-left-color: {theme.note_alert}; }}"
+        # 背景も画面（painter_overlay）と同じ色で塗る（ユーザー要望）
+        f".note-info {{ border-left-color: {theme.note_info}; "
+        f"background: {theme.note_info_background}; }}"
+        f".note-warn {{ border-left-color: {theme.note_warn}; "
+        f"background: {theme.note_warn_background}; }}"
+        f".note-alert {{ border-left-color: {theme.note_alert}; "
+        f"background: {theme.note_alert_background}; }}"
         # 綴り違い（`:::note warm`）。`.note` の灰色のまま出す。**info の青に
         # しない**（間違えたことに気づく手掛かりが消える。ユーザー報告）
         f".note-unknown {{ border-left-color: {theme.muted_foreground}; }}"

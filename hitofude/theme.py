@@ -45,6 +45,15 @@ class ThemeColors:
     note_alert: str
     """`:::note alert` の色（B-3）。"""
 
+    note_info_background: str
+    """`:::note info` の背景（ユーザー要望）。薄い緑。"""
+
+    note_warn_background: str
+    """`:::note warn` の背景。薄い黄。"""
+
+    note_alert_background: str
+    """`:::note alert` の背景。薄い赤。"""
+
 
 LIGHT = ThemeColors(
     is_dark=False,
@@ -69,6 +78,11 @@ LIGHT = ThemeColors(
     note_info="#3B7DD8",
     note_warn="#B26B00",
     note_alert="#C0392B",
+    # 背景は薄く（ユーザー要望: info 薄い緑 / warn 薄い黄 / alert 薄い赤）。
+    # 本文の黒が乗っても読める濃さに抑える
+    note_info_background="#E8F5E9",
+    note_warn_background="#FFF8E1",
+    note_alert_background="#FDECEC",
 )
 
 DARK = ThemeColors(
@@ -91,6 +105,10 @@ DARK = ThemeColors(
     note_info="#6BA6F5",
     note_warn="#E0A100",
     note_alert="#FF6B5E",
+    # ダークでは沈んだ同系色。明るい色をそのまま使うと発光して見える
+    note_info_background="#1E2B21",
+    note_warn_background="#2E2913",
+    note_alert_background="#33201F",
 )
 
 
