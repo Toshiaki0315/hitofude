@@ -19,7 +19,6 @@ from collections import OrderedDict, deque
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QColor
 
 logger = logging.getLogger(__name__)
 
@@ -45,21 +44,28 @@ _VIEW_SIZE = QSize(1600, 1600)
 # DOM の更新から grab までの待ち。描画パイプラインが 1 拍遅れる
 _GRAB_DELAY_MS = 120
 
-_PAGE = """<!doctype html><html><head><meta charset="utf-8">
-<script src="mermaid.min.js"></script></head>
-<body style="margin:0;background:transparent">
+_PAGE = """<!doctype html><html><head><meta charset="utf-8"></head>
+<body style="margin:0">
 <div id="out"></div>
+<script src="mermaid.min.js"></script>
 <script>
 let seq = 0;
-async function draw(source, dark) {
+async function draw(source, dark, background) {
   seq += 1;
   const id = "m" + seq;
+  // 背景はページの中身として塗る。compositor の背景色（setBackgroundColor）
+  // は環境によって grab に乗らず、白い板になる（実機 cocoa で実測）
+  document.body.style.background = background;
   mermaid.initialize({startOnLoad: false, theme: dark ? "dark" : "default"});
   try {
     const {svg} = await mermaid.render(id, source);
     document.getElementById("out").innerHTML = svg;
     const box = document.querySelector("#out svg").getBoundingClientRect();
-    document.title = "ok " + seq + " " + Math.ceil(box.width) + " " + Math.ceil(box.height);
+    // ビューポートの大きさも返す。widget よりページが小さい環境があり
+    // （実機で innerHeight が 38px 小さかった）、その差のぶん描画が
+    // ずれて切り出しが外れる
+    document.title = ["ok", seq, Math.ceil(box.width), Math.ceil(box.height),
+                      window.innerWidth, window.innerHeight].join(" ");
   } catch (error) {
     // 失敗の後始末。mermaid はエラー図を DOM に残すことがある
     document.getElementById("out").innerHTML = "";
@@ -148,8 +154,9 @@ class MermaidCache(QObject):
 
     def _run_current(self) -> None:
         source, dark = self._current
-        self._view.page().setBackgroundColor(QColor(self._background))
-        self._view.page().runJavaScript(f"draw({json.dumps(source)}, {json.dumps(dark)})")
+        self._view.page().runJavaScript(
+            f"draw({json.dumps(source)}, {json.dumps(dark)}, {json.dumps(self._background)})"
+        )
 
     def _ensure_view(self):
         if self._view is not None:
@@ -183,15 +190,23 @@ class MermaidCache(QObject):
             self._finish(None)
             return
         width, height = int(parts[2]), int(parts[3])
+        inner_w, inner_h = int(parts[4]), int(parts[5])
         # DOM 更新の一拍あとに撮る。すぐ撮ると前の絵が写る
-        QTimer.singleShot(_GRAB_DELAY_MS, lambda: self._grab(width, height))
+        QTimer.singleShot(_GRAB_DELAY_MS, lambda: self._grab(width, height, inner_w, inner_h))
 
-    def _grab(self, width: int, height: int) -> None:
+    def _grab(self, width: int, height: int, inner_w: int, inner_h: int) -> None:
         if self._view is None or self._current is None:
             return
-        ratio = self._view.devicePixelRatio()
-        shot = self._view.grab()
-        pixmap = shot.copy(0, 0, round(width * ratio), round(height * ratio))
+        view = self._view
+        shot = view.grab()
+        # grab の実寸から倍率を求める（Retina）。widget の devicePixelRatio を
+        # 信じるより、実際に返ってきた絵で測るほうが確実
+        ratio = shot.width() / view.width() if view.width() else 1.0
+        # ページのビューポートが widget より小さい環境では、その差のぶん
+        # 中身が下（右）に寄って描かれる（実機 cocoa で実測）。原点を合わせる
+        origin_x = round((view.width() - inner_w) * ratio)
+        origin_y = round((view.height() - inner_h) * ratio)
+        pixmap = shot.copy(origin_x, origin_y, round(width * ratio), round(height * ratio))
         pixmap.setDevicePixelRatio(ratio)
         self._finish(pixmap)
 
