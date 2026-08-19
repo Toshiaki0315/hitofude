@@ -8,9 +8,14 @@
 
 from pathlib import Path
 
+from hitofude.core import searchquery
 from hitofude.core.outline import headings
 from hitofude.core.search import matching_line
 from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
+
+# 検索欄の案内（提案 3）。**書き方をここで知らせる。** 入力欄を増やさない
+# 代わりに、絞り込みが書けることは案内で伝える
+SEARCH_PLACEHOLDER = "本文を検索…（#タグ で絞れます）"
 
 
 class SearchActions:
@@ -37,7 +42,9 @@ class SearchActions:
         開くと、`Cmd+F` で探し直しになる。
         """
         window = self._window
-        palette = Palette(window, placeholder="本文を検索…", theme=window._theme_watcher.colors)
+        palette = Palette(
+            window, placeholder=SEARCH_PLACEHOLDER, theme=window._theme_watcher.colors
+        )
         palette.set_provider(self._search_items)
         palette.chosen.connect(self._on_search_chosen)
         palette.finished.connect(palette.deleteLater)
@@ -82,11 +89,18 @@ class SearchActions:
         ]
         return fuzzy_filter(query, items)
 
+    def search_placeholder(self) -> str:
+        """検索欄の案内。**書き方を知らせる**（説明が無いと誰も使わない）。"""
+        return SEARCH_PLACEHOLDER
+
     def _search_items(self, query: str) -> list[PaletteItem]:
-        self._search_query = query
+        parsed = searchquery.parse(query)
+        # 飛び先（G-1）は**言葉のほう**で探す。`#仕事` は本文に無いので、
+        # そのまま渡すと一致する行が見つからず先頭が開く
+        self._search_query = parsed.text
         return [
             PaletteItem(title=hit.title, subtitle=hit.snippet, path=hit.path)
-            for hit in self._window._db.search(query)
+            for hit in self._window._db.search(parsed.text, tags=parsed.tags)
         ]
 
     def _outline_items(self, query: str) -> list[PaletteItem]:

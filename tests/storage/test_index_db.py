@@ -567,3 +567,51 @@ class TestShortQueryEscaping:
         db.sync(vault)
 
         assert [hit.title for hit in db.search("_v")] == ["識別子"]
+
+
+class TestSearchWithTags:
+    """タグで絞る検索（提案 3）。
+
+    `#仕事 予算` のように、**本文と同じ書き方**で絞れるようにする。
+    索引のタグ表は先祖まで展開済みなので、`#仕事` で `#仕事/会議` も当たる。
+    """
+
+    @pytest.fixture
+    def filled(self, db, vault):
+        add(db=db, vault=vault, title="仕事の予算", body="来期の予算を決める\n\n#仕事")
+        add(db=db, vault=vault, title="私用の予算", body="旅行の予算を決める\n\n#私用")
+        add(db=db, vault=vault, title="会議の記録", body="来期の予算の話\n\n#仕事/会議")
+        add(db=db, vault=vault, title="無関係", body="今日の天気\n\n#仕事")
+        return db
+
+    def test_タグと言葉の両方で絞る(self, filled) -> None:
+        titles = {hit.title for hit in filled.search("予算", tags=("仕事",))}
+        assert titles == {"仕事の予算", "会議の記録"}
+
+    def test_親のタグで子も当たる(self, filled) -> None:
+        """索引は先祖まで展開して入れている（`ancestors`）。"""
+        titles = {hit.title for hit in filled.search("予算", tags=("仕事/会議",))}
+        assert titles == {"会議の記録"}
+
+    def test_複数のタグは全部満たす(self, filled) -> None:
+        assert filled.search("予算", tags=("仕事", "私用")) == []
+
+    def test_タグだけでも引ける(self, filled) -> None:
+        """言葉が無いときは、そのタグのノートを並べる。"""
+        titles = {hit.title for hit in filled.search("", tags=("仕事",))}
+        assert titles == {"仕事の予算", "会議の記録", "無関係"}
+
+    def test_短い言葉でも絞れる(self, filled) -> None:
+        """2 文字以下は FTS を諦めて LIKE に落ちる経路（既存）。そこでも効く。"""
+        titles = {hit.title for hit in filled.search("予算", tags=("私用",))}
+        assert titles == {"私用の予算"}
+
+    def test_ゴミ箱は出ない(self, filled, vault) -> None:
+        note = vault.create("捨てる予算", "# 捨てる予算\n\n#仕事\n")
+        filled.upsert_note(note, vault.root, trashed=True)
+        titles = {hit.title for hit in filled.search("予算", tags=("仕事",))}
+        assert "捨てる予算" not in titles
+
+    def test_タグが無ければ今まで通り(self, filled) -> None:
+        titles = {hit.title for hit in filled.search("予算")}
+        assert titles == {"仕事の予算", "私用の予算", "会議の記録"}

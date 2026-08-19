@@ -10,6 +10,7 @@
 
 import logging
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -416,41 +417,72 @@ class IndexDb:
         )
         return [TagCount(tag=row["tag"], count=row["count"]) for row in rows]
 
-    def search(self, query: str, *, limit: int = 50) -> list[SearchHit]:
-        """全文検索（spec §7.3）。
+    def search(self, query: str, *, tags: Sequence[str] = (), limit: int = 50) -> list[SearchHit]:
+        """全文検索（spec §7.3）。`tags` を渡すとタグでも絞る（提案 3）。
 
         trigram は 3 文字単位で索引するため、**2 文字以下のクエリは構造上
         ヒットしない**。「人事」「経費」のような 2 文字の日本語は日常的に
         検索されるので、短いクエリでは FTS を諦めて LIKE に切り替える。
+
+        **タグは全部満たすものだけ**（AND）。OR だと、絞ったのに件数が
+        増えて驚く。タグ表は先祖まで展開して入れているので、`仕事` で
+        `仕事/会議` も当たる。
+
+        言葉が空でタグだけのときは、そのタグのノートを並べる（絞り込み
+        だけを書いたのに何も出ないと、打ち間違えたように見える）。
         """
         text = query.strip()
         if not text:
-            return []
+            return self._search_tags(tags, limit=limit) if tags else []
         if len(text) < MIN_TRIGRAM_QUERY:
-            return self._search_like(text, limit=limit)
-        return self._search_fts(text, limit=limit)
+            return self._search_like(text, tags=tags, limit=limit)
+        return self._search_fts(text, tags=tags, limit=limit)
 
-    def _search_fts(self, text: str, *, limit: int) -> list[SearchHit]:
+    def _tag_clause(self, tags: Sequence[str]) -> tuple[str, list[str]]:
+        """タグの AND 条件。渡されなければ空。
+
+        1 タグにつき 1 つの `EXISTS` を並べる。`IN` + `COUNT` でも書けるが、
+        こちらのほうが `idx_tags_tag` をそのまま使える。
+        """
+        if not tags:
+            return "", []
+        clause = "".join(
+            " AND EXISTS (SELECT 1 FROM tags WHERE tags.note_id = notes.id AND tags.tag = ?)"
+            for _ in tags
+        )
+        return clause, list(tags)
+
+    def _search_tags(self, tags: Sequence[str], *, limit: int) -> list[SearchHit]:
+        """言葉なしでタグだけ。並びは一覧と同じ（ピン留め → 更新順）。"""
+        clause, params = self._tag_clause(tags)
         rows = self._connection.execute(
-            """
-            SELECT notes.id AS id, notes.path AS path, notes.title AS title,
-                   snippet(notes_fts, 1, :start, :end, '…', 12) AS snippet
-            FROM notes_fts
-            JOIN notes ON notes.id = notes_fts.note_id
-            WHERE notes_fts MATCH :query AND notes.trashed = 0
-            ORDER BY rank
-            LIMIT :limit
+            f"""
+            SELECT id, path, title, preview AS snippet FROM notes
+            WHERE trashed = 0{clause}
+            ORDER BY pinned DESC, modified_at DESC
+            LIMIT ?
             """,
-            {
-                "query": _quote(text),
-                "limit": limit,
-                "start": HIGHLIGHT_START,
-                "end": HIGHLIGHT_END,
-            },
+            [*params, limit],
         )
         return [_to_hit(row) for row in rows]
 
-    def _search_like(self, text: str, *, limit: int) -> list[SearchHit]:
+    def _search_fts(self, text: str, *, tags: Sequence[str] = (), limit: int) -> list[SearchHit]:
+        clause, tag_params = self._tag_clause(tags)
+        rows = self._connection.execute(
+            f"""
+            SELECT notes.id AS id, notes.path AS path, notes.title AS title,
+                   snippet(notes_fts, 1, ?, ?, '…', 12) AS snippet
+            FROM notes_fts
+            JOIN notes ON notes.id = notes_fts.note_id
+            WHERE notes_fts MATCH ? AND notes.trashed = 0{clause}
+            ORDER BY rank
+            LIMIT ?
+            """,
+            [HIGHLIGHT_START, HIGHLIGHT_END, _quote(text), *tag_params, limit],
+        )
+        return [_to_hit(row) for row in rows]
+
+    def _search_like(self, text: str, *, tags: Sequence[str] = (), limit: int) -> list[SearchHit]:
         """短いクエリ用のフォールバック。
 
         走査対象はタイトルとプレビューだけ（spec §7.3）。本文まで LIKE で
@@ -460,15 +492,16 @@ class IndexDb:
         # 「%」の 1 文字検索が全件に一致する（打った文字をそのまま探す）
         escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
+        clause, tag_params = self._tag_clause(tags)
         rows = self._connection.execute(
-            r"""
+            rf"""
             SELECT id, path, title, preview AS snippet FROM notes
             WHERE trashed = 0
-              AND (title LIKE ? ESCAPE '\' OR preview LIKE ? ESCAPE '\')
+              AND (title LIKE ? ESCAPE '\' OR preview LIKE ? ESCAPE '\'){clause}
             ORDER BY pinned DESC, modified_at DESC
             LIMIT ?
             """,
-            (pattern, pattern, limit),
+            [pattern, pattern, *tag_params, limit],
         )
         return [_to_hit(row) for row in rows]
 
