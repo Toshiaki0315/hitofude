@@ -140,3 +140,62 @@ class TestExistingTitle:
 
         assert window.note_list.model().rowCount() == before
         assert window.current_note.path == existing.path
+
+
+class TestSelection:
+    """**開いたら一覧の選択も動く**（ユーザー報告）。
+
+    移動はできても一覧の帯が前のノートに残ると、今どれを見ているのかが
+    画面から読めない。`_open_created` の docstring が警告していた
+    「select 漏れ」を、既にあるノートを開く経路でやってしまっていた。
+    """
+
+    def selected(self, window: MainWindow):
+        return window.note_list.current_path()
+
+    def test_次の日で選択が動く(self, window) -> None:
+        make_daily(window, "2026-08-19", "2026-08-20")
+        window.open_daily_note(datetime(2026, 8, 19))
+
+        window.open_adjacent_daily(forward=True)
+        assert self.selected(window) == window.current_note.path.relative_to(window.vault.root)
+
+    def test_前の日でも選択が動く(self, window) -> None:
+        make_daily(window, "2026-08-19", "2026-08-20")
+        window.open_daily_note(datetime(2026, 8, 20))
+
+        window.open_adjacent_daily(forward=False)
+        assert self.selected(window) == window.current_note.path.relative_to(window.vault.root)
+
+    def test_今日のノートでも選択が動く(self, window) -> None:
+        """既にあるノートを開く経路（題名で見つけたとき）。"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        note = window.vault.create("日次-2", f"# {today}\n\n#日次\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+
+        window.open_daily_note()
+        assert self.selected(window) == note.path.relative_to(window.vault.root)
+
+
+class TestHistorySelection:
+    """`Cmd+[`（直前のノートへ戻る）にも同じ穴があった。
+
+    戻れているのに一覧の帯が前のノートに残る。**開く経路が増えるたびに
+    select 漏れが起きる**ので、受け口を 1 つに寄せた（`open_and_select`）。
+    """
+
+    def test_戻ると選択も動く(self, window) -> None:
+        paths = []
+        for name in ("あ", "い"):
+            note = window.vault.create(name, f"# {name}\n")
+            window.vault_index.upsert_note(note, window.vault.root)
+            paths.append(note.path)
+        window.refresh()
+        window.open_and_select(paths[0])
+        window.open_and_select(paths[1])
+
+        window.open_previous_note()
+
+        assert window.current_note.path == paths[0]
+        assert window.note_list.current_path() == paths[0].relative_to(window.vault.root)

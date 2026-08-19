@@ -109,8 +109,7 @@ class SearchActions:
         **見つからなくても開く。** 飛べないだけで、開けないより開くほうがよい。
         """
         window = self._window
-        window.open_note(window._vault.root / item.path)
-        window._note_list.select_path(item.path)
+        window.open_and_select(window._vault.root / item.path)
 
         line = matching_line(window._editor.toPlainText(), self._search_query)
         if line is not None:
@@ -121,5 +120,4 @@ class SearchActions:
             self.jump_to_line(item.line)
             return
         window = self._window
-        window.open_note(window._vault.root / item.path)
-        window._note_list.select_path(item.path)
+        window.open_and_select(window._vault.root / item.path)

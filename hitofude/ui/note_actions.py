@@ -455,7 +455,7 @@ class NoteActions:
         window.flush()
         found = self._note_titled(daily_title(day or datetime.now()))
         if found is not None:
-            window.open_note(found)
+            window.open_and_select(found)
             return window.current_note
 
         created = window._vault.daily_note(day)
@@ -503,7 +503,7 @@ class NoteActions:
         path = self._note_titled(found)
         if path is None:
             return False
-        window.open_note(path)
+        window.open_and_select(path)
         return True
 
     def _template_items(self, query: str) -> list[PaletteItem]:

@@ -408,8 +408,7 @@ class MainWindow(QMainWindow):
             self._config.last_note = None
             return
 
-        self.open_note(path)
-        self._note_list.select_path(relative)
+        self.open_and_select(path)
 
     def _remember_note(self, path: Path | None) -> None:
         """開いているノートを覚える。
@@ -679,6 +678,17 @@ class MainWindow(QMainWindow):
         finally:
             self._opening = False
 
+    def open_and_select(self, path: Path) -> None:
+        """既にあるノートを開き、一覧の選択も合わせる。
+
+        **開くだけでは足りない。** 一覧の帯が前のノートに残ると、今どれを
+        見ているのかが画面から読めない（ユーザー報告）。作成系は
+        `_open_created` が同じ面倒を見ている。**この 2 つ以外で
+        `open_note()` を直に呼ばない**こと。呼ぶと select 漏れになる。
+        """
+        self.open_note(path)
+        self._note_list.select_path(path.relative_to(self._vault.root))
+
     def _open_note(self, path: Path) -> None:
         self.flush()
         try:
@@ -838,7 +848,7 @@ class MainWindow(QMainWindow):
             # 次に押したときそこへ戻ってしまう（2 つのノートを往復する）
             self._going_back = True
             try:
-                self.open_note(target)
+                self.open_and_select(target)
             finally:
                 self._going_back = False
             return
@@ -1005,8 +1015,7 @@ class MainWindow(QMainWindow):
         return context_line(text, self._note.title)
 
     def _on_backlink_opened(self, relative: Path) -> None:
-        self.open_note(self._vault.root / relative)
-        self._note_list.select_path(relative)
+        self.open_and_select(self._vault.root / relative)
 
     def activate_tag(self, tag: str) -> None:
         """`Cmd+クリック` されたタグで一覧を絞る（D-2）。
