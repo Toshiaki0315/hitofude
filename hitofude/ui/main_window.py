@@ -291,8 +291,11 @@ class MainWindow(QMainWindow):
             "QToolButton::menu-indicator { image: none; }"
         )
         self._menu_button.setMenu(build_gear_menu(self))
-        # 起動直後のぶん。以後のテーマ変更は `_apply_theme_now` が塗り直す
-        self._menu_button.setIcon(glyph_icon(Glyph.GEAR, self._theme_watcher.colors.foreground))
+        # 起動直後のぶん。以後のテーマ変更は `_apply_theme_now` が塗り直す。
+        # 色は控えめに（ユーザー要望）。本文と同じ濃さだと主張が強い
+        self._menu_button.setIcon(
+            glyph_icon(Glyph.GEAR, self._theme_watcher.colors.muted_foreground)
+        )
         # **左端に置く**（ユーザー指摘）。右端は窓の角が丸く、埋もれて
         # 見えにくい。左側は showMessage が使う領域だが、一時通知は
         # 専用ラベル（notify）に移したので隠れない
@@ -1187,7 +1190,7 @@ class MainWindow(QMainWindow):
 
     def _apply_theme_now(self, colors: ThemeColors) -> None:
         self._apply_palette(colors)
-        self._menu_button.setIcon(glyph_icon(Glyph.GEAR, colors.foreground))
+        self._menu_button.setIcon(glyph_icon(Glyph.GEAR, colors.muted_foreground))
         self._pane.set_theme(colors)
         self._list_pane.set_theme(colors)
         self._sidebar.set_theme(colors)
