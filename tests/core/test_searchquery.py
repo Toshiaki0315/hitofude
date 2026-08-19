@@ -6,6 +6,10 @@
 入力欄は増やさない。書き方が本文と揃っているほうが覚えることが少ない。
 """
 
+from datetime import date
+
+import pytest
+
 from hitofude.core.searchquery import parse
 
 
@@ -69,9 +73,56 @@ class TestTags:
 
 class TestFilterOnly:
     def test_絞り込みだけか分かる(self) -> None:
-        assert parse("#仕事").tags_only is True
-        assert parse("#仕事 予算").tags_only is False
-        assert parse("予算").tags_only is False
+        assert parse("#仕事").filter_only is True
+        assert parse("#仕事 予算").filter_only is False
+        assert parse("予算").filter_only is False
 
     def test_空は絞り込みでもない(self) -> None:
-        assert parse("").tags_only is False
+        assert parse("").filter_only is False
+
+
+class TestDates:
+    """期間で絞る（案 A）。**その日を含む。**
+
+    `after:2026-08-01` は 8/1 に書いたものも出す。日付は区切りとして打つ
+    ものなので、含まないほうが驚く。
+    """
+
+    def test_開始日を取り出す(self) -> None:
+        found = parse("予算 after:2026-08-01")
+        assert found.after == date(2026, 8, 1)
+        assert found.text == "予算"
+
+    def test_終了日を取り出す(self) -> None:
+        found = parse("予算 before:2026-08-31")
+        assert found.before == date(2026, 8, 31)
+        assert found.text == "予算"
+
+    def test_両方書ける(self) -> None:
+        found = parse("after:2026-08-01 before:2026-08-31 予算")
+        assert (found.after, found.before) == (date(2026, 8, 1), date(2026, 8, 31))
+        assert found.text == "予算"
+
+    def test_タグと混ぜられる(self) -> None:
+        found = parse("#仕事 after:2026-08-01 予算")
+        assert found.tags == ("仕事",)
+        assert found.after == date(2026, 8, 1)
+        assert found.text == "予算"
+
+    def test_日付だけでも通る(self) -> None:
+        found = parse("after:2026-08-01")
+        assert found.after == date(2026, 8, 1)
+        assert found.text == ""
+        assert found.filter_only is True
+
+    @pytest.mark.parametrize(
+        "query", ["after:", "after:きのう", "after:2026-13-01", "after:2026-8-1"]
+    )
+    def test_日付として読めなければ言葉のまま(self, query: str) -> None:
+        """**黙って絞らない。** 打ち間違いで 0 件になると、原因が分からない。"""
+        found = parse(query)
+        assert found.after is None
+        assert found.text == query
+
+    def test_大文字でも効く(self) -> None:
+        assert parse("After:2026-08-01").after == date(2026, 8, 1)

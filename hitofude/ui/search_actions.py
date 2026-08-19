@@ -15,7 +15,7 @@ from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
 
 # 検索欄の案内（提案 3）。**書き方をここで知らせる。** 入力欄を増やさない
 # 代わりに、絞り込みが書けることは案内で伝える
-SEARCH_PLACEHOLDER = "本文を検索…（#タグ で絞れます）"
+SEARCH_PLACEHOLDER = "本文を検索…（#タグ after:2026-08-01 で絞れます）"
 
 
 class SearchActions:
@@ -100,7 +100,9 @@ class SearchActions:
         self._search_query = parsed.text
         return [
             PaletteItem(title=hit.title, subtitle=hit.snippet, path=hit.path)
-            for hit in self._window._db.search(parsed.text, tags=parsed.tags)
+            for hit in self._window._db.search(
+                parsed.text, tags=parsed.tags, after=parsed.after, before=parsed.before
+            )
         ]
 
     def _outline_items(self, query: str) -> list[PaletteItem]:

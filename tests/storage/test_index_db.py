@@ -4,6 +4,7 @@
 そこから漏れる 2 文字クエリの扱いを重点的に見る。
 """
 
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -615,3 +616,53 @@ class TestSearchWithTags:
     def test_タグが無ければ今まで通り(self, filled) -> None:
         titles = {hit.title for hit in filled.search("予算")}
         assert titles == {"仕事の予算", "私用の予算", "会議の記録"}
+
+
+class TestSearchWithDates:
+    """期間で絞る検索（案 A）。**その日を含む。**"""
+
+    @pytest.fixture
+    def dated(self, db, vault):
+        for title, day in (
+            ("古い記録", "2026-07-01"),
+            ("先月の記録", "2026-08-01"),
+            ("今月の記録", "2026-08-20"),
+        ):
+            note = vault.create(title, f"# {title}\n\n予算の話\n")
+            path = note.path
+            text = path.read_text(encoding="utf-8").replace(
+                note.meta["modified"], f"{day}T10:00:00+09:00"
+            )
+            path.write_text(text, encoding="utf-8")
+            db.upsert_note(vault.read(path), vault.root)
+        return db
+
+    def test_開始日で絞る(self, dated) -> None:
+        titles = {hit.title for hit in dated.search("予算", after=date(2026, 8, 1))}
+        assert titles == {"先月の記録", "今月の記録"}
+
+    def test_終了日で絞る(self, dated) -> None:
+        titles = {hit.title for hit in dated.search("予算", before=date(2026, 8, 1))}
+        assert titles == {"古い記録", "先月の記録"}
+
+    def test_両端を含む(self, dated) -> None:
+        """**区切りとして打つ日付は含む。** 含まないほうが驚く。"""
+        titles = {
+            hit.title
+            for hit in dated.search("予算", after=date(2026, 8, 1), before=date(2026, 8, 1))
+        }
+        assert titles == {"先月の記録"}
+
+    def test_タグと混ぜられる(self, dated, vault) -> None:
+        note = vault.create("仕事の記録", "# 仕事の記録\n\n予算の話\n\n#仕事\n")
+        dated.upsert_note(note, vault.root)
+        titles = {hit.title for hit in dated.search("予算", tags=("仕事",), after=date(2026, 1, 1))}
+        assert titles == {"仕事の記録"}
+
+    def test_言葉なしでも絞れる(self, dated) -> None:
+        titles = {hit.title for hit in dated.search("", after=date(2026, 8, 15))}
+        assert titles == {"今月の記録"}
+
+    def test_短い言葉でも絞れる(self, dated) -> None:
+        titles = {hit.title for hit in dated.search("予算", after=date(2026, 8, 15))}
+        assert titles == {"今月の記録"}

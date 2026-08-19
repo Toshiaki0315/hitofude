@@ -12,6 +12,7 @@ import logging
 import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import date
 from enum import Enum
 from pathlib import Path
 
@@ -417,8 +418,16 @@ class IndexDb:
         )
         return [TagCount(tag=row["tag"], count=row["count"]) for row in rows]
 
-    def search(self, query: str, *, tags: Sequence[str] = (), limit: int = 50) -> list[SearchHit]:
-        """全文検索（spec §7.3）。`tags` を渡すとタグでも絞る（提案 3）。
+    def search(
+        self,
+        query: str,
+        *,
+        tags: Sequence[str] = (),
+        after: date | None = None,
+        before: date | None = None,
+        limit: int = 50,
+    ) -> list[SearchHit]:
+        """全文検索（spec §7.3）。`tags` と期間で絞れる（提案 3 / 案 A）。
 
         trigram は 3 文字単位で索引するため、**2 文字以下のクエリは構造上
         ヒットしない**。「人事」「経費」のような 2 文字の日本語は日常的に
@@ -428,15 +437,36 @@ class IndexDb:
         増えて驚く。タグ表は先祖まで展開して入れているので、`仕事` で
         `仕事/会議` も当たる。
 
-        言葉が空でタグだけのときは、そのタグのノートを並べる（絞り込み
-        だけを書いたのに何も出ないと、打ち間違えたように見える）。
+        言葉が空で絞り込みだけのときは、そのノートを並べる（絞り込みだけを
+        書いたのに何も出ないと、打ち間違えたように見える）。
+
+        **期間は両端を含む**（`after:2026-08-01` は 8/1 も出す）。区切りとして
+        打つ日付は含むほうが素直。
         """
         text = query.strip()
+        narrow = bool(tags) or after is not None or before is not None
         if not text:
-            return self._search_tags(tags, limit=limit) if tags else []
+            return self._search_filters(tags, after, before, limit=limit) if narrow else []
         if len(text) < MIN_TRIGRAM_QUERY:
-            return self._search_like(text, tags=tags, limit=limit)
-        return self._search_fts(text, tags=tags, limit=limit)
+            return self._search_like(text, tags=tags, after=after, before=before, limit=limit)
+        return self._search_fts(text, tags=tags, after=after, before=before, limit=limit)
+
+    def _date_clause(self, after: date | None, before: date | None) -> tuple[str, list[str]]:
+        """更新日の範囲。**両端を含む。** 区切りとして打つ日付は含むほうが素直。
+
+        `substr(modified_at, 1, 10)` で日付の部分だけを見る。`modified_at` は
+        時刻と時差まで入った文字列なので、そのまま比べると
+        `before:2026-08-20` が同じ日の 10:00 を落とす。
+        """
+        clause = ""
+        params: list[str] = []
+        if after is not None:
+            clause += " AND substr(notes.modified_at, 1, 10) >= ?"
+            params.append(after.isoformat())
+        if before is not None:
+            clause += " AND substr(notes.modified_at, 1, 10) <= ?"
+            params.append(before.isoformat())
+        return clause, params
 
     def _tag_clause(self, tags: Sequence[str]) -> tuple[str, list[str]]:
         """タグの AND 条件。渡されなければ空。
@@ -452,37 +482,64 @@ class IndexDb:
         )
         return clause, list(tags)
 
-    def _search_tags(self, tags: Sequence[str], *, limit: int) -> list[SearchHit]:
-        """言葉なしでタグだけ。並びは一覧と同じ（ピン留め → 更新順）。"""
-        clause, params = self._tag_clause(tags)
+    def _search_filters(
+        self,
+        tags: Sequence[str],
+        after: date | None,
+        before: date | None,
+        *,
+        limit: int,
+    ) -> list[SearchHit]:
+        """言葉なしで絞り込みだけ。並びは一覧と同じ（ピン留め → 更新順）。"""
+        tag_clause, tag_params = self._tag_clause(tags)
+        date_clause, date_params = self._date_clause(after, before)
         rows = self._connection.execute(
             f"""
-            SELECT id, path, title, preview AS snippet FROM notes
-            WHERE trashed = 0{clause}
-            ORDER BY pinned DESC, modified_at DESC
+            SELECT notes.id AS id, notes.path AS path, notes.title AS title,
+                   notes.preview AS snippet
+            FROM notes
+            WHERE notes.trashed = 0{tag_clause}{date_clause}
+            ORDER BY notes.pinned DESC, notes.modified_at DESC
             LIMIT ?
             """,
-            [*params, limit],
+            [*tag_params, *date_params, limit],
         )
         return [_to_hit(row) for row in rows]
 
-    def _search_fts(self, text: str, *, tags: Sequence[str] = (), limit: int) -> list[SearchHit]:
+    def _search_fts(
+        self,
+        text: str,
+        *,
+        tags: Sequence[str] = (),
+        after: date | None = None,
+        before: date | None = None,
+        limit: int,
+    ) -> list[SearchHit]:
         clause, tag_params = self._tag_clause(tags)
+        date_clause, date_params = self._date_clause(after, before)
         rows = self._connection.execute(
             f"""
             SELECT notes.id AS id, notes.path AS path, notes.title AS title,
                    snippet(notes_fts, 1, ?, ?, '…', 12) AS snippet
             FROM notes_fts
             JOIN notes ON notes.id = notes_fts.note_id
-            WHERE notes_fts MATCH ? AND notes.trashed = 0{clause}
+            WHERE notes_fts MATCH ? AND notes.trashed = 0{clause}{date_clause}
             ORDER BY rank
             LIMIT ?
             """,
-            [HIGHLIGHT_START, HIGHLIGHT_END, _quote(text), *tag_params, limit],
+            [HIGHLIGHT_START, HIGHLIGHT_END, _quote(text), *tag_params, *date_params, limit],
         )
         return [_to_hit(row) for row in rows]
 
-    def _search_like(self, text: str, *, tags: Sequence[str] = (), limit: int) -> list[SearchHit]:
+    def _search_like(
+        self,
+        text: str,
+        *,
+        tags: Sequence[str] = (),
+        after: date | None = None,
+        before: date | None = None,
+        limit: int,
+    ) -> list[SearchHit]:
         """短いクエリ用のフォールバック。
 
         走査対象はタイトルとプレビューだけ（spec §7.3）。本文まで LIKE で
@@ -493,15 +550,19 @@ class IndexDb:
         escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
         clause, tag_params = self._tag_clause(tags)
+        date_clause, date_params = self._date_clause(after, before)
         rows = self._connection.execute(
             rf"""
-            SELECT id, path, title, preview AS snippet FROM notes
-            WHERE trashed = 0
-              AND (title LIKE ? ESCAPE '\' OR preview LIKE ? ESCAPE '\'){clause}
-            ORDER BY pinned DESC, modified_at DESC
+            SELECT notes.id AS id, notes.path AS path, notes.title AS title,
+                   notes.preview AS snippet
+            FROM notes
+            WHERE notes.trashed = 0
+              AND (notes.title LIKE ? ESCAPE '\' OR notes.preview LIKE ? ESCAPE '\')
+              {clause}{date_clause}
+            ORDER BY notes.pinned DESC, notes.modified_at DESC
             LIMIT ?
             """,
-            [pattern, pattern, *tag_params, limit],
+            [pattern, pattern, *tag_params, *date_params, limit],
         )
         return [_to_hit(row) for row in rows]
 

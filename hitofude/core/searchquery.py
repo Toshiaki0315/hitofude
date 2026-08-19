@@ -11,10 +11,17 @@
 
 import re
 from dataclasses import dataclass
+from datetime import date, datetime
 
 # 絞り込みのタグ。**行頭か空白のあと**に限る。本文の規則（`core/tags.py`）と
 # 揃える。揃えないと `http://example.com#anchor` が絞り込みに見える
 _TAG_RE = re.compile(r"(?:(?<=\s)|\A)#(?P<name>[^\s#]+)")
+
+# 期間の絞り込み（案 A）。`after:2026-08-01` / `before:2026-08-31`。
+# **日付として読めるものだけ**を絞り込みと見なす（下の `_read_date`）
+_DATE_RE = re.compile(r"(?:(?<=\s)|\A)(?P<edge>after|before):(?P<value>\S*)", re.IGNORECASE)
+
+DATE_FORMAT = "%Y-%m-%d"
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,10 +32,16 @@ class SearchQuery:
     tags: tuple[str, ...]
     """絞り込みのタグ。**全部満たすものだけ**を返す（AND）。"""
 
+    after: date | None = None
+    """この日以降に更新したものだけ。**その日を含む。**"""
+
+    before: date | None = None
+    """この日以前に更新したものだけ。**その日を含む。**"""
+
     @property
-    def tags_only(self) -> bool:
-        """タグだけで絞っているか（本文の言葉が無い）。"""
-        return bool(self.tags) and not self.text
+    def filter_only(self) -> bool:
+        """絞り込みだけで、本文の言葉が無いか。"""
+        return bool(self.tags or self.after or self.before) and not self.text
 
 
 def parse(query: str) -> SearchQuery:
@@ -45,5 +58,38 @@ def parse(query: str) -> SearchQuery:
         if name not in tags:
             tags.append(name)
 
-    text = _TAG_RE.sub(" ", query).strip()
-    return SearchQuery(text=text, tags=tuple(tags))
+    edges: dict[str, date] = {}
+
+    def take_date(found: re.Match[str]) -> str:
+        day = _read_date(found.group("value"))
+        if day is None:
+            return found.group(0)  # 読めないものは言葉として残す
+        edges[found.group("edge").lower()] = day
+        return " "
+
+    text = _DATE_RE.sub(take_date, query)
+    text = _TAG_RE.sub(" ", text).strip()
+    return SearchQuery(
+        text=text,
+        tags=tuple(tags),
+        after=edges.get("after"),
+        before=edges.get("before"),
+    )
+
+
+def _read_date(value: str) -> date | None:
+    """`2026-08-01` を日付にする。読めなければ `None`。
+
+    **黙って絞らない。** 打ち間違い（`after:きのう`）を絞り込みと見なすと、
+    0 件になった理由が画面から分からない。読めなければ言葉として扱い、
+    「そう書いたものを探した」という結果になるほうが辿れる。
+
+    **書き戻して一致するものだけ**を認める（`2026-8-1` は通さない）。
+    `strptime` はゼロ詰めの無い形も通すが、書き方が 2 通りあると
+    説明が増える。
+    """
+    try:
+        day = datetime.strptime(value, DATE_FORMAT).date()
+    except ValueError:
+        return None
+    return day if day.strftime(DATE_FORMAT) == value else None
