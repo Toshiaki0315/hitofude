@@ -33,6 +33,11 @@ NOTE_BAR_WIDTH = 4
 # ファイル名を書き出す位置（`paintEvent` で描く）。左端に寄せすぎると
 # 背景の角に食い込む
 CODE_NAME_INSET = 8.0
+# ファイル名バッジ（ユーザー要望 / Qiita 風）。文字の周りの余白と、
+# バッジとコード本体のあいだの隙間。高さの予約（highlighter）も同じ値を見る
+CODE_NAME_PAD_X = 8.0
+CODE_NAME_PAD_Y = 3.0
+CODE_NAME_GAP = 8.0
 # 折り返した表のセルの上下余白（ADR-0017）。線と文字がくっつくと読みにくい。
 # 高さの予約（highlighter）と文字の描画（ここ）の両方が使う
 WRAP_CELL_PADDING = 4.0
@@ -598,17 +603,27 @@ def paint_foreground(
 
     names = [d for d in decorations if d.kind is DecorationKind.CODE_NAME]
     if names:
+        # バッジで囲む（ユーザー要望 / Qiita 風）。コードの背景と違う色の
+        # 板に白抜きで、名前が浮いて見える。板は行の上端に寄せ、下の
+        # 隙間（CODE_NAME_GAP）はハイライタが行高で確保している
         painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         label = QFont(font)
         label.setPointSizeF(max(font.pointSizeF() * CODE_NAME_SCALE, 1.0))
         painter.setFont(label)
-        painter.setPen(QColor(theme.muted_foreground))
+        metrics = QFontMetricsF(label)
         for decoration in names:
-            painter.drawText(
-                decoration.rect,
-                int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
-                decoration.text,
+            badge = QRectF(
+                decoration.rect.left(),
+                decoration.rect.top() + 1,
+                metrics.horizontalAdvance(decoration.text) + CODE_NAME_PAD_X * 2,
+                metrics.height() + CODE_NAME_PAD_Y * 2,
             )
+            painter.setPen(QColor("transparent"))
+            painter.setBrush(QColor(theme.code_name_background))
+            painter.drawRoundedRect(badge, 4, 4)
+            painter.setPen(QColor(theme.code_name_foreground))
+            painter.drawText(badge, int(Qt.AlignmentFlag.AlignCenter), decoration.text)
         painter.restore()
 
     cells = [

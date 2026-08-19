@@ -40,6 +40,8 @@ from hitofude.core.table import WrappedRow, fits, wrap_row, wrapped_columns
 from hitofude.core.textpos import py_to_utf16, utf16_to_py
 from hitofude.editor.painter_overlay import (
     CHECKBOX_GAP_RATIO,
+    CODE_NAME_GAP,
+    CODE_NAME_PAD_Y,
     CODE_NAME_SCALE,
     TABLE_FAMILIES,
     WRAP_CELL_PADDING,
@@ -697,8 +699,12 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         """
         slot = self._code_name_pad
         if slot is None:
+            # バッジ（文字 + 上下の余白）と、コード本体との隙間のぶんを確保する
+            label = QFont(self.document().defaultFont())
+            label.setPointSizeF(max(self._base_point_size * CODE_NAME_SCALE, 1.0))
+            height = QFontMetricsF(label).height() + CODE_NAME_PAD_Y * 2 + CODE_NAME_GAP
             slot = QTextCharFormat()
-            slot.setFontPointSize(max(self._base_point_size * CODE_NAME_SCALE, 1.0))
+            slot.setFontPointSize(self._point_size_for(height))
             slot.setForeground(QColor("transparent"))
             self._code_name_pad = slot
         return slot

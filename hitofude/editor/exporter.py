@@ -338,8 +338,11 @@ def _stylesheet(theme: ThemeColors) -> str:
         # 綴り違い（`:::note warm`）。`.note` の灰色のまま出す。**info の青に
         # しない**（間違えたことに気づく手掛かりが消える。ユーザー報告）
         f".note-unknown {{ border-left-color: {theme.muted_foreground}; }}"
-        f".code-name {{ color: {theme.muted_foreground}; font-size: 0.85em; "
-        "font-family: 'Menlo', monospace; padding: 2px 4px; }"
+        # ファイル名バッジ（ユーザー要望 / Qiita 風）。画面と同じ構図
+        f".code-name {{ color: {theme.code_name_foreground}; "
+        f"background: {theme.code_name_background}; font-size: 0.85em; "
+        "font-family: 'Menlo', monospace; padding: 2px 8px; "
+        "display: inline-block; border-radius: 4px; margin-bottom: 6px; }"
         # 区切り線は脚注プラグインが `<hr class="footnotes-sep">` を出すので引かない
         f".footnotes {{ color: {theme.muted_foreground}; font-size: 0.9em; }}"
         # 図（B-4）。コードの背景を引き継ぐと、絵に灰色の板が敷かれて見える

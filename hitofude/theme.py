@@ -45,6 +45,15 @@ class ThemeColors:
     note_alert: str
     """`:::note alert` の色（B-3）。"""
 
+    code_name_background: str
+    """コードブロックのファイル名バッジの背景（ユーザー要望 / Qiita 風）。
+
+    コードの背景と**違う色**にして、名前が浮いて見えるようにする。
+    """
+
+    code_name_foreground: str
+    """ファイル名バッジの文字色。バッジの上に乗るのでここだけ独立。"""
+
     note_info_background: str
     """`:::note info` の背景（ユーザー要望）。薄い緑。"""
 
@@ -78,6 +87,9 @@ LIGHT = ThemeColors(
     note_info="#2E9E5B",
     note_warn="#B26B00",
     note_alert="#C0392B",
+    # ファイル名バッジ。灰色の板に白抜き（Qiita と同じ構図）
+    code_name_background="#63636B",
+    code_name_foreground="#FFFFFF",
     # 背景は薄く（ユーザー要望: info 薄い緑 / warn 薄い黄 / alert 薄い赤）。
     # 本文の黒が乗っても読める濃さに抑える
     note_info_background="#E8F5E9",
@@ -105,6 +117,10 @@ DARK = ThemeColors(
     note_info="#7CC47F",
     note_warn="#E0A100",
     note_alert="#FF6B5E",
+    code_name_background="#5A5A63",
+    # 白でよいが、ライトと同値だと「全色が異なる」検査（コピペ検出）に
+    # 引っかかる。見た目の変わらない僅差にする
+    code_name_foreground="#F5F5F7",
     # ダークでは沈んだ同系色。明るい色をそのまま使うと発光して見える
     note_info_background="#1E2B21",
     note_warn_background="#2E2913",

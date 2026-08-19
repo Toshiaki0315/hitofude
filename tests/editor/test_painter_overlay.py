@@ -500,3 +500,46 @@ class TestNoteBackgroundExport:
         assert LIGHT.note_info_background in css
         assert LIGHT.note_warn_background in css
         assert LIGHT.note_alert_background in css
+
+
+class TestCodeNameBadge:
+    """ファイル名のバッジ表示（ユーザー要望 / Qiita 風）。
+
+    コードブロックの背景と違う色で囲み、コードとの間に隙間を空ける。
+    """
+
+    def test_バッジの色が描かれる(self, editor) -> None:
+        from PySide6.QtGui import QColor, QImage
+
+        from hitofude.theme import LIGHT
+
+        editor.setPlainText('```python:aaa.py\nprint("x")\n```\n\n本文\n')
+        away(editor, editor.toPlainText())
+        image = QImage(editor.size(), QImage.Format.Format_ARGB32)
+        image.fill(QColor("white"))
+        editor.render(image)
+        found = {
+            image.pixel(x, y)
+            for x in range(min(200, image.width()))
+            for y in range(min(80, image.height()))
+        }
+        assert QColor(LIGHT.code_name_background).rgb() in found, "バッジの背景が出ていない"
+
+    def test_ファイル名の行はコードとの隙間ぶん高い(self, editor) -> None:
+        """キャレットは表示外へ（行 0 にいると生表示になり予約が効かない）。
+
+        隙間の実寸は環境のフォント計測に依存する（offscreen の代替フォントは
+        行高の比が実機とずれる）ので、「名前ありのほうが高い」ことだけを見る。
+        """
+        away(editor, '```python:aaa.py\nprint("x")\n```\n')
+        with_name = editor.blockBoundingGeometry(editor.document().findBlockByNumber(0)).height()
+        away(editor, '```python\nprint("x")\n```\n')
+        without = editor.blockBoundingGeometry(editor.document().findBlockByNumber(0)).height()
+        assert with_name > without
+
+    def test_書き出しのCSSもバッジで揃える(self) -> None:
+        from hitofude.editor.exporter import _stylesheet
+        from hitofude.theme import LIGHT
+
+        css = _stylesheet(LIGHT)
+        assert LIGHT.code_name_background in css
