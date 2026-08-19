@@ -32,6 +32,10 @@
 
 - **show() していない QWebEngineView は描画されず、grab() が無地になる。**
   `WA_DontShowOnScreen` を立てて show() する（画面には出ない）
+- **GPU 合成でも grab() が真っ白になる**（実機 cocoa で再現。offscreen の
+  テストはもともとソフトウェア描画なので気づけない）。Chromium が
+  立ち上がる前に `--disable-gpu` を入れてソフトウェア描画に固定する。
+  図のスナップショット用途に GPU は要らない
 - 透明背景は grab で白に落ちる。テーマのコード背景色をページに敷いて
   馴染ませ、テーマが変わったら絵を捨てて描き直す
 - mermaid の render 失敗はエラー図を DOM に残すことがある。後始末して

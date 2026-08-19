@@ -47,3 +47,22 @@ class TestRender:
         other = "graph LR\n  X --> Y\n"
         with qtbot.waitSignal(cache.rendered, timeout=30000):
             cache.pixmap(other, dark=False, max_width=600)
+
+
+class TestGpuFlag:
+    def test_ソフトウェア描画を強制する(self) -> None:
+        """GPU 合成だと、画面に出していない view の grab() が真っ白になる
+        （実機 cocoa で再現。ユーザー報告の「白い矩形」）。モジュールの
+        import が --disable-gpu を確実に入れることを固定する。"""
+        import importlib
+        import os
+
+        saved = os.environ.pop("QTWEBENGINE_CHROMIUM_FLAGS", None)
+        try:
+            import hitofude.editor.mermaid_cache as module
+
+            importlib.reload(module)
+            assert "--disable-gpu" in os.environ["QTWEBENGINE_CHROMIUM_FLAGS"]
+        finally:
+            if saved is not None:
+                os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = saved

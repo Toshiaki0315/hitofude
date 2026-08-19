@@ -14,6 +14,7 @@ QtWebEngine は QApplication より先に import されている必要がある�
 
 import json
 import logging
+import os
 from collections import OrderedDict, deque
 from pathlib import Path
 
@@ -21,6 +22,15 @@ from PySide6.QtCore import QObject, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor
 
 logger = logging.getLogger(__name__)
+
+# **GPU 描画を切る（実測）。** GPU 合成だと、画面に出していない
+# QWebEngineView の grab() が真っ白になる（実機 cocoa で再現。offscreen の
+# テストはもともとソフトウェア描画なので気づけない）。図のスナップショット
+# 用途に GPU は要らない。Chromium が立ち上がる前（このモジュールの import
+# 時点）に環境変数へ入れておく
+_flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+if "--disable-gpu" not in _flags:
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = f"{_flags} --disable-gpu".strip()
 
 # 書き出し（B-4 / exporter.py）と同じ同梱物を使う。ライセンス表記は
 # resources/vendor/mermaid-LICENSE.txt（MIT）
