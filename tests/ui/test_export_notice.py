@@ -51,7 +51,7 @@ class TestNotice:
         target = tmp_path / "書き出し.md"
         save_to(monkeypatch, target)
         window.export_markdown()
-        assert "書き出し.md" in window.statusBar().currentMessage()
+        assert "書き出し.md" in window.notice()
 
     def test_ホームは波線で短くする(self, window, monkeypatch) -> None:
         """**長い絶対パスはステータスバーに収まらない。** 見えないと
@@ -60,8 +60,8 @@ class TestNotice:
         save_to(monkeypatch, target)
         try:
             window.export_markdown()
-            assert str(Path.home()) not in window.statusBar().currentMessage()
-            assert "~/" in window.statusBar().currentMessage()
+            assert str(Path.home()) not in window.notice()
+            assert "~/" in window.notice()
         finally:
             target.unlink(missing_ok=True)
 
@@ -155,5 +155,5 @@ class TestEveryFormat:
     def test_どの形式でも知らせる(self, window, monkeypatch, tmp_path, command, name) -> None:
         save_to(monkeypatch, tmp_path / name)
         getattr(window, command)()
-        assert name in window.statusBar().currentMessage()
+        assert name in window.notice()
         assert window.reveal_button.isVisible() is True

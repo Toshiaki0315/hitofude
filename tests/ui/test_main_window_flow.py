@@ -887,7 +887,7 @@ class TestHugeFileGuard:
 
         self.open_note_with(window, "# 見出し\n" + "本文\n" * HUGE_FILE_LINES)
         assert window.editor.highlighter.plain_mode is True
-        assert "装飾を無効" in window.statusBar().currentMessage()
+        assert "装飾を無効" in window.notice()
 
     def test_巨大なノートでも編集して保存できる(self, window) -> None:
         from PySide6.QtGui import QTextCursor

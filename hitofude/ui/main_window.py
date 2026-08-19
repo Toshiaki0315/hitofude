@@ -272,15 +272,12 @@ class MainWindow(QMainWindow):
 
     def _build_menus(self) -> None:
         build_menus(self)
-        # メニューを開く歯車（ユーザー要望）。置き場は**ステータスバーの
-        # 右端**。書式ツールバーは Cmd+3 で隠せるので、そこに置くと設定への
-        # 入口ごと消える（ユーザー指摘）。ステータスバーは常に見えている
+        # メニューを開く歯車（ユーザー要望）。置き場は**ステータスバー**。
+        # 書式ツールバーは Cmd+3 で隠せるので、そこに置くと設定への入口ごと
+        # 消える（ユーザー指摘）。ステータスバーは常に見えている
         self._menu_button = QToolButton(self.statusBar())
         self._menu_button.setAutoRaise(True)
-        # **バーの高さを変えない。** ラベルより背が高いとステータスバーが
-        # 太り、本文側のレイアウトまで動く（描画テストの座標ずれで検出）
-        self._menu_button.setIconSize(QSize(14, 14))
-        self._menu_button.setFixedHeight(self.statusBar().fontMetrics().height() + 2)
+        self._menu_button.setIconSize(QSize(18, 18))
         self._menu_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._menu_button.setToolTip("メニュー")
@@ -290,12 +287,27 @@ class MainWindow(QMainWindow):
         self._menu_button.setMenu(build_gear_menu(self))
         # 起動直後のぶん。以後のテーマ変更は `_apply_theme_now` が塗り直す
         self._menu_button.setIcon(glyph_icon(Glyph.GEAR, self._theme_watcher.colors.foreground))
-        self.statusBar().addPermanentWidget(self._menu_button)
+        # **左端に置く**（ユーザー指摘）。右端は窓の角が丸く、埋もれて
+        # 見えにくい。左側は showMessage が使う領域だが、一時通知は
+        # 専用ラベル（notify）に移したので隠れない
+        self.statusBar().insertWidget(0, self._menu_button)
 
     @property
     def menu_button(self) -> QToolButton:
         """ステータスバーの歯車。テストとテーマ適用が触る。"""
         return self._menu_button
+
+    def notify(self, text: str, ms: int = NOTICE_MS) -> None:
+        """ステータスバーの一時通知。showMessage の置き換え。
+
+        showMessage はバー左側のウィジェットを隠すため、左に置いた歯車が
+        通知のたびに消える。専用ラベルなら何も隠れない。
+        """
+        self._status.show_notice(text, ms)
+
+    def notice(self) -> str:
+        """いま出ている一時通知。テストが読む。"""
+        return self._status.notice_label.text()
 
     def _restore_layout(self) -> None:
         geometry = self._config.window_geometry
@@ -592,7 +604,7 @@ class MainWindow(QMainWindow):
         huge = is_huge(text)
         self._editor.highlighter.set_plain_mode(huge)
         if huge:
-            self.statusBar().showMessage(HUGE_NOTE_NOTICE, NOTICE_MS)
+            self.notify(HUGE_NOTE_NOTICE)
 
     def _place_cursor_at_body(self, text: str) -> None:
         offset = frontmatter.body_offset(text)
@@ -1093,7 +1105,7 @@ class MainWindow(QMainWindow):
         self._config.font_point_size = clamped
         self._editor.set_base_point_size(clamped)
         # 1pt の差は見て取りにくい。**変えたことが分かるように**数字を出す
-        self.statusBar().showMessage(f"文字サイズ {clamped:g}pt", NOTICE_MS)
+        self.notify(f"文字サイズ {clamped:g}pt")
         return True
 
     def _apply_preferences(self) -> None:

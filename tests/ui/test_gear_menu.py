@@ -114,3 +114,39 @@ class TestModeChecks:
             if any(a.text() == "フォーカスモード" for a in menu.actions()):
                 menu.aboutToShow.emit()
         assert action(window, "フォーカスモード").isChecked()
+
+
+class TestLeftPlacement:
+    """歯車は左端・バーは高く（ユーザー指摘）。右端は角に埋もれて見えにくい。"""
+
+    def test_歯車はバーの左側にいる(self, window) -> None:
+        window.resize(1000, 500)
+        window.show()
+        bar = window.statusBar()
+        assert window.menu_button.x() < bar.width() / 4
+
+    def test_バーに高さがある(self, window) -> None:
+        from hitofude.ui.status_bar import STATUS_BAR_HEIGHT
+
+        window.show()
+        assert window.statusBar().height() >= STATUS_BAR_HEIGHT
+
+    def test_通知が出ても歯車は隠れない(self, window) -> None:
+        """Qt の showMessage は左側のウィジェットを隠す。専用ラベルなら
+        隠れない（この改修の理由）。"""
+        window.show()
+        window.notify("書き出しました")
+        assert window.menu_button.isVisibleTo(window.statusBar())
+        assert window.statusBar().currentMessage() == ""  # showMessage を使っていない
+
+
+class TestNotify:
+    """一時通知。showMessage の置き換え（歯車を左に置くため）。"""
+
+    def test_通知が読める(self, window) -> None:
+        window.notify("3 件を取り込みました")
+        assert "3 件" in window.notice()
+
+    def test_時間が経つと消える(self, window, qtbot) -> None:
+        window.notify("すぐ消える", ms=50)
+        qtbot.wait_until(lambda: window.notice() == "", timeout=2000)

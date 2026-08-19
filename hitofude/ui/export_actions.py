@@ -199,7 +199,7 @@ class ExportActions:
         関係のないものを開くことになる。
         """
         self._exported = target
-        self._window.statusBar().showMessage(f"{short_path(target)} に書き出しました", NOTICE_MS)
+        self._window.notify(f"{short_path(target)} に書き出しました")
         self.reveal_button.show()
         self.export_timer.start()
 

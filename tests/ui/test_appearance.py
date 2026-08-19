@@ -360,8 +360,12 @@ class TestThemeReachesEveryPane:
         image.fill(QColor("magenta"))
         window.render(image)
 
-        drawn = QColor(image.pixel(300, 250)).name()
-        assert drawn == DARK.background.lower(), f"一覧が {drawn}"
+        # **1 点で判定しない。** 一覧には行の区切り線（1px）があり、
+        # レイアウトが数 px 動くだけで採点点が線を踏んで落ちる（ステータス
+        # バーの高さ変更で実際に踏んだ）。縦の帯で背景色が優勢なら合格
+        colors = [QColor(image.pixel(300, y)).name() for y in range(235, 265)]
+        background = colors.count(DARK.background.lower())
+        assert background > len(colors) / 2, f"一覧が {colors}"
 
     def test_起動時から設定どおりの色になる(self, qtbot, tmp_path) -> None:
         """**起動時にも当てる。** アプリのパレットは「システムのテーマ」で

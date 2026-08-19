@@ -120,4 +120,4 @@ class TestNotice:
     def test_今の大きさを知らせる(self, window) -> None:
         """**変えたことが分かるように。** 1pt の差は見て取りにくい。"""
         window.zoom_in()
-        assert "pt" in window.statusBar().currentMessage()
+        assert "pt" in window.notice()

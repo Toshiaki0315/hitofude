@@ -227,7 +227,7 @@ class TestPinnedIsProtected:
         path = make_note(window, "留めたノート")
         window.toggle_pin(path)
         window.trash_note(path)
-        assert "ピン留め" in window.statusBar().currentMessage()
+        assert "ピン留め" in window.notice()
 
     def test_ピン留めを外せば消せる(self, window) -> None:
         path = make_note(window, "留めたノート")

@@ -27,9 +27,6 @@ logger = logging.getLogger(__name__)
 # 片づけの確認に並べる名前の数（E-5）。全部並べるとダイアログが画面を溢れる
 CLEANUP_PREVIEW = 10
 
-# 知らせを出しておく長さ。main_window の NOTICE_MS と揃える
-# （循環 import を避けるため値をここに持つ。ずらしたいときは両方見ること）
-NOTICE_MS = 5000
 PINNED_NOTICE = "ピン留めしているノートは削除できません。先にピン留めを外してください。"
 
 
@@ -144,7 +141,7 @@ class NoteActions:
         window._watcher.suppress(path)
         window._vault.delete_permanently(path)
         window.refresh()
-        window.statusBar().showMessage("完全に削除しました", NOTICE_MS)
+        window.notify("完全に削除しました")
         logger.info("完全に削除した: %s", path.name)
         return True
 
@@ -179,7 +176,7 @@ class NoteActions:
             window._watcher.suppress(path)
         removed = window._vault.empty_trash()
         window.refresh()
-        window.statusBar().showMessage(f"{len(removed)} 件を完全に削除しました", NOTICE_MS)
+        window.notify(f"{len(removed)} 件を完全に削除しました")
         logger.info("ゴミ箱を空にした: %d 件", len(removed))
         return len(removed)
 
@@ -228,7 +225,7 @@ class NoteActions:
     def _notify_pinned(self) -> None:
         """黙って無視すると、押し間違いなのか壊れたのか分からない。"""
         window = self._window
-        window.statusBar().showMessage(PINNED_NOTICE, NOTICE_MS)
+        window.notify(PINNED_NOTICE)
 
     # ------------------------------------------------------------- 名前の変更
 
@@ -456,7 +453,7 @@ class NoteActions:
         for note in added[:-1]:
             window._db.upsert_note(note, window._vault.root)
         window._open_created(added[-1])  # upsert・一覧更新・開く・選択まで
-        window.statusBar().showMessage(f"{len(added)} 件のノートを取り込みました", NOTICE_MS)
+        window.notify(f"{len(added)} 件のノートを取り込みました")
         logger.info("ドロップから取り込んだ: %d 件", len(added))
         return [note.path for note in added]
 
@@ -497,6 +494,6 @@ class NoteActions:
             return 0
 
         moved = window._vault.trash_attachments(orphans)
-        window.statusBar().showMessage(f"{len(moved)} 件をゴミ箱へ移しました", NOTICE_MS)
+        window.notify(f"{len(moved)} 件をゴミ箱へ移しました")
         logger.info("使っていない添付を片づけた: %d 件", len(moved))
         return len(moved)

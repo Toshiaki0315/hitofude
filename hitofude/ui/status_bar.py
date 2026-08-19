@@ -27,6 +27,12 @@ ASYNC_STATS_CHARS = 10_000
 # ステータスバー右端の余白。ウィンドウの角が丸いので、右端ぴったりに置くと
 # 最後の文字が欠ける（実際に欠けた）
 STATUS_RIGHT_MARGIN = 14
+
+# バーの高さ。既定のままだと歯車がつぶれて見えにくい（ユーザー指摘）
+STATUS_BAR_HEIGHT = 32
+
+# 一時通知を出す時間。showMessage の既定と同じ感覚
+NOTICE_MS = 5000
 STATS_TOOLTIP = "文字数と行数。\n装飾の記号（`**` など）と front matter、改行は数えません。"
 MODE_TOOLTIP = "今入っている書き方のモード。\nRaw（⌘/）／ フォーカス（⇧⌘D）／ タイプライタ（⇧⌘Y）"
 
@@ -36,6 +42,19 @@ class StatusBarController:
 
     def __init__(self, window) -> None:
         self._window = window
+        window.statusBar().setMinimumHeight(STATUS_BAR_HEIGHT)
+        # 左右に余白。端ぴったりだと窓の丸い角に埋もれる（ユーザー指摘。
+        # 右端の余白は stats_label 側の STATUS_RIGHT_MARGIN も効く）
+        window.statusBar().setContentsMargins(8, 0, 0, 0)
+
+        # 一時通知（書き出した・取り込んだ等）。**showMessage を使わない。**
+        # showMessage はバー左側の通常ウィジェットを一時的に隠すので、
+        # 左に置いた歯車が通知のたびに消えてしまう
+        self.notice_label = QLabel("", window)
+        window.statusBar().addWidget(self.notice_label)
+        self._notice_timer = QTimer(window)
+        self._notice_timer.setSingleShot(True)
+        self._notice_timer.timeout.connect(lambda: self.notice_label.setText(""))
 
         self.mode_label = QLabel("", window)
         self.mode_label.setToolTip(MODE_TOOLTIP)
@@ -62,6 +81,13 @@ class StatusBarController:
         self.stats_timer.setSingleShot(True)
         self.stats_timer.setInterval(STATS_DELAY_MS)
         self.stats_timer.timeout.connect(self.update_stats)
+
+    # ------------------------------------------------------------- 一時通知
+
+    def show_notice(self, text: str, ms: int = NOTICE_MS) -> None:
+        """一時通知。時間が経つと消える。"""
+        self.notice_label.setText(text)
+        self._notice_timer.start(ms)
 
     # ------------------------------------------------------------- 保存時刻
 
