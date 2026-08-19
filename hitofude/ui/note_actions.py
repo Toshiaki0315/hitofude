@@ -17,7 +17,7 @@ from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QMessageBox
 from hitofude.app import apply_menu_font
 from hitofude.core import template
 from hitofude.core.document import Note, with_title
-from hitofude.core.template import DATE_FORMAT
+from hitofude.core.template import daily_title
 from hitofude.storage.index_db import NoteRow
 from hitofude.storage.vault import MARKDOWN_SUFFIXES, sanitize_filename, unique_path
 from hitofude.ui.note_list import NoteRole
@@ -440,17 +440,39 @@ class NoteActions:
         window._open_created(created.note, created.cursor)
         return created.note
 
-    def open_daily_note(self, day: datetime | None = None) -> Note:
+    def open_daily_note(self, day: datetime | None = None) -> Note | None:
         """`Cmd+T`。今日のノートを開く。無ければ作る（E-4）。
 
         **同じ日に何度押しても同じノートを開く。** 増えると、どちらに
         書いたか分からなくなる。
+
+        **題名で探してから作る**（ユーザー報告）。`Vault.daily_note()` は
+        ファイル名だけを見るので、「日次」テンプレートから作ったノート
+        （ファイルは `日次-2.md` のまま、題名だけ `2026-08-20`）を
+        見つけられず、同じ日のノートをもう 1 つ作っていた。
         """
         window = self._window
         window.flush()
+        found = self._note_titled(daily_title(day or datetime.now()))
+        if found is not None:
+            window.open_note(found)
+            return window.current_note
+
         created = window._vault.daily_note(day)
         window._open_created(created.note, created.cursor)
         return created.note
+
+    def _note_titled(self, title: str) -> Path | None:
+        """その題名のノートの場所。無ければ `None`。
+
+        **索引が持っているパスをそのまま使う。** 題名からファイル名を
+        組み直すと、両者が食い違うノートで別のファイルを指す。
+        """
+        window = self._window
+        for row in window._db.notes():
+            if row.title == title:
+                return window._vault.root / row.path
+        return None
 
     def open_adjacent_daily(self, *, forward: bool) -> bool:
         """前後の日次ノートを開く（ユーザー要望）。開けたら True。
@@ -476,7 +498,12 @@ class NoteActions:
             window.notify("これより" + ("後" if forward else "前") + "の日のノートはありません")
             return False
 
-        window.open_daily_note(datetime.strptime(found, DATE_FORMAT))
+        # **索引が見つけたノートを、そのパスのまま開く。** 題名から
+        # ファイル名を組み直すと、食い違うノートで複製ができる（ユーザー報告）
+        path = self._note_titled(found)
+        if path is None:
+            return False
+        window.open_note(path)
         return True
 
     def _template_items(self, query: str) -> list[PaletteItem]:

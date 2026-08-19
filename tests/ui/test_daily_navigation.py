@@ -93,3 +93,50 @@ class TestMenu:
         found = self.labels(window)
         assert found["前の日のノート"] == QKeySequence("Ctrl+Shift+[").toString()
         assert found["次の日のノート"] == QKeySequence("Ctrl+Shift+]").toString()
+
+
+class TestExistingTitle:
+    """**題名が日付でも、ファイル名が同じとは限らない**（ユーザー報告）。
+
+    「日次」テンプレートから作ると、ファイルは `日次-2.md` のままで題名だけ
+    `2026-08-20` になる。ここで日付からファイル名を組み直すと、既にある
+    ノートを見つけられず**同じ日のノートがもう 1 つできる**。
+
+    索引が見つけたノートを、その**パスのまま**開くこと。
+    """
+
+    def make_titled(self, window: MainWindow, title: str, filename: str):
+        note = window.vault.create(filename, f"# {title}\n\n#日次\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        return note
+
+    def test_辿った先で複製を作らない(self, window) -> None:
+        make_daily(window, "2026-08-19")
+        self.make_titled(window, "2026-08-20", "日次-2")
+        window.open_daily_note(datetime(2026, 8, 19))
+        before = window.note_list.model().rowCount()
+
+        window.open_adjacent_daily(forward=True)
+
+        assert window.note_list.model().rowCount() == before
+        assert title(window) == "2026-08-20"
+
+    def test_辿った先は既にあるファイル(self, window) -> None:
+        make_daily(window, "2026-08-19")
+        existing = self.make_titled(window, "2026-08-20", "日次-2")
+        window.open_daily_note(datetime(2026, 8, 19))
+
+        window.open_adjacent_daily(forward=True)
+        assert window.current_note.path == existing.path
+
+    def test_今日のノートも複製を作らない(self, window) -> None:
+        """`Cmd+T` も同じ穴を持っていた（ファイル名だけで探していた）。"""
+        today = datetime.now()
+        existing = self.make_titled(window, today.strftime("%Y-%m-%d"), "日次-2")
+        before = window.note_list.model().rowCount()
+
+        window.open_daily_note()
+
+        assert window.note_list.model().rowCount() == before
+        assert window.current_note.path == existing.path
