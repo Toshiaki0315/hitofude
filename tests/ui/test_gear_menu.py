@@ -150,3 +150,11 @@ class TestNotify:
     def test_時間が経つと消える(self, window, qtbot) -> None:
         window.notify("すぐ消える", ms=50)
         qtbot.wait_until(lambda: window.notice() == "", timeout=2000)
+
+
+class TestFrameless:
+    def test_歯車に枠を描かない(self, window) -> None:
+        """ユーザー要望。部分的な QSS だけ当てると、環境によって
+        スタイル既定の枠が出る。境界なしの明示を固定する。"""
+        sheet = window.menu_button.styleSheet()
+        assert "border: none" in sheet

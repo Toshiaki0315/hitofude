@@ -282,8 +282,13 @@ class MainWindow(QMainWindow):
         self._menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._menu_button.setToolTip("メニュー")
         self._menu_button.setAccessibleName("メニュー")
-        # 右に付く小さな矢印は消す。絵が 2 つ並ぶと窮屈になる
-        self._menu_button.setStyleSheet("QToolButton::menu-indicator { image: none; }")
+        # 枠は描かない（ユーザー要望）。部分的な QSS を当てると autoRaise でも
+        # スタイル既定の枠が出る環境があるため、境界なしを明示する。
+        # menu-indicator は右に付く小さな矢印で、絵が 2 つ並ぶと窮屈になる
+        self._menu_button.setStyleSheet(
+            "QToolButton { border: none; background: transparent; }"
+            "QToolButton::menu-indicator { image: none; }"
+        )
         self._menu_button.setMenu(build_gear_menu(self))
         # 起動直後のぶん。以後のテーマ変更は `_apply_theme_now` が塗り直す
         self._menu_button.setIcon(glyph_icon(Glyph.GEAR, self._theme_watcher.colors.foreground))
