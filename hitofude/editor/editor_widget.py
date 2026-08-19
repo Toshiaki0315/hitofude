@@ -38,6 +38,7 @@ from hitofude.editor.highlighter import TABLE_FAMILIES, MarkdownHighlighter
 from hitofude.editor.image_cache import ImageCache
 from hitofude.editor.input_handler import EnterKind, enter_action, indent_action
 from hitofude.editor.math_cache import MathCache
+from hitofude.editor.mermaid_cache import MermaidCache
 from hitofude.theme import LIGHT, ThemeColors
 
 # 本文を書き換えるキー。front matter を守るために丸める必要がある入力
@@ -160,6 +161,10 @@ class MarkdownEditor(QPlainTextEdit):
         self._tag_source: Callable[[], list[str]] | None = None
         # 数式の描画（I-1 / ADR-0020）。大きさ・色・幅はエディタが決める
         self._math_cache = MathCache()
+        # Mermaid の描画（ADR-0021）。非同期なので、描き上がったら掛け直す
+        self._mermaid = MermaidCache(self)
+        self._mermaid.rendered.connect(self._on_mermaid_rendered)
+        self._mermaid.set_background(theme.code_background)
         self._tag_candidates: list[str] = []
         self._tag_popup = QListWidget(self)
         self._tag_popup.setWindowFlags(Qt.WindowType.ToolTip)
@@ -188,6 +193,7 @@ class MarkdownEditor(QPlainTextEdit):
         )
         self._highlighter.set_image_source(self._images, self.image_width())
         self._highlighter.set_math_source(self.math_size)
+        self._highlighter.set_mermaid_source(self.mermaid_size)
         # 等幅フォントの字幅で決まるので、ハイライタを作ったあとに呼ぶ
         self._apply_tab_width()
 
@@ -227,6 +233,7 @@ class MarkdownEditor(QPlainTextEdit):
     def set_theme(self, theme: ThemeColors) -> None:
         self._theme = theme
         self._apply_palette()
+        self._mermaid.set_background(theme.code_background)  # 図の下地もテーマに追従
         self._highlighter.set_theme(theme)
 
     def _apply_palette(self) -> None:
@@ -384,34 +391,34 @@ class MarkdownEditor(QPlainTextEdit):
         """
         if old_line == new_line or self._composing:
             return
+        figure_types = (
+            BlockType.MATH_BODY,
+            BlockType.MATH_DELIMITER,
+            # Mermaid のフェンス（ADR-0021）。mermaid 以外のフェンスも
+            # 掛け直すが、図でなければ表示は変わらないだけで害はない
+            BlockType.CODE_FENCE_OPEN,
+            BlockType.CODE_FENCE_BODY,
+            BlockType.CODE_FENCE_CLOSE,
+        )
         document = self.document()
         found: set[int] = set()
         for line in (old_line, new_line):
             block = document.findBlockByNumber(line)
             if not block.isValid() or block.userData() is None:
                 continue
-            if block.userData().info.type not in (
-                BlockType.MATH_BODY,
-                BlockType.MATH_DELIMITER,
-            ):
+            if block.userData().info.type not in figure_types:
                 continue
             # 式の上端まで戻る
             probe = block
             while probe.previous().isValid():
                 data = probe.previous().userData()
-                if data is None or data.info.type not in (
-                    BlockType.MATH_BODY,
-                    BlockType.MATH_DELIMITER,
-                ):
+                if data is None or data.info.type not in figure_types:
                     break
                 probe = probe.previous()
             steps = 0
             while probe.isValid() and steps <= 200:
                 data = probe.userData()
-                if data is None or data.info.type not in (
-                    BlockType.MATH_BODY,
-                    BlockType.MATH_DELIMITER,
-                ):
+                if data is None or data.info.type not in figure_types:
                     break
                 found.add(probe.blockNumber())
                 probe = probe.next()
@@ -855,6 +862,37 @@ class MarkdownEditor(QPlainTextEdit):
             color=self._theme.foreground,
             max_width=self.image_width(),
         )
+
+    def mermaid_pixmap(self, source: str):
+        """Mermaid の図（ADR-0021）。未描画・描けない図は None。"""
+        return self._mermaid.pixmap(source, dark=self._theme.is_dark, max_width=self.image_width())
+
+    def mermaid_size(self, source: str):
+        """Mermaid の図の論理サイズ。高さの予約（highlighter）が呼ぶ。"""
+        return self._mermaid.size(source, dark=self._theme.is_dark, max_width=self.image_width())
+
+    def _on_mermaid_rendered(self) -> None:
+        """図が描き上がった。Mermaid のブロックだけ掛け直す（R7）。"""
+        document = self.document()
+        block = document.firstBlock()
+        while block.isValid():
+            data = block.userData()
+            if (
+                data is not None
+                and data.info.type is BlockType.CODE_FENCE_OPEN
+                and data.info.lang == "mermaid"
+            ):
+                probe = block
+                steps = 0
+                while probe.isValid() and steps <= 200:
+                    self._highlighter.rehighlightBlock(probe)
+                    found = probe.userData()
+                    if found is not None and found.info.type is BlockType.CODE_FENCE_CLOSE:
+                        break
+                    probe = probe.next()
+                    steps += 1
+            block = block.next()
+        self.viewport().update()
 
     def image_width(self) -> int:
         """本文中に描く画像の最大幅。本文の折り返し幅に合わせる。

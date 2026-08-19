@@ -119,3 +119,13 @@ class TestFallback:
         editor.setPlainText("$$\nE = mc^2\n\n本文\n")
         move_to(editor, 3)
         assert not hidden(editor, 1)
+
+
+class TestInitialPass:
+    def test_前置きがあっても最初から絵になる(self, editor) -> None:
+        """初回ハイライト時は自分の userData がまだ無い。ラン検出が
+        userData に頼り切ると、キャレットが式に触れるまで絵にならない（回帰）。"""
+        editor.setPlainText("前置きの文。\n\n$$\nE = mc^2\n$$\n\n本文\n")
+        move_to(editor, 6)
+        assert hidden(editor, 3), "初回パスで式が生のまま"
+        assert len(figures(editor)) == 1

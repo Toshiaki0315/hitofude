@@ -165,6 +165,12 @@ _HIDDEN_MARKER_TYPES = frozenset({BlockType.HEADING, BlockType.BLOCKQUOTE})
 _MONO_TYPES = frozenset({BlockType.TABLE_ROW, BlockType.TABLE_DELIMITER})
 
 
+def _data_type(block: QTextBlock):
+    """そのブロックの解析済みの種類。初回パスでまだ無ければ None。"""
+    data = block.userData()
+    return data.info.type if data is not None else None
+
+
 def _decode_in_math(block: QTextBlock) -> bool:
     """そのブロックの終わりが数式の中か（開き $$ と閉じ $$ の見分け）。"""
     if not block.isValid():
@@ -189,6 +195,7 @@ class BlockData(QTextBlockUserData):
         wrapped: WrappedRow | None = None,
         *,
         figure_latex: str | None = None,
+        diagram: str | None = None,
     ) -> None:
         super().__init__()
         self.info = info
@@ -197,6 +204,8 @@ class BlockData(QTextBlockUserData):
         """収まらない表の折り返し内容（ADR-0017）。折り返し表示中の行だけ持つ。"""
         self.figure_latex = figure_latex
         """数式ブロックの中身（I-1 / ADR-0020）。図で表示中の最初の本文行だけ持つ。"""
+        self.diagram = diagram
+        """Mermaid 図の中身（I-1 / ADR-0021）。図で表示中の最初の本文行だけ持つ。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,6 +260,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._pending_figure: str | None = None
         # 式の絵の大きさの問い合わせ口。エディタが挿す（画像と同じ分担）
         self._math_size: object = None
+        # Mermaid 図の中身（ADR-0021）。最初の本文行にだけ載せる
+        self._pending_diagram: str | None = None
+        self._mermaid_size: object = None
         self._table_spacing_cache: tuple[float, float] | None = None
         self._build_formats()
 
@@ -293,6 +305,13 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             return False
         self._image_width = width
         return True
+
+    def set_mermaid_source(self, size_getter) -> None:
+        """Mermaid 図の大きさの問い合わせ口（ADR-0021）。`str -> QSize | None`。
+
+        描画は非同期で、出来ていない間は None が返る（生のまま見せる）。
+        """
+        self._mermaid_size = size_getter
 
     def set_math_source(self, size_getter) -> None:
         """数式の絵の大きさの問い合わせ口（I-1）。`str -> QSize | None`。
@@ -368,6 +387,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._line_is_bmp_only = text.isascii() or all(ord(char) < 0x10000 for char in text)
         self._pending_wrapped = None
         self._pending_figure = None
+        self._pending_diagram = None
         state = BlockState.decode(self.previousBlockState())
         info, next_state = classify_line(text, block.blockNumber(), state)
 
@@ -400,7 +420,13 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._hide_block_markers(text, info, reveal)
 
         self.setCurrentBlockUserData(
-            BlockData(info, spans, self._pending_wrapped, figure_latex=self._pending_figure)
+            BlockData(
+                info,
+                spans,
+                self._pending_wrapped,
+                figure_latex=self._pending_figure,
+                diagram=self._pending_diagram,
+            )
         )
         self.setCurrentBlockState(next_state.encode())
 
@@ -474,6 +500,72 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         """その高さの行になる文字サイズ。"""
         ratio = line_height_ratio(self.document().defaultFont())
         return max(1.0, height / ratio)
+
+    def _mermaid_run(self, info: BlockInfo) -> tuple[int, int, str] | None:
+        """この行が属する Mermaid ブロックの（開始行, 終了行, ソース）。
+
+        開始 = ```mermaid、終了 = 閉じフェンス（含む）。mermaid 以外の
+        フェンスや、閉じていないフェンスなら None。
+
+        **今のブロック自身は `info` で見る。** 初回ハイライト中は自分の
+        userData がまだ無く、頼ると依頼すら出ない（回帰テストあり）。
+        """
+        block = self.currentBlock()
+        start = block
+        if info.type is BlockType.CODE_FENCE_CLOSE:
+            start = start.previous()
+        while start.isValid():
+            kind = info.type if start == block else _data_type(start)
+            if kind is not BlockType.CODE_FENCE_BODY:
+                break
+            start = start.previous()
+        if not start.isValid():
+            return None
+        if (info.type if start == block else _data_type(start)) is not BlockType.CODE_FENCE_OPEN:
+            return None
+        lang = info.lang if start == block else start.userData().info.lang
+        if lang != "mermaid":
+            return None
+
+        lines: list[str] = []
+        probe = start.next()
+        while probe.isValid() and len(lines) <= MAX_HIGHLIGHT_LINES:
+            kind = info.type if probe == block else _data_type(probe)
+            if kind is BlockType.CODE_FENCE_CLOSE:
+                return start.blockNumber(), probe.blockNumber(), "\n".join(lines)
+            if kind is None and probe.text().strip().startswith("```"):
+                # 初回パスでは後続の userData がまだ無い（`_fence_body` と同じ）
+                return start.blockNumber(), probe.blockNumber(), "\n".join(lines)
+            if kind is not None and kind is not BlockType.CODE_FENCE_BODY:
+                return None
+            lines.append(probe.text())
+            probe = probe.next()
+        return None
+
+    def _apply_mermaid_figure(self, text: str, info: BlockInfo) -> bool:
+        """Mermaid ブロックを図で表示する。できなければ False（生のまま）。
+
+        数式（`_apply_math_figure`）と同じ形。描画は非同期なので、
+        絵が出来ていない間（size が None）は生のまま見せ、出来た時点で
+        エディタが掛け直す（`MermaidCache.rendered`）。
+        """
+        run = self._mermaid_run(info)
+        if run is None:
+            return False
+        start, end, source = run
+        if not source.strip() or self._caret_in_lines(start, end):
+            return False
+        size = self._mermaid_size(source)
+        if size is None:
+            return False  # 依頼中か、描けない図。生のまま
+        self._hide(0, len(text))
+        if self.currentBlock().blockNumber() == start + 1:
+            tall = QTextCharFormat()
+            tall.setFontPointSize(self._point_size_for(size.height() + IMAGE_PADDING * 2))
+            tall.setForeground(QColor("transparent"))
+            self.setFormat(0, 1, tall)
+            self._pending_diagram = source
+        return True
 
     def _math_run(self) -> tuple[int, int, str] | None:
         """この行が属する数式ブロックの（開始行, 終了行, LaTeX）。
@@ -671,6 +763,14 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         ):
             # 図で表示した（I-1 / ADR-0020）。リビールは**式全体**で判定
             # 済みなので、ブロック単位の reveal には進まない
+            return
+        if (
+            info.type
+            in (BlockType.CODE_FENCE_OPEN, BlockType.CODE_FENCE_BODY, BlockType.CODE_FENCE_CLOSE)
+            and not self._source_mode
+            and self._mermaid_size is not None
+            and self._apply_mermaid_figure(text, info)
+        ):
             return
         if info.type is BlockType.FRONT_MATTER:
             # **Raw でも出さない。** `id` や `created` はアプリの管理情報で、

@@ -5,6 +5,9 @@ import sys
 from pathlib import Path
 from typing import cast
 
+# QtWebEngine（Mermaid の描画・ADR-0021）は QApplication より先に import
+# されている必要がある。忘れると WebEngine の初期化で警告や落ちが出る
+import PySide6.QtWebEngineWidgets  # noqa: F401
 from PySide6.QtCore import QLockFile, QObject, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPalette
 from PySide6.QtWidgets import QApplication, QToolTip, QWidget
@@ -384,6 +387,9 @@ def create_application(argv: list[str] | None = None) -> QApplication:
     enable_key_repeat()
 
     existing = QApplication.instance()
+    if existing is None:
+        # QtWebEngine の前提（ADR-0021）。QApplication を作る前に立てる
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = cast(QApplication, existing) if existing is not None else QApplication(argv or sys.argv)
 
     app.setApplicationName(APP_NAME)

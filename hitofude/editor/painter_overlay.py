@@ -125,6 +125,9 @@ class DecorationKind(Enum):
     MATH = auto()
     """数式ブロックの組版結果（I-1 / ADR-0020）。絵は `pixmap` に入る。"""
 
+    MERMAID = auto()
+    """Mermaid ブロックの図（I-1 / ADR-0021）。絵は `pixmap` に入る。"""
+
 
 @dataclass(frozen=True, slots=True)
 class Decoration:
@@ -198,32 +201,35 @@ def visible_decorations(editor) -> list[Decoration]:
         block = block.next()
 
     decorations.extend(table_decorations(editor, entries))
-    decorations.extend(math_decorations(editor, entries))
+    decorations.extend(figure_decorations(editor, entries))
     return decorations
 
 
-def math_decorations(editor, entries) -> list[Decoration]:
-    """数式ブロックの絵（I-1 / ADR-0020）。
+def figure_decorations(editor, entries) -> list[Decoration]:
+    """数式（ADR-0020）と Mermaid（ADR-0021）の絵。
 
-    高さはハイライタが予約済み（画像と同じ ADR-0004 の手口）。式の中身は
-    最初の本文行の `BlockData.figure_latex` に載っている。キャレットが式に
-    入っている間は載らない（生の LaTeX が見えている）。
+    高さはハイライタが予約済み（画像と同じ ADR-0004 の手口）。中身は
+    最初の本文行の `BlockData`（figure_latex / diagram）に載っている。
+    キャレットがブロックに入っている間は載らない（生のソースが見えている）。
     """
     result: list[Decoration] = []
     for block, _info, rect in entries:
-        latex = getattr(block.userData(), "figure_latex", None)
-        if latex is None:
+        data = block.userData()
+        latex = getattr(data, "figure_latex", None)
+        diagram = getattr(data, "diagram", None)
+        if latex is not None:
+            kind, pixmap = DecorationKind.MATH, editor.math_pixmap(latex)
+        elif diagram is not None:
+            kind, pixmap = DecorationKind.MERMAID, editor.mermaid_pixmap(diagram)
+        else:
             continue
-        pixmap = editor.math_pixmap(latex)
         if pixmap is None:
             continue
         width = pixmap.width() / pixmap.devicePixelRatio()
         height = pixmap.height() / pixmap.devicePixelRatio()
         left = editor.contentOffset().x() + editor.document().documentMargin()
         top = rect.top() + max(0.0, (rect.height() - height) / 2)
-        result.append(
-            Decoration(DecorationKind.MATH, QRectF(left, top, width, height), pixmap=pixmap)
-        )
+        result.append(Decoration(kind, QRectF(left, top, width, height), pixmap=pixmap))
     return result
 
 
@@ -622,7 +628,7 @@ def paint_foreground(
     """本文の上に重ねる要素（チェックボックス記号・画像）を描く。"""
     for decoration in decorations:
         if (
-            decoration.kind in (DecorationKind.IMAGE, DecorationKind.MATH)
+            decoration.kind in (DecorationKind.IMAGE, DecorationKind.MATH, DecorationKind.MERMAID)
             and decoration.pixmap is not None
         ):
             painter.drawPixmap(decoration.rect.topLeft(), decoration.pixmap)

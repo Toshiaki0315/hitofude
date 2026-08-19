@@ -11,6 +11,10 @@ import tempfile
 # 実機の描画を見たいときだけ `QT_QPA_PLATFORM=cocoa uv run pytest` で上書きする。
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+# QtWebEngine（Mermaid の描画）も offscreen で動かす。sandbox はヘッドレスで
+# 立ち上がらないことがあるので切る。GPU も無い前提で描かせる
+os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--no-sandbox --disable-gpu")
+
 # **テストが実ユーザーのホームを触らないようにする。**
 # MainWindow は設定が無いと `~/Documents/HitofudeNotes` に vault を作る。
 # ここを隔離しないと、テストを走らせるたびにユーザーの Documents が汚れる
@@ -21,7 +25,13 @@ os.environ["HOME"] = _SANDBOX_HOME
 from pathlib import Path  # noqa: E402
 
 import pytest  # noqa: E402
-from PySide6.QtCore import QSettings  # noqa: E402
+from PySide6.QtCore import QSettings, Qt  # noqa: E402
+from PySide6.QtWidgets import QApplication  # noqa: E402
+
+# QtWebEngine は QApplication より先に import されている必要がある。
+# ここ（すべてのテストモジュールより先に読まれる場所）で済ませる
+QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+import PySide6.QtWebEngineWidgets  # noqa: E402, F401
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
