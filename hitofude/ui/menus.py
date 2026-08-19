@@ -97,12 +97,18 @@ def build_menus(window) -> None:
     add(edit_menu, "表を整形", "Ctrl+Shift+L", window._editor.format_table)
 
     view_menu = window.menuBar().addMenu("表示")
+    # 開くたびに今の状態をチェック印へ写す（ユーザー要望）。トグルの
+    # たびに印を追いかけるより、見せる瞬間に読むほうが取りこぼさない
+    view_menu.aboutToShow.connect(lambda: sync_view_checks(window))
     add(view_menu, "直前のノートへ戻る", "Ctrl+[", window.open_previous_note)
     view_menu.addSeparator()
-    add(view_menu, "サイドバー", "Ctrl+1", window.toggle_sidebar)
-    add(view_menu, "ノートリスト", "Ctrl+2", window.toggle_note_list)
-    add(view_menu, "書式ツールバー", "Ctrl+3", window.toggle_toolbar)
-    add(view_menu, "バックリンク", "Ctrl+4", window.toggle_backlinks)
+    for label, key, slot in (
+        ("サイドバー", "Ctrl+1", window.toggle_sidebar),
+        ("ノートリスト", "Ctrl+2", window.toggle_note_list),
+        ("書式ツールバー", "Ctrl+3", window.toggle_toolbar),
+        ("バックリンク", "Ctrl+4", window.toggle_backlinks),
+    ):
+        add(view_menu, label, key, slot).setCheckable(True)
     view_menu.addSeparator()
     # **`+` は Shift を押さないと打てない。** 実際に押されるのは `Cmd+=` の
     # ほうが多いので、両方受ける（macOS の他のアプリもそうしている）
@@ -111,9 +117,12 @@ def build_menus(window) -> None:
     add(view_menu, "文字を小さく", "Ctrl+-", window.zoom_out)
     add(view_menu, "標準の大きさ", "Ctrl+0", window.reset_zoom)
     view_menu.addSeparator()
-    add(view_menu, "ソースモード（Raw）", "Ctrl+/", window._editor.toggle_source_mode)
-    add(view_menu, "フォーカスモード", "Ctrl+Shift+D", window._editor.toggle_focus_mode)
-    add(view_menu, "タイプライタモード", "Ctrl+Shift+Y", window._editor.toggle_typewriter_mode)
+    for label, key, slot in (
+        ("ソースモード（Raw）", "Ctrl+/", window._editor.toggle_source_mode),
+        ("フォーカスモード", "Ctrl+Shift+D", window._editor.toggle_focus_mode),
+        ("タイプライタモード", "Ctrl+Shift+Y", window._editor.toggle_typewriter_mode),
+    ):
+        add(view_menu, label, key, slot).setCheckable(True)
 
     help_menu = window.menuBar().addMenu("ヘルプ")
     add(help_menu, "ショートカット一覧", "Ctrl+?", window.show_shortcuts)
@@ -122,13 +131,34 @@ def build_menus(window) -> None:
     add(help_menu, f"{APP_NAME} について", "", window.show_about)
 
 
+def sync_view_checks(window) -> None:
+    """表示の切り替えとモードのチェック印を、今の状態に合わせる。
+
+    チェック可能なアクションの checked は**表示のためだけ**に使う。
+    真実は各ウィジェット側にあり、メニューを開く瞬間にそこから読む。
+    トグル操作そのものは checked に関係なく反転する（handler は常に flip）。
+    """
+    states = {
+        "サイドバー": not window._splitter.widget(0).isHidden(),
+        "ノートリスト": not window._splitter.widget(1).isHidden(),
+        "書式ツールバー": window._pane.toolbar_visible(),
+        "バックリンク": window._pane.backlinks.expanded(),
+        "ソースモード（Raw）": window._editor.source_mode,
+        "フォーカスモード": window._editor.focus_mode,
+        "タイプライタモード": window._editor.typewriter_mode,
+    }
+    for label, checked in states.items():
+        window.menu_actions[label].setChecked(checked)
+
+
 def build_gear_menu(window) -> QMenu:
-    """ツールバー右端の歯車が開くメニュー（ユーザー要望）。
+    """ステータスバー右端の歯車が開くメニュー（ユーザー要望）。
 
     メニューバーの**同じアクションを使い回す**。よく使うものだけを選ぶ。
     全メニューの写しにすると、探す手間がメニューバーと変わらなくなる。
     """
     menu = QMenu(window)
+    menu.aboutToShow.connect(lambda: sync_view_checks(window))
     groups = (
         ("環境設定…",),
         ("サイドバー", "ノートリスト", "書式ツールバー", "バックリンク"),

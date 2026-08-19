@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import cast
 
-from PySide6.QtCore import Qt, QThreadPool, QTimer, QUrl, Signal
+from PySide6.QtCore import QSize, Qt, QThreadPool, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QCloseEvent,
     QDesktopServices,
@@ -54,6 +54,7 @@ from hitofude.theme import ThemeColors, ThemeMode
 from hitofude.ui.backlink_bar import Backlink
 from hitofude.ui.editor_pane import EditorPane
 from hitofude.ui.export_actions import ExportActions
+from hitofude.ui.icons import Glyph, glyph_icon
 from hitofude.ui.index_sync import IndexSyncTask, SyncReporter
 from hitofude.ui.menus import build_gear_menu, build_menus
 from hitofude.ui.note_actions import NoteActions
@@ -271,9 +272,30 @@ class MainWindow(QMainWindow):
 
     def _build_menus(self) -> None:
         build_menus(self)
-        # ツールバー右端の歯車（ユーザー要望）。メニューバーと同じ
-        # アクションを使い回すので、build_menus のあとで挿す
-        self._pane.toolbar.menu_button.setMenu(build_gear_menu(self))
+        # メニューを開く歯車（ユーザー要望）。置き場は**ステータスバーの
+        # 右端**。書式ツールバーは Cmd+3 で隠せるので、そこに置くと設定への
+        # 入口ごと消える（ユーザー指摘）。ステータスバーは常に見えている
+        self._menu_button = QToolButton(self.statusBar())
+        self._menu_button.setAutoRaise(True)
+        # **バーの高さを変えない。** ラベルより背が高いとステータスバーが
+        # 太り、本文側のレイアウトまで動く（描画テストの座標ずれで検出）
+        self._menu_button.setIconSize(QSize(14, 14))
+        self._menu_button.setFixedHeight(self.statusBar().fontMetrics().height() + 2)
+        self._menu_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self._menu_button.setToolTip("メニュー")
+        self._menu_button.setAccessibleName("メニュー")
+        # 右に付く小さな矢印は消す。絵が 2 つ並ぶと窮屈になる
+        self._menu_button.setStyleSheet("QToolButton::menu-indicator { image: none; }")
+        self._menu_button.setMenu(build_gear_menu(self))
+        # 起動直後のぶん。以後のテーマ変更は `_apply_theme_now` が塗り直す
+        self._menu_button.setIcon(glyph_icon(Glyph.GEAR, self._theme_watcher.colors.foreground))
+        self.statusBar().addPermanentWidget(self._menu_button)
+
+    @property
+    def menu_button(self) -> QToolButton:
+        """ステータスバーの歯車。テストとテーマ適用が触る。"""
+        return self._menu_button
 
     def _restore_layout(self) -> None:
         geometry = self._config.window_geometry
@@ -1147,6 +1169,7 @@ class MainWindow(QMainWindow):
 
     def _apply_theme_now(self, colors: ThemeColors) -> None:
         self._apply_palette(colors)
+        self._menu_button.setIcon(glyph_icon(Glyph.GEAR, colors.foreground))
         self._pane.set_theme(colors)
         self._list_pane.set_theme(colors)
         self._sidebar.set_theme(colors)
