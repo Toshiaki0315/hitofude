@@ -328,13 +328,23 @@ def _draw_new_note(painter: QPainter) -> None:
 
 
 def _draw_gear(painter: QPainter) -> None:
-    """メニュー。歯車。輪 + 8 本の歯 + 軸穴。"""
-    painter.drawEllipse(QRectF(20, 20, 24, 24))
-    painter.drawEllipse(QRectF(28, 28, 8, 8))
+    """メニュー。歯車。輪 + 8 枚の歯 + 軸穴。
+
+    歯は線 1 本ではなく**太いペンの短い線**で描く（ユーザー要望）。
+    細い線だとトゲに見えて歯車に読めない。丸キャップなので先が丸い
+    歯になり、輪の線とのつながりも滑らか。
+    """
+    tooth = QPen(painter.pen())
+    tooth.setWidthF(STROKE * 1.6)
+    rim = painter.pen()
+    painter.setPen(tooth)
     for step in range(8):
         angle = radians(step * 45)
         x, y = cos(angle), sin(angle)
-        painter.drawLine(QPointF(32 + 12 * x, 32 + 12 * y), QPointF(32 + 19 * x, 32 + 19 * y))
+        painter.drawLine(QPointF(32 + 13 * x, 32 + 13 * y), QPointF(32 + 18 * x, 32 + 18 * y))
+    painter.setPen(rim)
+    painter.drawEllipse(QRectF(21, 21, 22, 22))
+    painter.drawEllipse(QRectF(28, 28, 8, 8))
 
 
 _DRAW = {
