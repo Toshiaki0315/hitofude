@@ -258,6 +258,7 @@ class MainWindow(QMainWindow):
         self._editor.set_attachment_handler(self.save_attachment)
         self._editor.set_image_base(self._vault.root)
         self._editor.set_tag_source(self._known_tags)
+        self._editor.set_note_source(self._known_titles)
         self._editor.set_mono_family(self._config.mono_family)
         self._editor.set_tab_width(self._config.tab_width)
         self._apply_list_font()
@@ -585,6 +586,18 @@ class MainWindow(QMainWindow):
         self._remember_note(None)
         self._update_title()
         self._update_stats()
+
+    def reveal_note(self, path: Path) -> None:
+        """Finder でそのノートを選んだ状態にする（一覧の右クリック）。"""
+        self._notes.reveal_note(path)
+
+    def duplicate_note(self, path: Path) -> Path | None:
+        """ノートを複製して開く（一覧の右クリック）。"""
+        return self._notes.duplicate_note(path)
+
+    def copy_note_link(self, path: Path) -> str:
+        """`[[名前]]` をクリップボードへ入れる（一覧の右クリック）。"""
+        return self._notes.copy_note_link(path)
 
     def toggle_pin(self, path: Path) -> bool:
         return self._notes.toggle_pin(path)
@@ -1004,6 +1017,15 @@ class MainWindow(QMainWindow):
     def open_outline(self) -> None:
         """`Cmd+R`（C-2）。"""
         self._search.open_outline()
+
+    def _known_titles(self) -> list[str]:
+        """`[[` の候補（ユーザー要望）。既に**あるノートの題名**。
+
+        **今開いているノートは外す。** 自分へのリンクは意味が無く、
+        候補に混ざると選び間違える。ゴミ箱の中も外す（`notes()` の既定）。
+        """
+        current = self._note.title if self._note is not None else None
+        return [row.title for row in self._db.notes() if row.title != current]
 
     def _known_tags(self) -> list[str]:
         """索引にあるタグ（C-4 / 補完の候補）。件数の多い順ではなく名前順。

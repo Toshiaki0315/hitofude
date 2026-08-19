@@ -26,7 +26,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QListWidget, QPlainTextEdit, QTextEdit, QWidget
 
-from hitofude.core import code_langs, frontmatter, search, table, tags
+from hitofude.core import code_langs, frontmatter, notelink, search, table, tags
 from hitofude.core.activation import ActivationKind, activation_at
 from hitofude.core.document import plain_text
 from hitofude.core.folding import section_end
@@ -159,6 +159,8 @@ class MarkdownEditor(QPlainTextEdit):
         self._attachment_handler: Callable[[bytes, str], str | None] | None = None
         # 既存タグの取り出し口（C-4）。索引はエディタの外にある
         self._tag_source: Callable[[], list[str]] | None = None
+        # ノート名の取り出し口（`[[` の補完）。索引はエディタの外にある
+        self._note_source: Callable[[], list[str]] | None = None
         # 数式の描画（I-1 / ADR-0020）。大きさ・色・幅はエディタが決める
         self._math_cache = MathCache()
         # Mermaid の描画（ADR-0021）。非同期なので、描き上がったら掛け直す
@@ -927,6 +929,14 @@ class MarkdownEditor(QPlainTextEdit):
         """
         self._tag_source = source
 
+    def set_note_source(self, source: Callable[[], list[str]] | None) -> None:
+        """既存ノート名の取り出し口（`[[` の補完）。
+
+        タグと同じで、**エディタは索引を知らない**。渡されるまで候補を
+        出さない。開いている間にノートが増えるので、**毎回聞く**。
+        """
+        self._note_source = source
+
     def tag_candidates(self) -> list[str]:
         """今出ている候補。空なら出していない。"""
         return list(self._tag_candidates)
@@ -950,10 +960,14 @@ class MarkdownEditor(QPlainTextEdit):
         prefix = self._lang_prefix(cursor, line, column)
         if prefix is not None:
             self._tag_candidates = code_langs.matches(prefix)
-        elif self._tag_source is not None:
-            tag_prefix = tags.prefix_at(line, column)
-            if tag_prefix is not None:
-                self._tag_candidates = tags.matches(tag_prefix, self._tag_source())
+        else:
+            note_prefix = notelink.prefix_at(line, column)
+            if note_prefix is not None and self._note_source is not None:
+                self._tag_candidates = notelink.matches(note_prefix, self._note_source())
+            elif self._tag_source is not None:
+                tag_prefix = tags.prefix_at(line, column)
+                if tag_prefix is not None:
+                    self._tag_candidates = tags.matches(tag_prefix, self._tag_source())
 
         if not self._tag_candidates:
             self._hide_tag_popup()
@@ -975,11 +989,17 @@ class MarkdownEditor(QPlainTextEdit):
         return prefix
 
     def complete_tag(self, tag: str) -> None:
-        """打ちかけのタグ（または言語名）を候補で置き換える（C-4）。"""
+        """打ちかけのタグ（言語名 / ノート名）を候補で置き換える（C-4）。"""
         cursor = self.textCursor()
         line = cursor.block().text()
         column = utf16_to_py(line, cursor.positionInBlock())
+        closing = ""
         prefix = self._lang_prefix(cursor, line, column)
+        if prefix is None:
+            prefix = notelink.prefix_at(line, column)
+            if prefix is not None:
+                # **既にある `]]` は足さない。** 直すときに `]]]]` になる
+                closing = "" if line[column : column + 2] == "]]" else "]]"
         if prefix is None:
             prefix = tags.prefix_at(line, column)
         if prefix is None:
@@ -989,7 +1009,10 @@ class MarkdownEditor(QPlainTextEdit):
         # 戻る距離は UTF-16 単位で数える（タグに BMP 外の文字が入っても壊さない）
         prefix_units = py_to_utf16(prefix, len(prefix))
         cursor.setPosition(cursor.position() - prefix_units, QTextCursor.MoveMode.KeepAnchor)
-        cursor.insertText(tag)
+        cursor.insertText(tag + closing)
+        if not closing and line[column : column + 2] == "]]":
+            # 閉じ括弧の内側で決めたときは、その外へ出す（続けて書けるように）
+            cursor.setPosition(cursor.position() + 2)
         cursor.endEditBlock()
         self.setTextCursor(cursor)
         self._tag_candidates = []

@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtGui import QTextCursor
-from PySide6.QtWidgets import QInputDialog, QMenu, QMessageBox
+from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QMessageBox
 
 from hitofude.app import apply_menu_font
 from hitofude.core.document import Note, with_title
@@ -21,6 +21,7 @@ from hitofude.storage.vault import MARKDOWN_SUFFIXES, sanitize_filename, unique_
 from hitofude.ui.note_list import NoteRole
 from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
 from hitofude.ui.sidebar import Filter, FilterKind
+from hitofude.ui.status_bar import NOTICE_MS
 
 logger = logging.getLogger(__name__)
 
@@ -317,6 +318,49 @@ class NoteActions:
         action.setEnabled(bool(self.trash_entries()))
         return menu
 
+    def reveal_note(self, path: Path) -> None:
+        """Finder でそのノートを選んだ状態にする（ユーザー要望）。
+
+        書き出しには付いていたのに、ノート本体には無かった。**素の `.md`
+        として置いてある**のが売りなので、実物への道は近いほうがよい。
+        """
+        self._window.reveal_in_finder(path)
+
+    def duplicate_note(self, path: Path) -> Path | None:
+        """ノートを複製して開く（ユーザー要望）。作った先を返す。
+
+        雛形として使い回すときに、今までは手作業だった（Finder で複製して
+        名前を変えて見出しも直す）。
+
+        **見出しも新しい名前に揃える。** 題名は本文の見出しなので、写した
+        だけだと一覧に同じ名前が 2 つ並んで見分けが付かない。
+        """
+        window = self._window
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            logger.warning("複製できなかった: %s", path)
+            return None
+
+        target = unique_path(window._vault.root, path.stem, path.suffix)
+        note = window._vault.create(target.stem, with_title(text, target.stem))
+        window._db.upsert_note(note, window._vault.root)
+        window.refresh()
+        window.open_note(note.path)
+        logger.info("複製した: %s -> %s", path.name, note.path.name)
+        return note.path
+
+    def copy_note_link(self, path: Path) -> str:
+        """`[[名前]]` の形でクリップボードへ入れる（ユーザー要望）。
+
+        別のノートから指すときに、名前を打ち直さずに済む。**知らせを出す**
+        （クリップボードは目に見えないので、入ったかどうかが分からない）。
+        """
+        link = f"[[{path.stem}]]"
+        QApplication.clipboard().setText(link)
+        self._window.statusBar().showMessage(f"{link} をコピーしました", NOTICE_MS)
+        return link
+
     def show_context_menu(self, point) -> None:
         window = self._window
         relative = window._note_list.indexAt(point).data(NoteRole.PATH)
@@ -346,6 +390,10 @@ class NoteActions:
         label = "ピン留めを外す" if self.is_pinned(path) else "ピン留め"
         menu.addAction(label).triggered.connect(lambda: self.toggle_pin(path))
         menu.addAction("名前を変更…").triggered.connect(lambda: self.prompt_rename(path))
+        menu.addAction("複製").triggered.connect(lambda: self.duplicate_note(path))
+        menu.addSeparator()
+        menu.addAction("リンクをコピー").triggered.connect(lambda: self.copy_note_link(path))
+        menu.addAction("Finder で表示").triggered.connect(lambda: self.reveal_note(path))
         menu.addSeparator()
         trash = menu.addAction("ゴミ箱へ移動")
         trash.triggered.connect(lambda: self.trash_note(path))
