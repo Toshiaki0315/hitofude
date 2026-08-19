@@ -66,3 +66,17 @@ class TestGpuFlag:
         finally:
             if saved is not None:
                 os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = saved
+
+
+class TestQuitBehavior:
+    def test_隠しビューがアプリの終了を妨げない(self, cache, qtbot) -> None:
+        """赤いバツでウィンドウを閉じてもアプリが Dock に残った（ユーザー報告）。
+
+        描画用の隠し QWebEngineView がトップレベルウィンドウとして
+        「開いたまま」になり、最後のウィンドウが閉じた扱いにならないため。
+        WA_QuitOnClose を外して終了の勘定から除く。
+        """
+        from PySide6.QtCore import Qt
+
+        view = cache._ensure_view()
+        assert view.testAttribute(Qt.WidgetAttribute.WA_QuitOnClose) is False

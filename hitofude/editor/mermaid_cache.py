@@ -172,6 +172,10 @@ class MermaidCache(QObject):
         # grab() が無地になる（実測）。この属性で「表示扱いだが画面には
         # 出ない」状態になり、実アプリでも窓は現れない
         view.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        # **アプリの終了を妨げない。** この隠しビューはトップレベル
+        # ウィンドウなので、放っておくと「最後のウィンドウが閉じた」判定に
+        # 入り、赤いバツで閉じてもアプリが Dock に残る（ユーザー報告）
+        view.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
         view.show()
         view.setHtml(_PAGE, QUrl.fromLocalFile(str(_JS_PATH.parent) + "/"))
         self._view = view
