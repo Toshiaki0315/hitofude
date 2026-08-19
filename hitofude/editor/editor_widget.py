@@ -37,6 +37,7 @@ from hitofude.editor import attachments, commands, painter_overlay
 from hitofude.editor.highlighter import TABLE_FAMILIES, MarkdownHighlighter
 from hitofude.editor.image_cache import ImageCache
 from hitofude.editor.input_handler import EnterKind, enter_action, indent_action
+from hitofude.editor.math_cache import MathCache
 from hitofude.theme import LIGHT, ThemeColors
 
 # 本文を書き換えるキー。front matter を守るために丸める必要がある入力
@@ -157,6 +158,8 @@ class MarkdownEditor(QPlainTextEdit):
         self._attachment_handler: Callable[[bytes, str], str | None] | None = None
         # 既存タグの取り出し口（C-4）。索引はエディタの外にある
         self._tag_source: Callable[[], list[str]] | None = None
+        # 数式の描画（I-1 / ADR-0020）。大きさ・色・幅はエディタが決める
+        self._math_cache = MathCache()
         self._tag_candidates: list[str] = []
         self._tag_popup = QListWidget(self)
         self._tag_popup.setWindowFlags(Qt.WindowType.ToolTip)
@@ -184,6 +187,7 @@ class MarkdownEditor(QPlainTextEdit):
             self.document(), theme, base_point_size=base_point_size
         )
         self._highlighter.set_image_source(self._images, self.image_width())
+        self._highlighter.set_math_source(self.math_size)
         # 等幅フォントの字幅で決まるので、ハイライタを作ったあとに呼ぶ
         self._apply_tab_width()
 
@@ -370,6 +374,52 @@ class MarkdownEditor(QPlainTextEdit):
         if found is None:
             return False
         return self._apply_table_format(lines, found)
+
+    def _refresh_math_reveal(self, old_line: int, new_line: int) -> None:
+        """数式ブロックに出入りしたら、式の行をまとめて掛け直す（I-1）。
+
+        リビールは式全体で決まる（ADR-0020）が、カーソル移動で自動的に
+        掛かるのは旧・新の 2 ブロックだけ（R7）。出入りした式の行だけを
+        こちらで掛け直す。全体再ハイライトはしない。
+        """
+        if old_line == new_line or self._composing:
+            return
+        document = self.document()
+        found: set[int] = set()
+        for line in (old_line, new_line):
+            block = document.findBlockByNumber(line)
+            if not block.isValid() or block.userData() is None:
+                continue
+            if block.userData().info.type not in (
+                BlockType.MATH_BODY,
+                BlockType.MATH_DELIMITER,
+            ):
+                continue
+            # 式の上端まで戻る
+            probe = block
+            while probe.previous().isValid():
+                data = probe.previous().userData()
+                if data is None or data.info.type not in (
+                    BlockType.MATH_BODY,
+                    BlockType.MATH_DELIMITER,
+                ):
+                    break
+                probe = probe.previous()
+            steps = 0
+            while probe.isValid() and steps <= 200:
+                data = probe.userData()
+                if data is None or data.info.type not in (
+                    BlockType.MATH_BODY,
+                    BlockType.MATH_DELIMITER,
+                ):
+                    break
+                found.add(probe.blockNumber())
+                probe = probe.next()
+                steps += 1
+        for number in sorted(found):
+            block = document.findBlockByNumber(number)
+            if block.isValid():
+                self._highlighter.rehighlightBlock(block)
 
     def _autoformat_left_table(self, old_line: int, new_line: int) -> None:
         """表の行から離れたら縦線を揃える（§1.2）。
@@ -787,6 +837,24 @@ class MarkdownEditor(QPlainTextEdit):
     @property
     def image_cache(self) -> ImageCache:
         return self._images
+
+    def math_pixmap(self, latex: str):
+        """数式の絵（I-1 / ADR-0020）。描けない式は None。描画（painter）が呼ぶ。"""
+        return self._math_cache.pixmap(
+            latex,
+            point_size=self.font().pointSizeF(),
+            color=self._theme.foreground,
+            max_width=self.image_width(),
+        )
+
+    def math_size(self, latex: str):
+        """数式の絵の論理サイズ。高さの予約（highlighter）が呼ぶ。"""
+        return self._math_cache.size(
+            latex,
+            point_size=self.font().pointSizeF(),
+            color=self._theme.foreground,
+            max_width=self.image_width(),
+        )
 
     def image_width(self) -> int:
         """本文中に描く画像の最大幅。本文の折り返し幅に合わせる。
@@ -1282,6 +1350,7 @@ class MarkdownEditor(QPlainTextEdit):
             self._syncing = False
 
         self._autoformat_left_table(previous_block, self.textCursor().blockNumber())
+        self._refresh_math_reveal(previous_block, self.textCursor().blockNumber())
 
         if self._typewriter_mode:
             self._center_caret()

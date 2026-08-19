@@ -165,6 +165,16 @@ _HIDDEN_MARKER_TYPES = frozenset({BlockType.HEADING, BlockType.BLOCKQUOTE})
 _MONO_TYPES = frozenset({BlockType.TABLE_ROW, BlockType.TABLE_DELIMITER})
 
 
+def _decode_in_math(block: QTextBlock) -> bool:
+    """そのブロックの終わりが数式の中か（開き $$ と閉じ $$ の見分け）。"""
+    if not block.isValid():
+        return False
+    state = block.userState()
+    if state == -1:
+        return False
+    return BlockState.decode(state).in_math
+
+
 class BlockData(QTextBlockUserData):
     """`QTextBlock` にぶら下げる解析結果（spec §6.2）。
 
@@ -177,12 +187,16 @@ class BlockData(QTextBlockUserData):
         info: BlockInfo,
         spans: list[InlineSpan],
         wrapped: WrappedRow | None = None,
+        *,
+        figure_latex: str | None = None,
     ) -> None:
         super().__init__()
         self.info = info
         self.spans = spans
         self.wrapped = wrapped
         """収まらない表の折り返し内容（ADR-0017）。折り返し表示中の行だけ持つ。"""
+        self.figure_latex = figure_latex
+        """数式ブロックの中身（I-1 / ADR-0020）。図で表示中の最初の本文行だけ持つ。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,6 +247,10 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._line_is_bmp_only = True
         # 折り返し表示中の表の行（ADR-0017）。highlightBlock ごとに詰め直す
         self._pending_wrapped: WrappedRow | None = None
+        # 数式ブロックの図（I-1 / ADR-0020）。最初の本文行にだけ載せる
+        self._pending_figure: str | None = None
+        # 式の絵の大きさの問い合わせ口。エディタが挿す（画像と同じ分担）
+        self._math_size: object = None
         self._table_spacing_cache: tuple[float, float] | None = None
         self._build_formats()
 
@@ -275,6 +293,14 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             return False
         self._image_width = width
         return True
+
+    def set_math_source(self, size_getter) -> None:
+        """数式の絵の大きさの問い合わせ口（I-1）。`str -> QSize | None`。
+
+        エディタが挿す。大きさ・色・幅の決定はエディタ側にあり、
+        ハイライタは高さの予約に使うだけ。
+        """
+        self._math_size = size_getter
 
     def set_image_source(self, cache, width: int) -> None:
         """画像行の高さを決めるための出どころ（タスク A-2）。
@@ -341,6 +367,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._line = text
         self._line_is_bmp_only = text.isascii() or all(ord(char) < 0x10000 for char in text)
         self._pending_wrapped = None
+        self._pending_figure = None
         state = BlockState.decode(self.previousBlockState())
         info, next_state = classify_line(text, block.blockNumber(), state)
 
@@ -354,7 +381,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         if image is True:
             # 絵として描くので記号は見せない。**カーソルが入っても高さを変えない**
             # （行高が動くと下の全部が飛ぶ。§2 の「行の高さが変わらない」約束）
-            self.setCurrentBlockUserData(BlockData(info, spans, self._pending_wrapped))
+            self.setCurrentBlockUserData(
+                BlockData(info, spans, self._pending_wrapped, figure_latex=self._pending_figure)
+            )
             self.setCurrentBlockState(next_state.encode())
             return
         if image is False:
@@ -370,7 +399,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             self._apply_spans(text, spans, reveal)
         self._hide_block_markers(text, info, reveal)
 
-        self.setCurrentBlockUserData(BlockData(info, spans, self._pending_wrapped))
+        self.setCurrentBlockUserData(
+            BlockData(info, spans, self._pending_wrapped, figure_latex=self._pending_figure)
+        )
         self.setCurrentBlockState(next_state.encode())
 
     def _pad_cells(self, text: str) -> None:
@@ -443,6 +474,82 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         """その高さの行になる文字サイズ。"""
         ratio = line_height_ratio(self.document().defaultFont())
         return max(1.0, height / ratio)
+
+    def _math_run(self) -> tuple[int, int, str] | None:
+        """この行が属する数式ブロックの（開始行, 終了行, LaTeX）。
+
+        開始・終了は $$ の行（含む）。閉じていなければ None（打ちかけの
+        式を絵にすると、書いている途中で行が消える）。上へ辿って開きを
+        探し、下へ辿って閉じまでを集める（`_fence_body` と同じ手）。
+        """
+        block = self.currentBlock()
+        start = block
+        while start.isValid():
+            data = start.userData()
+            kind = data.info.type if data is not None else None
+            if kind is BlockType.MATH_DELIMITER and not _decode_in_math(start.previous()):
+                break  # 開きの $$（前の行が式の中ではない）
+            if kind not in (BlockType.MATH_BODY, BlockType.MATH_DELIMITER) and start is not block:
+                return None
+            start = start.previous()
+        if not start.isValid():
+            return None
+
+        lines: list[str] = []
+        probe = start.next()
+        while probe.isValid() and len(lines) <= MAX_HIGHLIGHT_LINES:
+            data = probe.userData()
+            if data is not None and data.info.type is BlockType.MATH_DELIMITER:
+                return start.blockNumber(), probe.blockNumber(), "\n".join(lines)
+            if data is None and probe.text().strip() == "$$":
+                # 初回パスでは後続の userData がまだ無い（`_fence_body` と同じ）
+                return start.blockNumber(), probe.blockNumber(), "\n".join(lines)
+            lines.append(probe.text())
+            probe = probe.next()
+        return None
+
+    def _apply_math_figure(self, text: str) -> bool:
+        """数式ブロックを図で表示する。できなければ False（生のまま）。
+
+        画像（ADR-0004）と同じ手口で行を隠して高さを予約する。リビールは
+        表（ADR-0017）と同じ考え方だが、行単位ではなく**式全体**:
+        キャレットがどの行に入っても式全体が生の LaTeX に戻る。
+        途中の行だけ生に戻ると、式の断片と絵が同時に見えて読めない。
+        """
+        run = self._math_run()
+        if run is None:
+            return False
+        start, end, latex = run
+        if not latex.strip() or self._caret_in_lines(start, end):
+            return False
+        size = self._math_size(latex)
+        if size is None:
+            return False  # 壊れた式。生のまま見せて直せるようにする
+
+        self._hide(0, len(text))
+        if self.currentBlock().blockNumber() == start + 1:
+            tall = QTextCharFormat()
+            tall.setFontPointSize(self._point_size_for(size.height() + IMAGE_PADDING * 2))
+            tall.setForeground(QColor("transparent"))
+            self.setFormat(0, 1, tall)
+            self._pending_figure = latex
+        return True
+
+    def _caret_in_lines(self, start: int, end: int) -> bool:
+        """キャレット（または選択）が行の範囲 [start, end] に触れているか。"""
+        document = self.document()
+        positions = []
+        if self._reveal_position is not None:
+            positions.append(self._reveal_position)
+        if self._selection is not None:
+            positions.extend(self._selection)
+        numbers = [document.findBlock(position).blockNumber() for position in positions]
+        if any(start <= number <= end for number in numbers):
+            return True
+        # 選択が式をまたいで両端とも外にある場合
+        if self._selection is not None and len(numbers) >= 2:
+            return numbers[-2] <= start and end <= numbers[-1]
+        return False
 
     def _table_run_texts(self) -> list[str]:
         """このブロックが属する表の全行。折り返しの列幅は表全体から決まる。
@@ -555,6 +662,15 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
     def _hide_block_markers(self, text: str, info: BlockInfo, reveal: _Reveal) -> None:
         if not text:
+            return
+        if (
+            info.type in (BlockType.MATH_BODY, BlockType.MATH_DELIMITER)
+            and not self._source_mode
+            and self._math_size is not None
+            and self._apply_math_figure(text)
+        ):
+            # 図で表示した（I-1 / ADR-0020）。リビールは**式全体**で判定
+            # 済みなので、ブロック単位の reveal には進まない
             return
         if info.type is BlockType.FRONT_MATTER:
             # **Raw でも出さない。** `id` や `created` はアプリの管理情報で、

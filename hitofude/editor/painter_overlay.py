@@ -122,6 +122,9 @@ class DecorationKind(Enum):
     FOLD_MARKER = auto()
     """見出しの開閉三角（I-4 / ADR-0019）。状態は `text`（open / folded）。"""
 
+    MATH = auto()
+    """数式ブロックの組版結果（I-1 / ADR-0020）。絵は `pixmap` に入る。"""
+
 
 @dataclass(frozen=True, slots=True)
 class Decoration:
@@ -195,7 +198,33 @@ def visible_decorations(editor) -> list[Decoration]:
         block = block.next()
 
     decorations.extend(table_decorations(editor, entries))
+    decorations.extend(math_decorations(editor, entries))
     return decorations
+
+
+def math_decorations(editor, entries) -> list[Decoration]:
+    """数式ブロックの絵（I-1 / ADR-0020）。
+
+    高さはハイライタが予約済み（画像と同じ ADR-0004 の手口）。式の中身は
+    最初の本文行の `BlockData.figure_latex` に載っている。キャレットが式に
+    入っている間は載らない（生の LaTeX が見えている）。
+    """
+    result: list[Decoration] = []
+    for block, _info, rect in entries:
+        latex = getattr(block.userData(), "figure_latex", None)
+        if latex is None:
+            continue
+        pixmap = editor.math_pixmap(latex)
+        if pixmap is None:
+            continue
+        width = pixmap.width() / pixmap.devicePixelRatio()
+        height = pixmap.height() / pixmap.devicePixelRatio()
+        left = editor.contentOffset().x() + editor.document().documentMargin()
+        top = rect.top() + max(0.0, (rect.height() - height) / 2)
+        result.append(
+            Decoration(DecorationKind.MATH, QRectF(left, top, width, height), pixmap=pixmap)
+        )
+    return result
 
 
 def _image_for(editor, block, geometry) -> Decoration | None:
@@ -592,7 +621,10 @@ def paint_foreground(
 ) -> None:
     """本文の上に重ねる要素（チェックボックス記号・画像）を描く。"""
     for decoration in decorations:
-        if decoration.kind is DecorationKind.IMAGE and decoration.pixmap is not None:
+        if (
+            decoration.kind in (DecorationKind.IMAGE, DecorationKind.MATH)
+            and decoration.pixmap is not None
+        ):
             painter.drawPixmap(decoration.rect.topLeft(), decoration.pixmap)
 
     dim = QColor(theme.background)
