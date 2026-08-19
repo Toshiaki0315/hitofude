@@ -176,7 +176,7 @@ def build_gear_menu(window) -> QMenu:
     menu.aboutToShow.connect(lambda: sync_view_checks(window))
     groups = (
         ("環境設定…",),
-        ("サイドバー", "ノートリスト", "書式ツールバー", "バックリンク"),
+        ("サイドバー", "ノートリスト", "書式ツールバー", "バックリンク", "アウトライン"),
         ("ソースモード（Raw）", "フォーカスモード", "タイプライタモード"),
         ("ショートカット一覧", f"{APP_NAME} について"),
     )

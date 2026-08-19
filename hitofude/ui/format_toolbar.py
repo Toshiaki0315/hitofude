@@ -15,7 +15,7 @@
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QToolButton, QWidget
 
@@ -42,6 +42,9 @@ BAR_HEIGHT = BUTTON_SIZE + BAR_PADDING * 2
 BUTTON_RADIUS = 5
 # 生の Markdown を出す切り替え（ユーザー要望）。中身はソースモード
 RAW_LABEL = "Raw"
+# アウトラインの開閉（ユーザー要望）。`Cmd+5` と表示メニューだけでは
+# **あることに気づけない**。Raw の隣に置く
+OUTLINE_LABEL = "見出し"
 # 本文との境目。ペインの区切り（`QSplitter::handle`）と同じ太さに揃える
 RULE_HEIGHT = 1
 
@@ -73,6 +76,9 @@ class FormatToolbar(QWidget):
         FormatAction(Glyph.QUOTE, "引用", "toggle_quote"),
         FormatAction(Glyph.LINK, "リンク", "insert_link", "⌘K"),
     )
+
+    outline_toggled = Signal()
+    """アウトラインの開閉を押された。**開くのは呼び出し側**（ここは窓を知らない）。"""
 
     # 区切り線を入れる位置（この番号のボタンの手前）。種類の切れ目
     SEPARATORS = (5, 10)
@@ -115,6 +121,19 @@ class FormatToolbar(QWidget):
         self._editor.source_mode_changed.connect(self._raw.setChecked)
         layout.addWidget(self._raw)
 
+        # **押すのはここではない**（ツールバーはウィンドウを知らない）。
+        # Raw と同じ形で、状態は外から入れてもらう
+        self._outline = QToolButton(self)
+        self._outline.setFont(raw_font)
+        self._outline.setFixedHeight(BUTTON_SIZE)
+        self._outline.setText(OUTLINE_LABEL)
+        self._outline.setCheckable(True)
+        self._outline.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._outline.setToolTip("アウトラインを開閉する（⌘5）")
+        self._outline.setAccessibleName("アウトライン")
+        self._outline.clicked.connect(lambda _checked: self.outline_toggled.emit())
+        layout.addWidget(self._outline)
+
         self._apply_theme()
 
     # ------------------------------------------------------------------ 参照
@@ -125,6 +144,18 @@ class FormatToolbar(QWidget):
     @property
     def raw_button(self) -> QToolButton:
         return self._raw
+
+    @property
+    def outline_button(self) -> QToolButton:
+        return self._outline
+
+    def set_outline_checked(self, showing: bool) -> None:
+        """アウトラインが出ているかを映す。**押した形は状態を表す。**
+
+        `Cmd+5` やメニューから開いたときも揃える（どこから押しても
+        同じ状態を指す）。
+        """
+        self._outline.setChecked(showing)
 
     # ------------------------------------------------------------------ 見た目
 

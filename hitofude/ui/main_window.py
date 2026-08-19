@@ -246,6 +246,7 @@ class MainWindow(QMainWindow):
         self._editor.tag_activated.connect(self.activate_tag)
         self._editor.note_activated.connect(self.activate_note)
         self._editor.modes_changed.connect(self._update_modes)
+        self._pane.toolbar.outline_toggled.connect(self.toggle_outline)
         self._pane.backlinks.opened.connect(self._on_backlink_opened)
         self._pane.backlinks.toggled.connect(self._remember_backlinks)
         self._pane.backlinks.set_expanded(self._config.backlinks_expanded)
@@ -337,6 +338,7 @@ class MainWindow(QMainWindow):
         self._sidebar.setVisible(self._config.sidebar_visible)
         # 開いたままにしていた人には、次も開いた状態で出す（提案 5）
         self._outline.setVisible(self._config.outline_visible)
+        self._pane.toolbar.set_outline_checked(self._config.outline_visible)
         self._list_pane.setVisible(self._config.note_list_visible)
         self._pane.set_toolbar_visible(self._config.toolbar_visible)
         self._splitter.restore_sizes(self._config.splitter_sizes)
@@ -992,10 +994,17 @@ class MainWindow(QMainWindow):
         return self._outline
 
     def toggle_outline(self) -> None:
-        """`Cmd+5`。見出しの一覧を開閉する（提案 5）。"""
-        showing = self._outline.isHidden()
+        """`Cmd+5`。見出しの一覧を開閉する（提案 5）。
+
+        入口は 4 つ（キー・表示メニュー・歯車・ツールバーのボタン）。
+        **どこから押しても同じ状態を指す**ように、ここで一度に揃える。
+        """
+        self._show_outline(self._outline.isHidden())
+
+    def _show_outline(self, showing: bool) -> None:
         self._outline.setVisible(showing)
         self._config.outline_visible = showing
+        self._pane.toolbar.set_outline_checked(showing)
         if showing:
             self._update_outline()
 
