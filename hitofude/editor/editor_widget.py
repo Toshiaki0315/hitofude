@@ -26,7 +26,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QListWidget, QPlainTextEdit, QTextEdit, QWidget
 
-from hitofude.core import frontmatter, search, table, tags
+from hitofude.core import code_langs, frontmatter, search, table, tags
 from hitofude.core.activation import ActivationKind, activation_at
 from hitofude.core.document import plain_text
 from hitofude.core.folding import section_end
@@ -826,33 +826,56 @@ class MarkdownEditor(QPlainTextEdit):
         return list(self._tag_candidates)
 
     def update_tag_completion(self) -> None:
-        """打っている位置を見て候補を出し直す（C-4）。
+        """打っている位置を見て候補を出し直す（C-4 / 言語補完）。
 
+        タグ（`#日報`）とコードフェンスの言語（```` ```py ````）は行の形が
+        重ならないので、1 つのポップアップを使い回す。
         **変換中は出さない**（R6）。確定前に一覧が出ると変換候補と重なる。
         """
         self._tag_candidates = []
-        if self._composing or self._tag_source is None:
+        if self._composing:
             self._hide_tag_popup()
             return
 
         cursor = self.textCursor()
         line = cursor.block().text()
-        prefix = tags.prefix_at(line, utf16_to_py(line, cursor.positionInBlock()))
-        if prefix is None:
-            self._hide_tag_popup()
-            return
+        column = utf16_to_py(line, cursor.positionInBlock())
 
-        self._tag_candidates = tags.matches(prefix, self._tag_source())
+        prefix = self._lang_prefix(cursor, line, column)
+        if prefix is not None:
+            self._tag_candidates = code_langs.matches(prefix)
+        elif self._tag_source is not None:
+            tag_prefix = tags.prefix_at(line, column)
+            if tag_prefix is not None:
+                self._tag_candidates = tags.matches(tag_prefix, self._tag_source())
+
         if not self._tag_candidates:
             self._hide_tag_popup()
             return
         self._show_tag_popup()
 
+    def _lang_prefix(self, cursor: QTextCursor, line: str, column: int) -> str | None:
+        """打ちかけのフェンス言語（ユーザー要望）。補完しない位置なら None。
+
+        開いたフェンスの中の ```` ```py ```` は閉じ損ないのコードなので
+        補完しない。行の分類（BlockData）で見分ける。
+        """
+        prefix = code_langs.prefix_at(line, column)
+        if prefix is None:
+            return None
+        data = cursor.block().userData()
+        if data is not None and data.info.type is not BlockType.CODE_FENCE_OPEN:
+            return None
+        return prefix
+
     def complete_tag(self, tag: str) -> None:
-        """打ちかけのタグを候補で置き換える（C-4）。"""
+        """打ちかけのタグ（または言語名）を候補で置き換える（C-4）。"""
         cursor = self.textCursor()
         line = cursor.block().text()
-        prefix = tags.prefix_at(line, utf16_to_py(line, cursor.positionInBlock()))
+        column = utf16_to_py(line, cursor.positionInBlock())
+        prefix = self._lang_prefix(cursor, line, column)
+        if prefix is None:
+            prefix = tags.prefix_at(line, column)
         if prefix is None:
             return
 
