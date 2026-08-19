@@ -40,6 +40,19 @@ def build_menus(window) -> None:
     # triggered(checked) の checked=False が day 引数に流れ込まないよう遮断する。
     # `daily_note` 側の `when = day or now()` が偶然吸収しているだけの脆い結合だった
     add(file_menu, "今日のノート", "Ctrl+T", lambda: window.open_daily_note())
+    # 日誌を日付順に辿る（ユーザー要望）。**書いた日だけを飛び石で辿る**
+    add(
+        file_menu,
+        "前の日のノート",
+        "Ctrl+Shift+[",
+        lambda: window.open_adjacent_daily(forward=False),
+    )
+    add(
+        file_menu,
+        "次の日のノート",
+        "Ctrl+Shift+]",
+        lambda: window.open_adjacent_daily(forward=True),
+    )
     add(file_menu, "保存", QKeySequence.StandardKey.Save, window.flush)
     file_menu.addSeparator()
     add(file_menu, "ピン留め", "Ctrl+Shift+P", window.toggle_pin_current)

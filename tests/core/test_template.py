@@ -7,10 +7,11 @@
 テストが実行した瞬間に依存して再現しなくなる（CLAUDE.md §5 の純関数）。
 """
 
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
 
+from hitofude.core import template
 from hitofude.core.template import DATE_FORMAT, daily_title, expand
 
 NOW = datetime(2026, 8, 14, 9, 5)
@@ -107,3 +108,53 @@ class TestDaily:
     def test_書式は日付の既定と同じ(self) -> None:
         """ファイル名にも一覧にも出るので、並べたときに揃う形にする。"""
         assert daily_title(NOW) == NOW.strftime(DATE_FORMAT)
+
+
+class TestDailyNeighbour:
+    """日次ノートを日付順に辿る（ユーザー要望）。
+
+    `Cmd+T` で今日は開けたが、**昨日・明日へ動けなかった**。日誌として
+    使うなら日付を辿る道が要る。
+
+    **既にあるものだけを辿る。** 書かなかった日にも空のノートを作ると、
+    一覧が空ノートで埋まる。
+    """
+
+    def test_日付として読める(self) -> None:
+        assert template.parse_daily("2026-08-14") == date(2026, 8, 14)
+
+    @pytest.mark.parametrize(
+        "title", ["会議メモ", "2026-08", "2026-8-14", "2026-08-14 の記録", "2026-13-01"]
+    )
+    def test_日次でない題名は読まない(self, title: str) -> None:
+        """**厳しく見る。** 日付で始まるだけのノートを日誌に混ぜない。"""
+        assert template.parse_daily(title) is None
+
+    def test_前の日を探す(self) -> None:
+        titles = ["2026-08-10", "2026-08-12", "2026-08-14", "会議メモ"]
+        assert template.daily_neighbour(titles, date(2026, 8, 14), forward=False) == "2026-08-12"
+
+    def test_次の日を探す(self) -> None:
+        titles = ["2026-08-10", "2026-08-12", "2026-08-14"]
+        assert template.daily_neighbour(titles, date(2026, 8, 10), forward=True) == "2026-08-12"
+
+    def test_空いた日は飛ばす(self) -> None:
+        """**書かなかった日は飛ばす。** 1 日ずつ止まると、間が空いたときに
+        何度も押すことになる。"""
+        titles = ["2026-01-01", "2026-08-14"]
+        assert template.daily_neighbour(titles, date(2026, 8, 14), forward=False) == "2026-01-01"
+
+    def test_端では見つからない(self) -> None:
+        titles = ["2026-08-14"]
+        assert template.daily_neighbour(titles, date(2026, 8, 14), forward=False) is None
+        assert template.daily_neighbour(titles, date(2026, 8, 14), forward=True) is None
+
+    def test_基準の日そのものは返さない(self) -> None:
+        titles = ["2026-08-14", "2026-08-15"]
+        assert template.daily_neighbour(titles, date(2026, 8, 14), forward=True) == "2026-08-15"
+
+    def test_基準が日次でなくても効く(self) -> None:
+        """ふつうのノートを開いているときは、今日を基準にする（呼ぶ側が渡す）。"""
+        titles = ["2026-08-10", "2026-08-20"]
+        assert template.daily_neighbour(titles, date(2026, 8, 14), forward=False) == "2026-08-10"
+        assert template.daily_neighbour(titles, date(2026, 8, 14), forward=True) == "2026-08-20"

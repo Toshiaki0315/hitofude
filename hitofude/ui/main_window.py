@@ -587,6 +587,10 @@ class MainWindow(QMainWindow):
         self._update_title()
         self._update_stats()
 
+    def open_adjacent_daily(self, *, forward: bool) -> bool:
+        """前後の日次ノートを開く。開けたら True。"""
+        return self._notes.open_adjacent_daily(forward=forward)
+
     def reveal_note(self, path: Path) -> None:
         """Finder でそのノートを選んだ状態にする（一覧の右クリック）。"""
         self._notes.reveal_note(path)

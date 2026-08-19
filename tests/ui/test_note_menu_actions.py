@@ -114,4 +114,4 @@ class TestCopyLink:
     def test_知らせを出す(self, window) -> None:
         """クリップボードは目に見えない。入ったことを伝える。"""
         window.copy_note_link(make_note(window, "会議メモ"))
-        assert window.statusBar().currentMessage()
+        assert window.notice()

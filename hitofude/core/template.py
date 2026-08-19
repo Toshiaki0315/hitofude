@@ -18,7 +18,7 @@
 
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 DATE_FORMAT = "%Y-%m-%d"
 TIME_FORMAT = "%H:%M"
@@ -81,6 +81,44 @@ def _value(name: str, fmt: str | None, *, now: datetime, title: str) -> str | No
             return title
         case _:
             return None
+
+
+def parse_daily(title: str) -> date | None:
+    """日次ノートの題名を日付として読む。日次でなければ `None`。
+
+    **厳しく見る。** `2026-08-14 の記録` のように日付で始まるだけのノートを
+    日誌に混ぜると、辿ったときに知らないノートへ飛ぶ。
+
+    **書き戻して一致するものだけ**を認める。`strptime` はゼロ詰めの無い
+    `2026-8-14` も通すが、この形はアプリが作らない（`daily_title` は必ず
+    ゼロ詰めする）。通すと、日誌の並びに別物が混ざる。
+    """
+    try:
+        day = datetime.strptime(title, DATE_FORMAT).date()
+    except ValueError:
+        return None
+    return day if day.strftime(DATE_FORMAT) == title else None
+
+
+def daily_neighbour(titles: list[str], reference: date, *, forward: bool) -> str | None:
+    """`reference` の前（後ろ）にある、いちばん近い日次ノートの題名。
+
+    **書かなかった日は飛ばす。** 1 日ずつ止まると、間が空いたときに何度も
+    押すことになる。**基準の日そのものは返さない**（今いる場所に留まる
+    のは「移動できなかった」と区別が付かない）。
+
+    端まで来たら `None`。作らない（書かなかった日にも空のノートができると
+    一覧が埋まる）。呼ぶ側は「これ以上ありません」と伝えればよい。
+    """
+    days = [(parse_daily(title), title) for title in titles]
+    found = [
+        (day, title)
+        for day, title in days
+        if day is not None and (day > reference if forward else day < reference)
+    ]
+    if not found:
+        return None
+    return min(found)[1] if forward else max(found)[1]
 
 
 def daily_title(day: datetime) -> str:

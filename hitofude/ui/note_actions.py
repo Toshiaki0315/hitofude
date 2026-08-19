@@ -15,13 +15,14 @@ from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QMessageBox
 
 from hitofude.app import apply_menu_font
+from hitofude.core import template
 from hitofude.core.document import Note, with_title
+from hitofude.core.template import DATE_FORMAT
 from hitofude.storage.index_db import NoteRow
 from hitofude.storage.vault import MARKDOWN_SUFFIXES, sanitize_filename, unique_path
 from hitofude.ui.note_list import NoteRole
 from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
 from hitofude.ui.sidebar import Filter, FilterKind
-from hitofude.ui.status_bar import NOTICE_MS
 
 logger = logging.getLogger(__name__)
 
@@ -358,7 +359,7 @@ class NoteActions:
         """
         link = f"[[{path.stem}]]"
         QApplication.clipboard().setText(link)
-        self._window.statusBar().showMessage(f"{link} をコピーしました", NOTICE_MS)
+        self._window.notify(f"{link} をコピーしました")
         return link
 
     def show_context_menu(self, point) -> None:
@@ -450,6 +451,33 @@ class NoteActions:
         created = window._vault.daily_note(day)
         window._open_created(created.note, created.cursor)
         return created.note
+
+    def open_adjacent_daily(self, *, forward: bool) -> bool:
+        """前後の日次ノートを開く（ユーザー要望）。開けたら True。
+
+        **既にあるものだけを辿る。** 書かなかった日にも空のノートを作ると、
+        一覧が空ノートで埋まる。端まで来たら知らせるだけで動かない。
+
+        **書かなかった日は飛ばす。** 1 日ずつ止まると、間が空いたときに
+        何度も押すことになる。
+
+        日次でないノートを見ているときは**今日**を基準にする。日誌の外から
+        でも入れるようにするため。
+        """
+        window = self._window
+        current = window.current_note.title if window.current_note is not None else None
+        reference = (
+            template.parse_daily(current or "") if current is not None else None
+        ) or datetime.now().date()
+
+        titles = [row.title for row in window._db.notes()]
+        found = template.daily_neighbour(titles, reference, forward=forward)
+        if found is None:
+            window.notify("これより" + ("後" if forward else "前") + "の日のノートはありません")
+            return False
+
+        window.open_daily_note(datetime.strptime(found, DATE_FORMAT))
+        return True
 
     def _template_items(self, query: str) -> list[PaletteItem]:
         items = [
