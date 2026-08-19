@@ -40,6 +40,7 @@ from hitofude.config import (
 from hitofude.core import frontmatter, textpos
 from hitofude.core.activation import ALLOWED_SCHEMES
 from hitofude.core.document import Note
+from hitofude.core.outline import headings
 from hitofude.core.stats import is_huge
 from hitofude.core.wikilink import context_line, normalize, resolve
 from hitofude.editor.editor_widget import MarkdownEditor
@@ -60,6 +61,7 @@ from hitofude.ui.menus import build_gear_menu, build_menus
 from hitofude.ui.note_actions import NoteActions
 from hitofude.ui.note_list import NoteListView
 from hitofude.ui.note_list_pane import EMPTY_NOTICE, NoteListPane
+from hitofude.ui.outline_pane import OutlinePane
 from hitofude.ui.panes import (
     SIDEBAR_MIN_WIDTH,
     PaneSplitter,
@@ -203,10 +205,17 @@ class MainWindow(QMainWindow):
 
         self._sidebar.setMinimumWidth(SIDEBAR_MIN_WIDTH)
 
+        # 見出しの一覧（提案 5）。**本文の右**に置く。左に置くと、
+        # 一覧・サイドバーと合わせて左だけが混み、本文が右へ押し出される
+        self._outline = OutlinePane(theme=theme)
+        self._outline.heading_activated.connect(self.jump_to_line)
+        self._outline.hide()
+
         self._splitter = PaneSplitter(theme.rule)
         self._splitter.addWidget(self._sidebar)
         self._splitter.addWidget(self._list_pane)
         self._splitter.addWidget(self._pane)
+        self._splitter.addWidget(self._outline)
         self._splitter.setStretchFactor(2, 1)
         self._splitter.setChildrenCollapsible(False)
 
@@ -326,6 +335,8 @@ class MainWindow(QMainWindow):
         # **表示状態を先に決める。** 隠れているウィジェットは幅 0 になるので、
         # 順序が逆だと割り当てた幅がその場で捨てられる
         self._sidebar.setVisible(self._config.sidebar_visible)
+        # 開いたままにしていた人には、次も開いた状態で出す（提案 5）
+        self._outline.setVisible(self._config.outline_visible)
         self._list_pane.setVisible(self._config.note_list_visible)
         self._pane.set_toolbar_visible(self._config.toolbar_visible)
         self._splitter.restore_sizes(self._config.splitter_sizes)
@@ -720,6 +731,7 @@ class MainWindow(QMainWindow):
         self._show_saved(None)
         self._remember_note(note.path)
         self._update_backlinks()
+        self._update_outline()
 
     def new_note(self) -> None:
         self.flush()
@@ -780,6 +792,9 @@ class MainWindow(QMainWindow):
         self._debouncer.touch()
         self._update_title()
         self._stats_timer.start()
+        # 見出しは打つほどに変わる。**同じなら差し替えない**ので、
+        # そのまま呼んでよい（`OutlinePane.set_headings`）
+        self._update_outline()
         # 古い時刻が残っていると今の状態と食い違う（C-5）
         self._show_saved(None)
 
@@ -971,6 +986,28 @@ class MainWindow(QMainWindow):
 
     def _remember_backlinks(self, expanded: bool) -> None:
         self._config.backlinks_expanded = expanded
+
+    @property
+    def outline_pane(self) -> OutlinePane:
+        return self._outline
+
+    def toggle_outline(self) -> None:
+        """`Cmd+5`。見出しの一覧を開閉する（提案 5）。"""
+        showing = self._outline.isHidden()
+        self._outline.setVisible(showing)
+        self._config.outline_visible = showing
+        if showing:
+            self._update_outline()
+
+    def _update_outline(self) -> None:
+        """本文の見出しを一覧へ流す。
+
+        **隠れているときは数えない。** 打つたびに全文を走査するので、
+        出していない人に費用を払わせない。
+        """
+        if self._outline.isHidden():
+            return
+        self._outline.set_headings(headings(self._editor.toPlainText()))
 
     def toggle_backlinks(self) -> None:
         """`Cmd+4`。バックリンクの帯を開閉する（E-6 ③）。"""

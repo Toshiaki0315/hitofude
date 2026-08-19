@@ -120,6 +120,7 @@ def build_menus(window) -> None:
         ("ノートリスト", "Ctrl+2", window.toggle_note_list),
         ("書式ツールバー", "Ctrl+3", window.toggle_toolbar),
         ("バックリンク", "Ctrl+4", window.toggle_backlinks),
+        ("アウトライン", "Ctrl+5", window.toggle_outline),
     ):
         add(view_menu, label, key, slot).setCheckable(True)
     view_menu.addSeparator()
@@ -156,6 +157,7 @@ def sync_view_checks(window) -> None:
         "ノートリスト": not window._splitter.widget(1).isHidden(),
         "書式ツールバー": window._pane.toolbar_visible(),
         "バックリンク": window._pane.backlinks.expanded(),
+        "アウトライン": not window.outline_pane.isHidden(),
         "ソースモード（Raw）": window._editor.source_mode,
         "フォーカスモード": window._editor.focus_mode,
         "タイプライタモード": window._editor.typewriter_mode,

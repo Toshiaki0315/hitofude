@@ -79,6 +79,7 @@ _SIDEBAR = "layout/sidebar_visible"
 _NOTE_LIST = "layout/note_list_visible"
 _TOOLBAR = "layout/toolbar_visible"
 _BACKLINKS = "layout/backlinks_expanded"
+_OUTLINE = "layout/outline_visible"
 _TAB_WIDTH = "editor/tab_width"
 _SORT_ORDER = "list/sort_order"
 _GEOMETRY = "layout/geometry"
@@ -250,6 +251,18 @@ class Config:
     @tab_width.setter
     def tab_width(self, value: int) -> None:
         self.settings.setValue(_TAB_WIDTH, int(value))
+
+    @property
+    def outline_visible(self) -> bool:
+        """アウトラインの欄を出すか（提案 5）。**既定は出さない。**
+
+        画面を勝手に狭くしない。要る人が `Cmd+5` で開く。
+        """
+        return self.settings.value(_OUTLINE, False, type=bool)
+
+    @outline_visible.setter
+    def outline_visible(self, value: bool) -> None:
+        self.settings.setValue(_OUTLINE, bool(value))
 
     @property
     def toolbar_visible(self) -> bool:

@@ -25,10 +25,14 @@ def window(window):
 
 
 class TestLayout:
-    def test_3ペインになっている(self, window) -> None:
+    def test_既定は3ペインに見える(self, window) -> None:
+        """アウトライン（ADR-0022）を足したので中身は 4 つ。**既定では
+        隠れている**ので、見た目は spec §5.1 の 3 ペインのまま。"""
         splitter = window.centralWidget()
         assert isinstance(splitter, QSplitter)
-        assert splitter.count() == 3
+        assert splitter.count() == 4
+        assert splitter.widget(3).isHidden() is True
+        assert sum(not splitter.widget(i).isHidden() for i in range(4)) == 3
 
     def test_並びはサイドバーリストエディタ(self, window) -> None:
         splitter = window.centralWidget()
