@@ -277,7 +277,8 @@ class MainWindow(QMainWindow):
         # 消える（ユーザー指摘）。ステータスバーは常に見えている
         self._menu_button = QToolButton(self.statusBar())
         self._menu_button.setAutoRaise(True)
-        self._menu_button.setIconSize(QSize(18, 18))
+        # 24px（ユーザー要望）。ブラウザの設定歯車と同じくらいの存在感にする
+        self._menu_button.setIconSize(QSize(24, 24))
         self._menu_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._menu_button.setToolTip("メニュー")

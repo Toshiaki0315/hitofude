@@ -42,6 +42,10 @@ class TestPlacement:
     def test_アイコンがある(self, window) -> None:
         assert not window.menu_button.icon().isNull()
 
+    def test_アイコンに存在感がある(self, window) -> None:
+        """小さすぎて見えにくい、が 2 度出た（ユーザー要望）。24px を下限に固定。"""
+        assert window.menu_button.iconSize().width() >= 24
+
     def test_ツールバーに歯車はもう無い(self, window) -> None:
         assert not hasattr(window._pane.toolbar, "menu_button")
 
