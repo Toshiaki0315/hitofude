@@ -1027,13 +1027,20 @@ class MainWindow(QMainWindow):
         note = self._note
         if note is None:
             return None
-        return history.keep(
-            self.history_root(),
-            note_key(note, self._vault.root),
-            text,
-            now=self._history_now(),
-            force=force,
-        )
+        try:
+            return history.keep(
+                self.history_root(),
+                note_key(note, self._vault.root),
+                text,
+                now=self._history_now(),
+                force=force,
+            )
+        except OSError as error:
+            # **履歴は付随物。** 本体（.md）は既に書けているのに、ここで
+            # 例外を上げると保存の後処理（setModified / 索引更新 / 保存表示）
+            # ごと壊れ、自動保存のたびに壊れ続ける（コードレビュー指摘）
+            logger.warning("版を残せなかった: %s", error)
+            return None
 
     def note_versions(self) -> list[history.Version]:
         """開いているノートの版（新しい順）。無ければ空。"""

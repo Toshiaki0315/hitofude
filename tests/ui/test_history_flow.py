@@ -160,3 +160,47 @@ class TestOpenDialog:
         finally:
             dialog.deleteLater()
         assert "古い内容" in window.editor.toPlainText()
+
+
+class TestKeepFailure:
+    """履歴の書き込み失敗は保存を壊さない（コードレビュー指摘）。
+
+    履歴は付随物で、本体（.md）の保存が成功しているのに後処理
+    （setModified / 索引更新 / 保存表示）が飛ぶと、自動保存のたびに
+    壊れ続ける。
+    """
+
+    def test_履歴が書けなくても保存は完了する(self, window, monkeypatch) -> None:
+        from hitofude.storage import history
+
+        note = window.vault.create("守るノート", "# 守るノート\n\n本文\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        window.open_note(note.path)
+        # 末尾に足す。先頭に挿すと見出し＝題名が変わり、リネームで
+        # 元のパスが消えて検証にならない
+        from PySide6.QtGui import QTextCursor
+
+        window.editor.moveCursor(QTextCursor.MoveOperation.End)
+        window.editor.textCursor().insertText("\n追記")
+
+        def broken(*args, **kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(history, "keep", broken)
+        window.flush()
+
+        assert "追記" in note.path.read_text(encoding="utf-8")  # 本体は書けている
+        assert not window.editor.document().isModified()  # 後処理も走った
+
+    def test_失敗してもNoneが返るだけ(self, window, monkeypatch) -> None:
+        from hitofude.storage import history
+
+        monkeypatch.setattr(
+            history, "keep", lambda *a, **k: (_ for _ in ()).throw(OSError("denied"))
+        )
+        note = window.vault.create("別ノート", "# 別ノート\n\n本文\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        window.open_note(note.path)
+        assert window.keep_version("本文") is None
