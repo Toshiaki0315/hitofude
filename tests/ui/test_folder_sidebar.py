@@ -125,3 +125,43 @@ class TestInWindow:
         self.put(window, "仕事", "会議")
         window.set_filter(Filter(FilterKind.FOLDER, folder="無い"))
         assert "無い" in window.note_list_pane.empty_notice_text()
+
+
+class TestExpansion:
+    """フォルダツリーの展開はタグの有無に依存しない（コードレビュー指摘）。"""
+
+    def folder_index(self, sidebar):
+        model = sidebar.model()
+        for row in range(model.rowCount()):
+            item = model.item(row)
+            if item.text() == "フォルダ":
+                return model.indexFromItem(item)
+        return None
+
+    def test_タグが無くても展開される(self, qtbot) -> None:
+        from hitofude.storage.index_db import FolderCount
+        from hitofude.ui.sidebar import Sidebar
+
+        sidebar = Sidebar()
+        qtbot.addWidget(sidebar)
+        sidebar.set_folders([FolderCount(folder="仕事", count=2)])
+        sidebar.set_tags([])  # タグゼロ
+
+        index = self.folder_index(sidebar)
+        assert index is not None
+        assert sidebar.isExpanded(index), "タグが無いとフォルダが畳まれたまま"
+
+    def test_タグが無くても畳んだ枝は覚える(self, qtbot) -> None:
+        from hitofude.storage.index_db import FolderCount
+        from hitofude.ui.sidebar import Sidebar
+
+        sidebar = Sidebar()
+        qtbot.addWidget(sidebar)
+        sidebar.set_folders([FolderCount(folder="仕事", count=2)])
+        sidebar.set_tags([])
+        index = self.folder_index(sidebar)
+        sidebar.setExpanded(index, False)  # 手で畳む
+
+        sidebar.set_folders([FolderCount(folder="仕事", count=3)])  # 件数が変わって再構築
+        index = self.folder_index(sidebar)
+        assert not sidebar.isExpanded(index), "畳んだ枝が再構築で開き直された"

@@ -251,26 +251,35 @@ class Sidebar(QTreeView):
                 root_item = _sized(_make_tag_item(node, color), height)
                 _size_children(root_item, height)
                 header.appendRow(root_item)
-            # 既定は全部開く。**畳んであった枝だけ**畳み直す。
-            # 開いた側を覚えると、新しく現れた枝が畳まれて見落とされる
-            self.expandAll()
-            for filter_ in collapsed:
-                index = self._find(filter_)
-                if index is not None:
-                    self.setExpanded(index, False)
 
-    def _collapsed_filters(self) -> set[Filter]:
-        """畳まれているタグ枝。組み直しをまたいで畳みを保つために覚える。"""
-        collapsed: set[Filter] = set()
+        # 既定は全部開く。**畳んであった枝だけ**畳み直す。
+        # 開いた側を覚えると、新しく現れた枝が畳まれて見落とされる。
+        # **タグの if の外**に置く: 中に置くと、タグの無い vault で
+        # フォルダツリーが畳まれたまま・畳み直しも効かない
+        # （コードレビュー指摘）
+        self.expandAll()
+        for entry in collapsed:
+            index = self._find(entry) if isinstance(entry, Filter) else self._find_label(entry)
+            if index is not None:
+                self.setExpanded(index, False)
+
+    def _collapsed_filters(self) -> set[Filter | str]:
+        """畳まれている枝。組み直しをまたいで畳みを保つために覚える。
+
+        枝はフィルタ（タグ・フォルダ）で、見出し行（「フォルダ」「タグ」。
+        フィルタを持たない）は**文言**で覚える。見出しを対象にしないと、
+        畳んだ見出しが組み直しのたびに開き直される。
+        """
+        collapsed: set[Filter | str] = set()
 
         def walk(item: QStandardItem) -> None:
             for row in range(item.rowCount()):
                 child = item.child(row)
                 if child is None:
                     continue
-                data = child.data(_FILTER_ROLE)
-                if data is not None and child.rowCount() > 0 and not self.isExpanded(child.index()):
-                    collapsed.add(data)
+                if child.rowCount() > 0 and not self.isExpanded(child.index()):
+                    data = child.data(_FILTER_ROLE)
+                    collapsed.add(data if data is not None else child.text())
                 walk(child)
 
         walk(self._model.invisibleRootItem())
@@ -298,6 +307,14 @@ class Sidebar(QTreeView):
             found = _search(item, target)
             if found is not None:
                 return found.index()
+        return None
+
+    def _find_label(self, label: str):
+        """文言で行を探す（フィルタを持たない見出し行用）。"""
+        for row in range(self._model.rowCount()):
+            item = self._model.item(row)
+            if item is not None and item.text() == label:
+                return item.index()
         return None
 
     def _on_current_changed(self, current, _previous) -> None:
@@ -350,15 +367,19 @@ def _folder_items(counts: list["FolderCount"], color: str, height: int) -> list[
     """
     items: dict[str, QStandardItem] = {}
     roots: list[QStandardItem] = []
-    for count in sorted(counts, key=lambda found: found.folder):
-        item = QStandardItem(glyph_icon(Glyph.FOLDER, color), f"{count.label}  {count.count}")
-        item.setEditable(False)
-        item.setData(Filter(FilterKind.FOLDER, folder=count.folder), _FILTER_ROLE)
-        item.setSizeHint(QSize(0, height))
+    # folder_tree() が名前順で返す（親が先）。並びの契約はあちらが持つ
+    for count in counts:
+        item = _sized(
+            _make_item(
+                f"{count.label}  {count.count}",
+                Filter(FilterKind.FOLDER, folder=count.folder),
+                color,
+            ),
+            height,
+        )
         items[count.folder] = item
 
-        parent_name = count.folder.rsplit("/", 1)[0] if "/" in count.folder else None
-        parent = items.get(parent_name) if parent_name else None
+        parent = items.get(count.folder.rsplit("/", 1)[0]) if "/" in count.folder else None
         if parent is not None:
             parent.appendRow(item)
         else:
