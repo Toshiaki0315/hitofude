@@ -617,3 +617,31 @@ class TestInlineBand:
         editor.setPlainText("`code`\n")
         editor.set_source_mode(True)
         assert self.band(editor, "code") == []
+
+
+class TestBlockBandPadding:
+    """コードブロック等の帯の内側の余白（ユーザー要望）。
+
+    フェンス行（隠して 0.5pt）はほぼ高さゼロで、1 行目の文字が帯の
+    上端に張り付いていた。隠した行に数 px の高さを持たせ、帯の上下の
+    余白にする（ADR-0004 と同じ「文字の大きさ」のレバー。R5 に触れない）。
+    """
+
+    def line_height(self, editor, number: int) -> float:
+        block = editor.document().findBlockByNumber(number)
+        return editor.blockBoundingGeometry(block).height()
+
+    def test_フェンス行が余白ぶんの高さを持つ(self, editor) -> None:
+        away(editor, "```python\nprint(1)\n```\n\n本文\n")
+        assert self.line_height(editor, 0) >= 6  # 開き
+        assert self.line_height(editor, 2) >= 6  # 閉じ
+
+    def test_数式の区切り行も余白になる(self, editor) -> None:
+        away(editor, "$$\nE = mc^2\n$$\n\n本文\n")
+        assert self.line_height(editor, 0) >= 6
+
+    def test_本文の行の高さは変わらない(self, editor) -> None:
+        away(editor, "```python\nprint(1)\n```\n\n本文\n")
+        plain = self.line_height(editor, 4)
+        code = self.line_height(editor, 1)
+        assert abs(code - plain) < plain * 0.5  # 中身の行は据え置き

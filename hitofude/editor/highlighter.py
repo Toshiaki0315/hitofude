@@ -164,6 +164,20 @@ _HIDDEN_MARKER_TYPES = frozenset({BlockType.HEADING, BlockType.BLOCKQUOTE})
 
 _MONO_TYPES = frozenset({BlockType.TABLE_ROW, BlockType.TABLE_DELIMITER})
 
+# 帯の上下の縁になる行（フェンス・$$）。隠すと高さがほぼ 0 になり、
+# 1 行目の文字が帯の上端に張り付く（ユーザー要望）。数 px の高さを残して
+# 帯の内側の余白にする。水平線と front matter は帯ではないので含めない
+_BAND_EDGE_TYPES = frozenset(
+    {
+        BlockType.CODE_FENCE_OPEN,
+        BlockType.CODE_FENCE_CLOSE,
+        BlockType.MATH_DELIMITER,
+    }
+)
+
+# 縁の行に残す高さ（px）。帯の中の 1 行目・最終行の呼吸になる
+BAND_EDGE_PADDING = 7.0
+
 
 def _data_type(block: QTextBlock):
     """そのブロックの解析済みの種類。初回パスでまだ無ければ None。"""
@@ -589,12 +603,15 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         if size is None:
             return False  # 依頼中か、描けない図。生のまま
         self._hide(0, len(text))
-        if self.currentBlock().blockNumber() == start + 1:
+        number = self.currentBlock().blockNumber()
+        if number == start + 1:
             tall = QTextCharFormat()
             tall.setFontPointSize(self._point_size_for(size.height() + IMAGE_PADDING * 2))
             tall.setForeground(QColor("transparent"))
             self.setFormat(0, 1, tall)
             self._pending_diagram = source
+        elif number in (start, end):
+            self._pad_band_edge(text)  # フェンスの行は帯の縁の余白になる
         return True
 
     def _math_run(self) -> tuple[int, int, str] | None:
@@ -649,12 +666,15 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             return False  # 壊れた式。生のまま見せて直せるようにする
 
         self._hide(0, len(text))
-        if self.currentBlock().blockNumber() == start + 1:
+        number = self.currentBlock().blockNumber()
+        if number == start + 1:
             tall = QTextCharFormat()
             tall.setFontPointSize(self._point_size_for(size.height() + IMAGE_PADDING * 2))
             tall.setForeground(QColor("transparent"))
             self.setFormat(0, 1, tall)
             self._pending_figure = latex
+        elif number in (start, end):
+            self._pad_band_edge(text)  # $$ の行は帯の縁の余白になる
         return True
 
     def _caret_in_lines(self, start: int, end: int) -> bool:
@@ -672,6 +692,21 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         if self._selection is not None and len(numbers) >= 2:
             return numbers[-2] <= start and end <= numbers[-1]
         return False
+
+    def _pad_band_edge(self, text: str) -> None:
+        """隠した縁の行（``` / $$ / :::）に帯の余白ぶんの高さを残す。
+
+        文字は透明のまま少しだけ大きくする（ADR-0004 と同じレバー。
+        R4/R5 に触れない）。**行末の 1 文字**に載せる: 先頭は「隠れて
+        いれば 0.5pt」という既存の検査・ファイル名バッジ・図の高さ予約が
+        使っているため。
+        """
+        if not text or self.format(0).fontPointSize() > HIDDEN_POINT_SIZE:
+            return  # 既に高さを持っている（ファイル名バッジ・図の予約）
+        pad = QTextCharFormat()
+        pad.setFontPointSize(self._point_size_for(BAND_EDGE_PADDING))
+        pad.setForeground(QColor("transparent"))
+        self.setFormat(len(text) - 1, 1, pad)
 
     def _table_run_texts(self) -> list[str]:
         """このブロックが属する表の全行。折り返しの列幅は表全体から決まる。
@@ -821,8 +856,11 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         elif info.type is BlockType.NOTE_DELIMITER:
             if info.note_kind != UNKNOWN_NOTE_KIND:
                 self._hide(0, len(text))
+                self._pad_band_edge(text)
         elif info.type in _FULLY_HIDDEN_TYPES and info.type is not BlockType.TABLE_DELIMITER:
             self._hide(0, len(text))
+            if info.type in _BAND_EDGE_TYPES:
+                self._pad_band_edge(text)
         elif info.type in _HIDDEN_MARKER_TYPES:
             self._hide(0, info.marker_len)
         elif info.type in (BlockType.TABLE_ROW, BlockType.TABLE_DELIMITER):

@@ -52,7 +52,7 @@ TABLE_FAMILIES = ["BIZ UDGothic", "Menlo", "Monaco", "Courier New"]
 # ファイル名の大きさ（本文に対する比）。見出しとして読めて、かつ主張しない
 CODE_NAME_SCALE = 0.85
 # インラインの帯が文字の箱から上へはみ出す量と角の丸み
-INLINE_BAND_RISE = 2.0
+INLINE_BAND_RISE = 3.0
 INLINE_BAND_RADIUS = 3.0
 
 RULE_HEIGHT = 1
