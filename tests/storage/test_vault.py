@@ -563,3 +563,61 @@ class TestCreateIdentity:
     def test_id以外のメタは持ち込める(self, vault) -> None:
         note = vault.create("旗つき", "---\npinned: true\n---\n本文\n")
         assert note.pinned is True
+
+
+class TestRegisterTemplate:
+    """ノートをテンプレートとして登録する（ユーザー要望）。
+
+    一覧の右クリック → テンプレートに登録。以後 Cmd+Shift+N の一覧に出る。
+    """
+
+    def test_templatesに入り一覧に出る(self, vault) -> None:
+        note = vault.create("議事録", "# 議事録\n\n- 日時: {{date}}\n")
+        target = vault.register_template(note.path, "会議の雛形")
+        assert target.parent == vault.templates_dir
+        assert target.stem == "会議の雛形"
+        assert target in vault.templates()
+
+    def test_front_matterは持ち込まない(self, vault) -> None:
+        """id を写すと、この雛形から作るノートに管理情報が紛れ込む。"""
+        note = vault.create("元", "# 元\n\n本文\n")
+        target = vault.register_template(note.path, "雛形")
+        text = target.read_text(encoding="utf-8")
+        assert "id:" not in text
+        assert "本文" in text
+        # 見出しは {{title}} へ（同梱の雛形と同じ流儀）。元の題名のままだと
+        # この雛形から作るノートが全部「元」になる
+        assert "# {{title}}" in text
+
+    def test_同名は上書きしない(self, vault) -> None:
+        import pytest as _pytest
+
+        note = vault.create("元", "# 元\n\n一回目\n")
+        vault.register_template(note.path, "雛形")
+        with _pytest.raises(FileExistsError):
+            vault.register_template(note.path, "雛形")
+
+    def test_上書きを明示すれば置き換える(self, vault) -> None:
+        note = vault.create("元", "# 元\n\n一回目\n")
+        vault.register_template(note.path, "雛形")
+        note2 = vault.create("次", "# 次\n\n二回目\n")
+        target = vault.register_template(note2.path, "雛形", overwrite=True)
+        assert "二回目" in target.read_text(encoding="utf-8")
+
+    def test_登録した雛形から作れる(self, vault) -> None:
+        """往復の確認。プレースホルダも生きている。"""
+        from datetime import datetime
+
+        note = vault.create("日誌のもと", "# 日誌のもと\n\n- 日付: {{date}}\n")
+        target = vault.register_template(note.path, "日誌")
+        created = vault.create_from_template(target, now=datetime(2026, 8, 20))
+        assert created.note.title == "日誌"
+        assert "2026-08-20" in created.note.text
+
+    def test_保管フォルダの外は拒む(self, vault, tmp_path) -> None:
+        import pytest as _pytest
+
+        outsider = tmp_path / "外.md"
+        outsider.write_text("# 外\n", encoding="utf-8")
+        with _pytest.raises(ValueError):
+            vault.register_template(outsider, "雛形")

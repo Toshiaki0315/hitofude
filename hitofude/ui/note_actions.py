@@ -392,6 +392,9 @@ class NoteActions:
         menu.addAction(label).triggered.connect(lambda: self.toggle_pin(path))
         menu.addAction("名前を変更…").triggered.connect(lambda: self.prompt_rename(path))
         menu.addAction("複製").triggered.connect(lambda: self.duplicate_note(path))
+        menu.addAction("テンプレートに登録…").triggered.connect(
+            lambda: self.register_template(path)
+        )
         menu.addSeparator()
         menu.addAction("リンクをコピー").triggered.connect(lambda: self.copy_note_link(path))
         menu.addAction("Finder で表示").triggered.connect(lambda: self.reveal_note(path))
@@ -403,6 +406,41 @@ class NoteActions:
         return menu
 
     # ------------------------------------------------------------- テンプレート
+
+    def register_template(self, path: Path) -> Path | None:
+        """ノートを雛形として登録する（ユーザー要望）。登録先を返す。
+
+        名前を聞いてから `Vault.register_template` へ。同名の雛形が
+        あるときは上書きの確認を出す（黙って潰さない）。
+        """
+        window = self._window
+        name, accepted = QInputDialog.getText(
+            window, "テンプレートに登録", "テンプレートの名前", text=path.stem
+        )
+        if not accepted or not name.strip():
+            return None
+
+        try:
+            target = window._vault.register_template(path, name.strip())
+        except FileExistsError:
+            answer = QMessageBox.question(
+                window,
+                "同じ名前のテンプレートがあります",
+                f"テンプレート「{name.strip()}」を上書きしますか？",
+            )
+            if answer is not QMessageBox.StandardButton.Yes:
+                return None
+            try:
+                target = window._vault.register_template(path, name.strip(), overwrite=True)
+            except (ValueError, OSError) as error:
+                logger.warning("テンプレートに登録できなかった: %s", error)
+                return None
+        except (ValueError, OSError) as error:
+            logger.warning("テンプレートに登録できなかった: %s", error)
+            return None
+
+        window.notify(f"テンプレート「{target.stem}」に登録しました")
+        return target
 
     def new_from_template(self) -> bool:
         """`Cmd+Shift+N`。雛形を選んで新しいノートを作る（E-4）。

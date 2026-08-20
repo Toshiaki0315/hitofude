@@ -115,3 +115,74 @@ class TestCopyLink:
         """クリップボードは目に見えない。入ったことを伝える。"""
         window.copy_note_link(make_note(window, "会議メモ"))
         assert window.notice()
+
+
+class TestRegisterTemplate:
+    """一覧の右クリック → テンプレートに登録（ユーザー要望）。"""
+
+    def make_note(self, window, title="打合せ", body="# 打合せ\n\n- 日時: {{date}}\n"):
+        note = window.vault.create(title, body)
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        return note
+
+    def test_メニューに項目がある(self, window) -> None:
+        note = self.make_note(window)
+        relative = note.path.relative_to(window.vault.root)
+        labels = [a.text() for a in window.context_menu_for(relative).actions()]
+        assert "テンプレートに登録…" in labels
+
+    def test_ゴミ箱では出さない(self, window) -> None:
+        from hitofude.ui.sidebar import TRASH
+
+        note = self.make_note(window)
+        trashed = window.vault.trash(note.path)
+        window.set_filter(TRASH)
+        relative = trashed.relative_to(window.vault.root)
+        labels = [a.text() for a in window.context_menu_for(relative).actions()]
+        assert "テンプレートに登録…" not in labels
+
+    def test_名前を付けて登録できる(self, window, monkeypatch) -> None:
+        from hitofude.ui import note_actions as module
+
+        note = self.make_note(window)
+        monkeypatch.setattr(
+            module.QInputDialog, "getText", staticmethod(lambda *a, **k: ("会議の雛形", True))
+        )
+        target = window.register_template(note.path)
+        assert target is not None
+        assert target in window.vault.templates()
+        assert "登録しました" in window.notice() or "会議の雛形" in window.notice()
+
+    def test_やめれば何もしない(self, window, monkeypatch) -> None:
+        from hitofude.ui import note_actions as module
+
+        note = self.make_note(window)
+        monkeypatch.setattr(
+            module.QInputDialog, "getText", staticmethod(lambda *a, **k: ("", False))
+        )
+        before = window.vault.templates()  # 同梱の雛形が最初から入っている
+        assert window.register_template(note.path) is None
+        assert window.vault.templates() == before  # 増えていない
+
+    def test_同名は確認してから上書き(self, window, monkeypatch) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        from hitofude.ui import note_actions as module
+
+        note = self.make_note(window)
+        monkeypatch.setattr(
+            module.QInputDialog, "getText", staticmethod(lambda *a, **k: ("雛形", True))
+        )
+        window.register_template(note.path)
+
+        asked = []
+        monkeypatch.setattr(
+            module.QMessageBox,
+            "question",
+            staticmethod(lambda *a, **k: asked.append(1) or QMessageBox.StandardButton.No),
+        )
+        first = (window.vault.templates_dir / "雛形.md").read_text(encoding="utf-8")
+        window.register_template(note.path)
+        assert asked, "上書きの確認が出ていない"
+        assert (window.vault.templates_dir / "雛形.md").read_text(encoding="utf-8") == first

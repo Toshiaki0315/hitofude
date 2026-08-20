@@ -624,6 +624,10 @@ class MainWindow(QMainWindow):
         """ノートを複製して開く（一覧の右クリック）。"""
         return self._notes.duplicate_note(path)
 
+    def register_template(self, path: Path) -> Path | None:
+        """ノートを雛形として登録する（一覧の右クリック）。"""
+        return self._notes.register_template(path)
+
     def copy_note_link(self, path: Path) -> str:
         """`[[名前]]` をクリップボードへ入れる（一覧の右クリック）。"""
         return self._notes.copy_note_link(path)

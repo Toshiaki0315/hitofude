@@ -30,7 +30,7 @@ from enum import Enum, auto
 from pathlib import Path
 
 from hitofude.core import frontmatter
-from hitofude.core.document import UNTITLED, Note, new_id
+from hitofude.core.document import UNTITLED, Note, new_id, with_title
 from hitofude.core.references import attachment_names
 from hitofude.core.table import find_table, format_table
 from hitofude.core.template import Expanded, daily_title, expand
@@ -439,6 +439,29 @@ class Vault:
             for path in self.templates_dir.iterdir()
             if path.is_file() and path.suffix.lower() in MARKDOWN_SUFFIXES
         )
+
+    def register_template(self, path: Path, name: str, *, overwrite: bool = False) -> Path:
+        """ノートを雛形として登録する（ユーザー要望）。置いた場所を返す。
+
+        **front matter は持ち込まない。** `id` や日時は管理情報で、
+        雛形から作るノートには `create` が新しく振る。プレースホルダ
+        （`{{date}}` 等）は本文の一部なのでそのまま残る。
+
+        同名の雛形があるときは `overwrite` を明示しない限り
+        `FileExistsError`。呼び出し側（UI）が上書き確認を出す。
+        """
+        if not self._inside(path):
+            raise ValueError(f"保管フォルダの外: {path}")
+        body = frontmatter.split(path.read_text(encoding="utf-8")).body
+        # 見出しは {{title}} に差し替える（同梱の雛形と同じ流儀）。元の
+        # 題名のままだと、この雛形から作るノートが全部その題名になる
+        body = with_title(body, "{{title}}")
+        self.ensure_layout()
+        target = self.templates_dir / f"{sanitize_filename(name)}.md"
+        if target.exists() and not overwrite:
+            raise FileExistsError(target)
+        save_atomic(target, body)
+        return target
 
     def create_from_template(
         self, path: Path, *, title: str | None = None, now: datetime | None = None
