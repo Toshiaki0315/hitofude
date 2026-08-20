@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QPlainTextEdit,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -79,11 +80,11 @@ class HistoryDialog(QDialog):
     # ------------------------------------------------------------------ 参照
 
     @property
-    def restore_button(self):
+    def restore_button(self) -> QPushButton:
         return self._restore
 
     @property
-    def close_button(self):
+    def close_button(self) -> QPushButton:
         return self._close
 
     def row_count(self) -> int:
