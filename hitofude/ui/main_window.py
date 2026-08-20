@@ -339,7 +339,9 @@ class MainWindow(QMainWindow):
         # 順序が逆だと割り当てた幅がその場で捨てられる
         self._sidebar.setVisible(self._config.sidebar_visible)
         # 開いたままにしていた人には、次も開いた状態で出す（提案 5）
-        self._outline.setVisible(self._config.outline_visible)
+        self._splitter.set_pane_visible(
+            self._splitter.indexOf(self._outline), self._config.outline_visible
+        )
         self._pane.toolbar.set_outline_checked(self._config.outline_visible)
         self._list_pane.setVisible(self._config.note_list_visible)
         self._pane.set_toolbar_visible(self._config.toolbar_visible)
@@ -1004,7 +1006,9 @@ class MainWindow(QMainWindow):
         self._show_outline(self._outline.isHidden())
 
     def _show_outline(self, showing: bool) -> None:
-        self._outline.setVisible(showing)
+        # スプリッタ経由で出し入れする（幅の退避・復元込み）。直に
+        # setVisible すると、手で広げた幅が次の起動で失われる
+        self._splitter.set_pane_visible(self._splitter.indexOf(self._outline), showing)
         self._config.outline_visible = showing
         self._pane.toolbar.set_outline_checked(showing)
         if showing:

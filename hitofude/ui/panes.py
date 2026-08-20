@@ -20,6 +20,18 @@ SIDEBAR_MIN_WIDTH = 140
 NOTE_LIST_MIN_WIDTH = 200
 
 
+def _default_width(index: int, widget: QWidget) -> int:
+    """そのペインの既定幅。既定表に無い後付けのペインは最小幅で起こす。
+
+    アウトライン（4 枚目 / ADR-0022）の追加で `DEFAULT_SPLITTER_SIZES`
+    （3 要素）を範囲外参照し、**起動のたびに IndexError で落ちる**経路が
+    あった（コードレビュー指摘。設定を手で直すまで再発する）。
+    """
+    if index < len(DEFAULT_SPLITTER_SIZES):
+        return DEFAULT_SPLITTER_SIZES[index]
+    return widget.minimumWidth()
+
+
 class _Divider(QSplitterHandle):
     """ペインの境界に引く 1px の線。"""
 
@@ -83,7 +95,7 @@ class PaneSplitter(QSplitter):
             # まだ `show()` の前なので、隠す意図があるかを `isHidden()` で見る
             if widget.isHidden() or restored[index] >= widget.minimumWidth():
                 continue
-            wanted = max(DEFAULT_SPLITTER_SIZES[index], widget.minimumWidth())
+            wanted = max(_default_width(index, widget), widget.minimumWidth())
             restored[-1] = max(1, restored[-1] - (wanted - restored[index]))
             restored[index] = wanted
         return restored
@@ -104,12 +116,22 @@ class PaneSplitter(QSplitter):
         隠したペインの幅は 0 になっている。`setVisible(True)` だけでは 0 の
         ままなので、見えているつもりで見えないペインが残る。
         """
+        self.set_pane_visible(index, self.widget(index).isHidden())
+
+    def set_pane_visible(self, index: int, visible: bool) -> None:
+        """ペインの表示を決める。幅の退避・復元込み。
+
+        **`widget.setVisible()` を直に呼ばない**（コードレビュー指摘）。
+        直に呼ぶと隠す直前の幅が退避されず、次に出したときや次の起動で
+        ユーザーが決めた幅が失われる。
+        """
         widget = self.widget(index)
-        showing = widget.isHidden()
-        if not showing:
+        if visible == (not widget.isHidden()):
+            return
+        if not visible:
             self._widths[index] = self.sizes()[index]
-        widget.setVisible(showing)
-        if showing:
+        widget.setVisible(visible)
+        if visible:
             self._grow(index)
 
     def _grow(self, index: int) -> None:
@@ -119,7 +141,7 @@ class PaneSplitter(QSplitter):
             return
 
         # 隠す前の幅へ戻す。覚えていなければ既定
-        wanted = max(self._widths.get(index, DEFAULT_SPLITTER_SIZES[index]), widget.minimumWidth())
+        wanted = max(self._widths.get(index, _default_width(index, widget)), widget.minimumWidth())
         # 広げた分は最後のペインから借りる。全体の合計を変えないため
         sizes[-1] = max(1, sizes[-1] - (wanted - sizes[index]))
         sizes[index] = wanted

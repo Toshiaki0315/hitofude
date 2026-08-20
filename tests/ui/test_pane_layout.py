@@ -237,3 +237,48 @@ class TestToolbarVisibility:
         window.hide()
         window.close()
         assert open_window(qtbot, config).editor_pane.toolbar_visible() is True
+
+
+class TestFourthPane:
+    """アウトライン（4 枚目）が入ったスプリッタの復元（コードレビュー指摘）。
+
+    DEFAULT_SPLITTER_SIZES は 3 要素のままなので、4 枚目の幅の復元が
+    範囲外参照になると**起動のたびに落ちる**（設定を手で直すまで再発）。
+    """
+
+    def four_pane_splitter(self, qtbot):
+        from PySide6.QtWidgets import QWidget
+
+        from hitofude.ui.panes import PaneSplitter
+
+        splitter = PaneSplitter("#cccccc")
+        qtbot.addWidget(splitter)
+        for minimum in (140, 200, 0, 160):
+            pane = QWidget()
+            pane.setMinimumWidth(minimum)
+            splitter.addWidget(pane)
+        return splitter
+
+    def test_潰れた4枚目を復元しても落ちない(self, qtbot) -> None:
+        splitter = self.four_pane_splitter(qtbot)
+        splitter.restore_sizes([180, 280, 640, 0])  # 幅 0 で保存された 4 枚目
+
+    def test_4枚目も最小幅まで起こされる(self, qtbot) -> None:
+        splitter = self.four_pane_splitter(qtbot)
+        splitter.resize(1200, 400)
+        splitter.show()
+        splitter.restore_sizes([180, 280, 640, 100])  # 最小 160 未満
+        assert splitter.sizes()[3] >= 160
+
+    def test_出し入れで幅を覚える(self, qtbot) -> None:
+        """set_pane_visible は toggle_pane と同じく幅を退避・復元する。"""
+        splitter = self.four_pane_splitter(qtbot)
+        splitter.resize(1200, 400)
+        splitter.show()
+        splitter.setSizes([180, 280, 419, 320])
+
+        splitter.set_pane_visible(3, False)
+        # QSplitter はハンドル幅ぶん数 px 調整するので厳密一致は求めない
+        assert splitter.sizes_to_keep()[3] >= 300  # 隠しても保存値は残る
+        splitter.set_pane_visible(3, True)
+        assert splitter.sizes()[3] >= 300  # 出し直したら覚えた幅に戻る
