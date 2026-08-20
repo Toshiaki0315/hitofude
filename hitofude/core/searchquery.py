@@ -82,7 +82,11 @@ def parse(query: str) -> SearchQuery:
         return " "
 
     text = _DATE_RE.sub(take_date, query)
-    text = _TAG_RE.sub(" ", text).strip()
+    text = _TAG_RE.sub(" ", text)
+    # 置換の跡の空白を 1 つに畳む。`予算 #仕事 会議` を素直に置換すると
+    # `予算   会議` になり、FTS（trigram のフレーズ一致）も LIKE もこの
+    # 空白を文字として要求して黙って 0 件になる（コードレビュー指摘）
+    text = " ".join(text.split())
     return SearchQuery(
         text=text,
         tags=tuple(tags),

@@ -170,3 +170,20 @@ class TestTagNormalization:
 
     def test_正規化後の重複はまとまる(self) -> None:
         assert parse("#TODO #todo").tags == ("todo",)
+
+
+class TestFilterInMiddle:
+    """絞り込みを言葉の間に書いても検索語が壊れない（コードレビュー指摘）。
+
+    置換の跡に空白が連なると、FTS（trigram のフレーズ一致）も LIKE も
+    その空白を文字として要求し、黙って 0 件になる。
+    """
+
+    def test_タグが間にあっても語は繋がる(self) -> None:
+        assert parse("予算 #仕事 会議").text == "予算 会議"
+
+    def test_日付が間にあっても語は繋がる(self) -> None:
+        assert parse("予算 after:2026-08-01 会議").text == "予算 会議"
+
+    def test_連続した絞り込みも畳まれる(self) -> None:
+        assert parse("予算 #仕事 after:2026-08-01 会議").text == "予算 会議"

@@ -124,3 +124,14 @@ class TestTagCase:
     def test_区切りの打ち崩れも許す(self, window) -> None:
         add(window, "会議の記録", "来期の話\n\n#仕事/会議")
         assert titles(window, "#仕事//会議") == {"会議の記録"}
+
+
+class TestFilterPosition:
+    def test_タグを言葉の間に書いても見つかる(self, window) -> None:
+        """コードレビュー指摘の回帰。置換の跡の空白でフレーズが壊れていた。
+
+        残りの言葉は**打った通りの並び**（1 つの空白）で探すので、
+        本文に「予算 会議」を含むノートで検証する。
+        """
+        add(window, "空白入り", "予算 会議 まとめ\n\n#仕事")
+        assert titles(window, "予算 #仕事 会議") == {"空白入り"}
