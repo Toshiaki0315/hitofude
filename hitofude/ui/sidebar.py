@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QTreeView, QWidget
 
 from hitofude.config import LineSpacing
 from hitofude.core import tags as tag_utils
-from hitofude.storage.index_db import TagCount
+from hitofude.storage.index_db import FolderCount, TagCount
 from hitofude.theme import LIGHT, ThemeColors
 from hitofude.ui.icons import Glyph, glyph_icon
 
@@ -43,6 +43,7 @@ def padding_for(spacing: LineSpacing) -> int:
 
 
 TAGS_LABEL = "タグ"
+FOLDERS_LABEL = "フォルダ"
 
 _FILTER_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 
@@ -52,6 +53,8 @@ class FilterKind(Enum):
     PINNED = auto()
     TRASH = auto()
     TAG = auto()
+    FOLDER = auto()
+    """手で作ったサブフォルダ（K-2）。**見せるだけ**で、作る・動かすはしない。"""
 
 
 _GLYPHS = {
@@ -59,6 +62,7 @@ _GLYPHS = {
     FilterKind.PINNED: Glyph.PINNED,
     FilterKind.TRASH: Glyph.TRASH,
     FilterKind.TAG: Glyph.TAG,
+    FilterKind.FOLDER: Glyph.FOLDER,
 }
 
 
@@ -66,6 +70,8 @@ _GLYPHS = {
 class Filter:
     kind: FilterKind
     tag: str | None = None
+    folder: str | None = None
+    """`FilterKind.FOLDER` のときの相対パス（`仕事/2026`）。"""
 
     @property
     def label(self) -> str:
@@ -78,6 +84,8 @@ class Filter:
                 return TRASH_LABEL
             case FilterKind.TAG:
                 return f"#{self.tag}"
+            case FilterKind.FOLDER:
+                return f"{self.folder}/"
 
 
 ALL = Filter(FilterKind.ALL)
@@ -132,6 +140,7 @@ class Sidebar(QTreeView):
         super().__init__(parent)
         self._theme = theme
         self._counts: list[TagCount] = []
+        self._folders: list[FolderCount] = []
         self._row_padding = ROW_PADDING
         self._model = QStandardItemModel(self)
         self.setModel(self._model)
@@ -160,6 +169,17 @@ class Sidebar(QTreeView):
         組み直すのが単純で、サイドバーの規模なら問題にならない。
         """
         self._theme = theme
+        self._apply()
+
+    def set_folders(self, counts: list["FolderCount"]) -> None:
+        """フォルダ一覧を差し替える（K-2）。タグと同じ作法。
+
+        **変わっていなければ何もしない**（保存のたびに呼ばれる）。
+        """
+        counts = list(counts)
+        if counts == self._folders:
+            return
+        self._folders = counts
         self._apply()
 
     def set_tags(self, counts: list[TagCount]) -> None:
@@ -212,6 +232,15 @@ class Sidebar(QTreeView):
         height = _row_height(self, self._row_padding)
         for filter_ in (ALL, PINNED, TRASH):
             root.appendRow(_sized(_make_item(filter_.label, filter_, color), height))
+
+        if self._folders:
+            # **入れ物が先、ラベルが後。** 場所を探すほうが先に目に入る
+            folders = QStandardItem(glyph_icon(Glyph.FOLDER, color), FOLDERS_LABEL)
+            folders.setSelectable(False)
+            folders.setEditable(False)
+            root.appendRow(_sized(folders, height))
+            for item in _folder_items(self._folders, color, height):
+                folders.appendRow(item)
 
         if counts:
             header = QStandardItem(glyph_icon(Glyph.TAG, color), TAGS_LABEL)
@@ -311,6 +340,30 @@ def _row_height(widget: QWidget, padding: int = ROW_PADDING) -> int:
     （一覧のプレビューでも同じ間違いをして 2 行目が切れた）。
     """
     return QFontMetrics(widget.font()).lineSpacing() + padding * 2
+
+
+def _folder_items(counts: list["FolderCount"], color: str, height: int) -> list[QStandardItem]:
+    """フォルダを入れ子に組む。
+
+    索引は `仕事` と `仕事/2026` のように**全部の階層**を返すので、
+    親の下に子を差し込むだけでよい（タグツリーのように組み直さない）。
+    """
+    items: dict[str, QStandardItem] = {}
+    roots: list[QStandardItem] = []
+    for count in sorted(counts, key=lambda found: found.folder):
+        item = QStandardItem(glyph_icon(Glyph.FOLDER, color), f"{count.label}  {count.count}")
+        item.setEditable(False)
+        item.setData(Filter(FilterKind.FOLDER, folder=count.folder), _FILTER_ROLE)
+        item.setSizeHint(QSize(0, height))
+        items[count.folder] = item
+
+        parent_name = count.folder.rsplit("/", 1)[0] if "/" in count.folder else None
+        parent = items.get(parent_name) if parent_name else None
+        if parent is not None:
+            parent.appendRow(item)
+        else:
+            roots.append(item)
+    return roots
 
 
 def _make_tag_item(node: TagNode, color: str) -> QStandardItem:

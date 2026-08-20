@@ -121,6 +121,11 @@ def _empty_notice(target: Filter) -> str:
             return "お気に入りはありません。\n一覧を右クリックしてピン留めできます。"
         case FilterKind.TAG:
             return f"「#{target.tag}」のノートはありません。\n本文に書くとここに集まります。"
+        case FilterKind.FOLDER:
+            return (
+                f"「{target.folder}」にノートはありません。\n"
+                "Finder でこのフォルダに `.md` を入れると出ます。"
+            )
         case _:
             return EMPTY_NOTICE
 
@@ -529,8 +534,9 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ 一覧
 
     def refresh(self) -> None:
-        """索引から一覧とタグツリーを引き直す。"""
+        """索引から一覧・フォルダ・タグツリーを引き直す。"""
         self._note_list.set_rows(self._rows_for(self._filter))
+        self._sidebar.set_folders(self._db.folder_tree())
         self._sidebar.set_tags(self._db.tag_tree())
 
     def _rows_for(self, target: Filter) -> list[NoteRow]:
@@ -544,6 +550,8 @@ class MainWindow(QMainWindow):
                 return self._notes.trash_rows()
             case FilterKind.TAG:
                 return self._db.notes_with_tag(target.tag or "", order=order)
+            case FilterKind.FOLDER:
+                return self._db.notes_in_folder(target.folder or "", order=order)
         return []
 
     def set_sort_order(self, order: SortOrder) -> None:

@@ -46,6 +46,9 @@ class Glyph(Enum):
     """ゴミ箱。"""
 
     TAG = auto()
+
+    FOLDER = auto()
+    """サブフォルダ（K-2）。**タグと見分けが付く形**にする。"""
     """タグ。"""
 
     # ------------------------------------------------- 一覧の上のボタン
@@ -165,6 +168,21 @@ def _draw_trash(painter: QPainter) -> None:
     painter.drawPolyline([QPointF(16, 18), QPointF(19, 55), QPointF(45, 55), QPointF(48, 18)])
     painter.drawLine(QPointF(27, 27), QPointF(28, 46))
     painter.drawLine(QPointF(37, 27), QPointF(36, 46))
+
+
+def _draw_folder(painter: QPainter) -> None:
+    """フォルダ。左上に見出しの出っ張りを付ける。"""
+    painter.drawPolyline(
+        [
+            QPointF(8, 50),
+            QPointF(8, 16),
+            QPointF(24, 16),
+            QPointF(30, 24),
+            QPointF(56, 24),
+            QPointF(56, 50),
+            QPointF(8, 50),
+        ]
+    )
 
 
 def _draw_tag(painter: QPainter) -> None:
@@ -370,6 +388,7 @@ _DRAW = {
     Glyph.PINNED: _draw_pinned,
     Glyph.TRASH: _draw_trash,
     Glyph.TAG: _draw_tag,
+    Glyph.FOLDER: _draw_folder,
     Glyph.BOLD: _draw_bold,
     Glyph.ITALIC: _draw_italic,
     Glyph.STRIKE: _draw_strike,

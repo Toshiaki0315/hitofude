@@ -53,6 +53,17 @@ class NoteRole(IntEnum):
     DATE = TITLE + 2
     PATH = TITLE + 3
     PINNED = TITLE + 4
+    FOLDER = TITLE + 5
+
+
+def folder_label(path: Path) -> str:
+    """行に添える置き場所（K-2）。保管フォルダ直下なら空。
+
+    **直下は出さない。** ほとんどのノートが直下にあるので、全行に出すと
+    目印にならないうえ、題名に使える幅を毎行削ることになる。
+    """
+    parent = path.parent
+    return "" if parent in (Path(), Path()) else parent.as_posix()
 
 
 def format_date(value: str) -> str:
@@ -105,6 +116,8 @@ class NoteListModel(QAbstractListModel):
                 return row.path
             case NoteRole.PINNED:
                 return row.pinned
+            case NoteRole.FOLDER:
+                return folder_label(row.path)
             case _:
                 return None
 
@@ -125,6 +138,9 @@ PREVIEW_MAX_LINES = 2
 
 # 行と行のあいだの仕切り（ユーザー要望）。**太いと飾りに見える**ので 1px
 SEPARATOR_HEIGHT = 1
+
+# 置き場所と日付のあいだ。詰めると 1 つの語に見える
+FOLDER_GAP = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,7 +267,20 @@ class NoteItemDelegate(QStyledItemDelegate):
 
         date = index.data(NoteRole.DATE) or ""
         date_width = self._metrics.date_width if date else 0
-        title_rect = QRect(body.left(), body.top(), body.width() - date_width, line_height)
+
+        # 置き場所は日付の左隣。**題名を削り過ぎない**よう上限を設ける
+        # （深い階層でも題名が読めるほうが大事）
+        folder = index.data(NoteRole.FOLDER) or ""
+        folder_metrics = QFontMetrics(option.font)
+        folder_width = 0
+        if folder:
+            limit = min(body.width() // 3, folder_metrics.horizontalAdvance(folder))
+            folder = folder_metrics.elidedText(folder, Qt.TextElideMode.ElideLeft, limit)
+            folder_width = folder_metrics.horizontalAdvance(folder) + FOLDER_GAP
+
+        title_rect = QRect(
+            body.left(), body.top(), body.width() - date_width - folder_width, line_height
+        )
 
         painter.setPen(QColor(self._theme.foreground))
         if index.data(NoteRole.PINNED):
@@ -273,6 +302,17 @@ class NoteItemDelegate(QStyledItemDelegate):
 
         painter.setFont(option.font)
         painter.setPen(QColor(self._theme.muted_foreground))
+        if folder:
+            painter.drawText(
+                QRect(
+                    body.right() - date_width - folder_width,
+                    body.top(),
+                    folder_width - FOLDER_GAP,
+                    line_height,
+                ),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                folder,
+            )
         if date:
             painter.drawText(
                 QRect(body.right() - date_width, body.top(), date_width, line_height),

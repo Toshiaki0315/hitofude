@@ -126,6 +126,25 @@ class SearchHit:
 
 
 @dataclass(frozen=True, slots=True)
+class FolderCount:
+    """フォルダ 1 つと、その中（子孫を含む）のノート数（K-2）。"""
+
+    folder: str
+    """vault からの相対パス（`仕事/2026`）。区切りは常に `/`。"""
+
+    count: int
+
+    @property
+    def depth(self) -> int:
+        return self.folder.count("/")
+
+    @property
+    def label(self) -> str:
+        """画面に出す名前。**末端だけ**（階層は字下げで見せる）。"""
+        return self.folder.rsplit("/", 1)[-1]
+
+
+@dataclass(frozen=True, slots=True)
 class TagCount:
     tag: str
     count: int
@@ -432,6 +451,43 @@ class IndexDb:
         )
         return [TagCount(tag=row["tag"], count=row["count"]) for row in rows]
 
+    def folder_tree(self) -> list["FolderCount"]:
+        """フォルダごとの件数（K-2）。**親は子も数える**（タグと同じ）。
+
+        vault 直下は数えない。「すべて」と同じ意味になり、フォルダとして
+        並べても選ぶ意味がない。
+
+        パスの組み立ては SQL でやらず Python 側で数える。ノート数ぶんの
+        文字列操作だが、5,000 件でも数 ms（実測）で、SQL に階層を
+        組み込むより読める。
+        """
+        counts: dict[str, int] = {}
+        rows = self._connection.execute("SELECT path FROM notes WHERE trashed = 0")
+        for row in rows:
+            parts = Path(row["path"]).parent.parts
+            for depth in range(1, len(parts) + 1):
+                folder = "/".join(parts[:depth])
+                counts[folder] = counts.get(folder, 0) + 1
+        return [FolderCount(folder=folder, count=counts[folder]) for folder in sorted(counts)]
+
+    def notes_in_folder(
+        self, folder: str, *, order: "SortOrder" = SortOrder.MODIFIED
+    ) -> list[NoteRow]:
+        """そのフォルダ（子孫を含む）のノート。
+
+        **区切りまで含めて前方一致する。** `仕事` で `仕事場/` を拾わない。
+        """
+        prefix = f"{folder.strip('/')}/"
+        rows = self._connection.execute(
+            f"""
+            SELECT * FROM notes
+            WHERE trashed = 0 AND path LIKE ? ESCAPE '\\'
+            ORDER BY {_order_by(order)}
+            """,
+            (f"{_like_escape(prefix)}%",),
+        )
+        return [_to_row(row) for row in rows]
+
     def search(
         self,
         query: str,
@@ -598,6 +654,11 @@ def _mtime_stamp(mtime_ns: int) -> str:
     その形で始まってさえいればよい。
     """
     return datetime.fromtimestamp(mtime_ns / 1_000_000_000).isoformat(timespec="seconds")
+
+
+def _like_escape(text: str) -> str:
+    """`LIKE` のワイルドカードを打った文字として扱わせる。"""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def note_key(note: Note, root: Path) -> str:

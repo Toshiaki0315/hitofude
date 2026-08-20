@@ -727,3 +727,66 @@ class TestTitles:
         found = db.titles()
         assert "会議メモ" in found and "日報" in found
         assert "捨てる" not in found
+
+
+class TestFolders:
+    """フォルダごとの件数と絞り込み（K-2）。
+
+    サブフォルダは既に読める（§7.1）が、画面から見えなかった。タグツリーと
+    同じ形で出せるように、索引側で数えられるようにする。
+    """
+
+    @pytest.fixture
+    def foldered(self, db, vault):
+        (vault.root / "仕事" / "2026").mkdir(parents=True, exist_ok=True)
+        (vault.root / "私用").mkdir(parents=True, exist_ok=True)
+        for relative in ("直下.md", "仕事/会議.md", "仕事/2026/年始.md", "私用/買い物.md"):
+            path = vault.root / relative
+            path.write_text(f"# {path.stem}\n\n本文\n", encoding="utf-8")
+            db.upsert_note(vault.read(path), vault.root)
+        return db
+
+    def test_フォルダを数える(self, foldered) -> None:
+        found = {row.folder: row.count for row in foldered.folder_tree()}
+        assert found == {"仕事": 2, "仕事/2026": 1, "私用": 1}
+
+    def test_親は子も数える(self, foldered) -> None:
+        """`仕事` は直下の 1 件と `仕事/2026` の 1 件で 2 件。"""
+        found = {row.folder: row.count for row in foldered.folder_tree()}
+        assert found["仕事"] == 2
+
+    def test_直下は数えない(self, foldered) -> None:
+        """vault 直下は「すべて」と同じなので、フォルダとしては出さない。"""
+        assert "" not in {row.folder for row in foldered.folder_tree()}
+        assert "." not in {row.folder for row in foldered.folder_tree()}
+
+    def test_フォルダで絞れる(self, foldered) -> None:
+        titles = {row.title for row in foldered.notes_in_folder("仕事")}
+        assert titles == {"会議", "年始"}
+
+    def test_子フォルダだけでも絞れる(self, foldered) -> None:
+        titles = {row.title for row in foldered.notes_in_folder("仕事/2026")}
+        assert titles == {"年始"}
+
+    def test_似た名前を巻き込まない(self, foldered, vault) -> None:
+        """`仕事` で `仕事場/` を拾わない（前方一致の落とし穴）。"""
+        (vault.root / "仕事場").mkdir(parents=True, exist_ok=True)
+        path = vault.root / "仕事場" / "別物.md"
+        path.write_text("# 別物\n", encoding="utf-8")
+        foldered.upsert_note(vault.read(path), vault.root)
+
+        titles = {row.title for row in foldered.notes_in_folder("仕事")}
+        assert "別物" not in titles
+
+    def test_ゴミ箱は数えない(self, foldered, vault) -> None:
+        path = vault.root / "仕事" / "捨てる.md"
+        path.write_text("# 捨てる\n", encoding="utf-8")
+        foldered.upsert_note(vault.read(path), vault.root, trashed=True)
+
+        found = {row.folder: row.count for row in foldered.folder_tree()}
+        assert found["仕事"] == 2
+
+    def test_フォルダが無ければ空(self, db, vault) -> None:
+        note = vault.create("直下だけ")
+        db.upsert_note(note, vault.root)
+        assert db.folder_tree() == []
