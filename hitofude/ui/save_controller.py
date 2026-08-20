@@ -117,7 +117,11 @@ class SaveController:
 
         autosave.discard(self.recovery_root, note.path)
         window._note = self._rename_if_title_changed(note, window._vault.read(note.path))
-        window._db.upsert_note(window._note, window._vault.root)
+        # ゴミ箱の中のノートを編集しても**生き返らせない**（コードレビュー
+        # 指摘）。trashed を付けずに upsert すると「すべて」に幽霊が現れ、
+        # フォルダツリーに .trash が生える
+        in_trash = window._note.path.parent == window._vault.trash_dir
+        window._db.upsert_note(window._note, window._vault.root, trashed=in_trash)
         window.refresh()
         window._update_title()
         window._show_saved(datetime.now())

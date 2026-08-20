@@ -61,9 +61,15 @@ def folder_label(path: Path) -> str:
 
     **直下は出さない。** ほとんどのノートが直下にあるので、全行に出すと
     目印にならないうえ、題名に使える幅を毎行削ることになる。
+
+    **隠しフォルダも出さない**（コードレビュー指摘）。ゴミ箱の一覧は
+    `.trash/名前.md` の相対パスで来るので、素通しにすると内部の
+    ディレクトリ名が全行に描かれる。
     """
     parent = path.parent
-    return "" if parent in (Path(), Path()) else parent.as_posix()
+    if parent == Path() or parent.parts[0].startswith("."):
+        return ""
+    return parent.as_posix()
 
 
 def format_date(value: str) -> str:

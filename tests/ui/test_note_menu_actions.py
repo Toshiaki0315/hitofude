@@ -295,3 +295,44 @@ class TestSubfolder:
         window.editor.setPlainText(window.editor.toPlainText().replace("# 保存前", "# 保存後"))
         window.flush()
         assert window.current_note.path.parent == window.vault.root / "仕事"
+
+
+class TestTrashGhost:
+    """ゴミ箱の中のノートを編集しても「生き返らない」（コードレビュー指摘）。
+
+    K-1 で rename が「その場で改名」になった結果、ゴミ箱の中で改名した
+    ファイルが trashed=False で索引に載り、「すべて」に幽霊が現れていた。
+    """
+
+    def trash_and_open(self, window):
+        note = window.vault.create("捨てる前", "# 捨てる前\n\n本文\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        trashed = window.vault.trash(note.path)
+        window.vault_index.remove_path(window.vault.root, note.path)
+        window.refresh()
+        window.open_note(trashed)
+        return trashed
+
+    def test_ゴミ箱の中で保存しても生き返らない(self, window) -> None:
+        from PySide6.QtGui import QTextCursor
+
+        self.trash_and_open(window)
+        window.editor.moveCursor(QTextCursor.MoveOperation.End)
+        window.editor.textCursor().insertText("\n追記")
+        window.flush()
+
+        titles = [row.title for row in window.vault_index.notes()]
+        assert "捨てる前" not in titles, "幽霊ノートが「すべて」に現れた"
+
+    def test_見出しを変えてもフォルダツリーにtrashが出ない(self, window) -> None:
+
+        self.trash_and_open(window)
+        cursor = window.editor.textCursor()
+        cursor.setPosition(2)  # 「# 」の直後
+        window.editor.setTextCursor(cursor)
+        window.editor.textCursor().insertText("改")
+        window.flush()
+
+        folders = [count.folder for count in window.vault_index.folder_tree()]
+        assert all(".trash" not in folder for folder in folders)

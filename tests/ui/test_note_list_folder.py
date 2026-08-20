@@ -86,3 +86,28 @@ class TestPaint:
 
     def test_直下なら何も足さない(self, qapp) -> None:
         assert self.painted("会議.md") == self.painted("メモ.md")
+
+
+class TestHiddenFolders:
+    """内部ディレクトリを置き場所ラベルに出さない（コードレビュー指摘）。"""
+
+    def test_ゴミ箱の行にtrashを出さない(self) -> None:
+        from pathlib import Path
+
+        from hitofude.ui.note_list import folder_label
+
+        assert folder_label(Path(".trash/捨てたメモ.md")) == ""
+
+    def test_隠しフォルダ一般を出さない(self) -> None:
+        from pathlib import Path
+
+        from hitofude.ui.note_list import folder_label
+
+        assert folder_label(Path(".obsidian/メモ.md")) == ""
+
+    def test_普通のフォルダは今まで通り(self) -> None:
+        from pathlib import Path
+
+        from hitofude.ui.note_list import folder_label
+
+        assert folder_label(Path("仕事/2026/メモ.md")) == "仕事/2026"
