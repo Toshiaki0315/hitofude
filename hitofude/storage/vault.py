@@ -246,10 +246,17 @@ class Vault:
     def read(self, path: Path) -> Note:
         return Note.read(path)
 
-    def create(self, title: str, text: str | None = None) -> Note:
-        """新しいノートを作る。front matter に ULID と日時を入れる（spec §7.2）。"""
+    def create(self, title: str, text: str | None = None, *, folder: Path | None = None) -> Note:
+        """新しいノートを作る。front matter に ULID と日時を入れる（spec §7.2）。
+
+        `folder` を渡すとそこに作る（既定は vault 直下）。複製が「元と同じ
+        場所」に作るために使う（K-1）。**vault の外には作らせない**
+        （渡し間違いを黙って通すと、保管フォルダの外にノートが散る）。
+        """
         self.ensure_layout()
-        path = unique_path(self.root, sanitize_filename(title))
+        target = self._writable_folder(folder) if folder is not None else self.root
+        target.mkdir(parents=True, exist_ok=True)
+        path = unique_path(target, sanitize_filename(title))
 
         parsed = frontmatter.split(text or "")
         timestamp = _now()
@@ -332,13 +339,30 @@ class Vault:
 
         旧名は `.trash` に残さない（spec §7.1）。リネームは削除ではないため、
         ゴミ箱に増えていくとユーザーが混乱する。
+
+        **元のフォルダに留める**（K-1）。手で作ったサブフォルダに置いた
+        ノートが、名前を変えただけで vault 直下へ出ていた。分類したのに
+        箱から飛び出す。同名の衝突も**同じフォルダの中だけ**を見る
+        （別のフォルダの同名は別のノート）。
         """
-        target = self.root / f"{sanitize_filename(title)}.md"
+        folder = path.parent
+        target = folder / f"{sanitize_filename(title)}.md"
         if target == path:
             return path
-        target = unique_path(self.root, sanitize_filename(title))
+        target = unique_path(folder, sanitize_filename(title))
         path.replace(target)
         return target
+
+    def _writable_folder(self, folder: Path) -> Path:
+        """ノートを作ってよいフォルダとして受け取る。外なら `ValueError`。
+
+        **`_inside()` とは別物。** あちらは走査中のリンクを辿るかどうかの
+        判定（真偽）で、こちらは書き込み先の受け取り（駄目なら止める）。
+        """
+        resolved = Path(folder).expanduser()
+        if not self._inside(resolved):
+            raise ValueError(f"保管フォルダの外には作れない: {folder}")
+        return resolved
 
     def trash(self, path: Path) -> Path:
         """`.trash` へ移す（spec §7.6）。同名があればタイムスタンプを付ける。"""

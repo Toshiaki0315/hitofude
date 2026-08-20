@@ -167,6 +167,61 @@ class TestRename:
         assert vault.rename(note.path, "既にある").name == "既にある-2.md"
 
 
+class TestSubfolder:
+    """**手で作ったサブフォルダのノートが、そこに留まること**（K-1）。
+
+    §7.1 は「アプリからは作らせないが、手で作ったサブフォルダは再帰的に
+    読み込む」と決めている。読めるのに、名前を変えると vault 直下へ出て
+    しまっていた（実測）。分類したのに名前を変えただけで箱から飛び出す。
+    """
+
+    def put(self, vault, folder: str, title: str):
+        target = vault.root / folder
+        target.mkdir(parents=True, exist_ok=True)
+        path = target / f"{title}.md"
+        path.write_text(f"# {title}\n\n本文\n", encoding="utf-8")
+        return path
+
+    def test_名前を変えても同じフォルダ(self, vault) -> None:
+        path = self.put(vault, "仕事", "改名前")
+        renamed = vault.rename(path, "改名後")
+        assert renamed == vault.root / "仕事" / "改名後.md"
+
+    def test_深い階層でも留まる(self, vault) -> None:
+        path = self.put(vault, "仕事/2026/08", "改名前")
+        renamed = vault.rename(path, "改名後")
+        assert renamed.parent == vault.root / "仕事" / "2026" / "08"
+
+    def test_同名の衝突も同じフォルダで見る(self, vault) -> None:
+        """**直下の同名とはぶつからない。** 別のフォルダなら別のノート。"""
+        vault.ensure_layout()
+        (vault.root / "既にある.md").write_text("# 既にある\n", encoding="utf-8")
+        path = self.put(vault, "仕事", "改名前")
+        renamed = vault.rename(path, "既にある")
+        assert renamed == vault.root / "仕事" / "既にある.md"
+
+    def test_同じフォルダの同名は避ける(self, vault) -> None:
+        self.put(vault, "仕事", "既にある")
+        path = self.put(vault, "仕事", "改名前")
+        renamed = vault.rename(path, "既にある")
+        assert renamed == vault.root / "仕事" / "既にある-2.md"
+
+    def test_直下のノートは今まで通り(self, vault) -> None:
+        note = vault.create("直下のメモ")
+        renamed = vault.rename(note.path, "変えた名前")
+        assert renamed == vault.root / "変えた名前.md"
+
+    def test_フォルダを指定して作れる(self, vault) -> None:
+        """複製がこれを使う（元と同じ場所に作る）。"""
+        note = vault.create("新しいメモ", folder=vault.root / "仕事")
+        assert note.path == vault.root / "仕事" / "新しいメモ.md"
+
+    def test_vaultの外には作らせない(self, vault) -> None:
+        """**保管フォルダの外へ書かない。** 渡し間違いを黙って通さない。"""
+        with pytest.raises(ValueError):
+            vault.create("外のメモ", folder=vault.root.parent)
+
+
 class TestTrash:
     def test_ゴミ箱へ移す(self, vault) -> None:
         note = vault.create("消すメモ")

@@ -343,8 +343,11 @@ class NoteActions:
             logger.warning("複製できなかった: %s", path)
             return None
 
-        target = unique_path(window._vault.root, path.stem, path.suffix)
-        note = window._vault.create(target.stem, with_title(text, target.stem))
+        # **元と同じフォルダに作る**（K-1）。分類して置いたノートの複製が
+        # vault 直下に出ると、片方だけ箱から外れる
+        folder = path.parent
+        target = unique_path(folder, path.stem, path.suffix)
+        note = window._vault.create(target.stem, with_title(text, target.stem), folder=folder)
         window._db.upsert_note(note, window._vault.root)
         window.refresh()
         window.open_note(note.path)

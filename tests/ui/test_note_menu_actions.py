@@ -255,3 +255,43 @@ class TestPalettePlaceholder:
         monkeypatch.setattr(module, "Palette", Spy)
         window.new_from_template()
         assert captured["placeholder"] == "テンプレートを選ぶ…"
+
+
+class TestSubfolder:
+    """**サブフォルダのノートは、そこに複製する**（K-1）。
+
+    分類して置いたのに、複製すると vault 直下に出ていた（実測）。
+    """
+
+    def put(self, window: MainWindow, folder: str, title: str) -> Path:
+        target = window.vault.root / folder
+        target.mkdir(parents=True, exist_ok=True)
+        path = target / f"{title}.md"
+        path.write_text(f"# {title}\n\n本文\n", encoding="utf-8")
+        window.vault_index.sync(window.vault)
+        window.refresh()
+        return path
+
+    def test_同じフォルダに複製する(self, window) -> None:
+        path = self.put(window, "仕事", "複製元")
+        copy = window.duplicate_note(path)
+        assert copy.parent == window.vault.root / "仕事"
+
+    def test_深い階層でも同じ(self, window) -> None:
+        path = self.put(window, "仕事/2026/08", "複製元")
+        copy = window.duplicate_note(path)
+        assert copy.parent == window.vault.root / "仕事" / "2026" / "08"
+
+    def test_直下のノートは今まで通り(self, window) -> None:
+        path = make_note(window, "直下のメモ")
+        copy = window.duplicate_note(path)
+        assert copy.parent == window.vault.root
+
+    def test_保存で改名しても留まる(self, window) -> None:
+        """題名を変えると保存時にファイル名も変わる（§7.1）。そこでも
+        フォルダから出ない。"""
+        path = self.put(window, "仕事", "保存前")
+        window.open_and_select(path)
+        window.editor.setPlainText(window.editor.toPlainText().replace("# 保存前", "# 保存後"))
+        window.flush()
+        assert window.current_note.path.parent == window.vault.root / "仕事"
