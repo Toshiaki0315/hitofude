@@ -56,6 +56,9 @@ class Glyph(Enum):
     NEW_NOTE = auto()
     """新規ノート。＋。"""
 
+    OUTLINE = auto()
+    """アウトライン。**段差の付いた行**で入れ子を表す。"""
+
     GEAR = auto()
     """メニュー。歯車。"""
 
@@ -267,6 +270,17 @@ def _draw_heading(painter: QPainter) -> None:
     _letter(painter, "H", bold=True)
 
 
+def _draw_outline(painter: QPainter) -> None:
+    """アウトライン。**段差の付いた行**（見出しの入れ子）。
+
+    箇条書き（`BULLET`）と紛らわしくならないよう、点は描かず**左端を
+    ずらす**ことで階層を表す。行の長さも段ごとに短くして、下ほど細かい
+    話になる形を見せる。
+    """
+    for y, left in zip(_LINE_ROWS, (12.0, 22.0, 32.0), strict=True):
+        painter.drawLine(QPointF(left, y), QPointF(_LINE_RIGHT, y))
+
+
 def _draw_bullet(painter: QPainter) -> None:
     """点と行。"""
     _rows(painter)
@@ -350,6 +364,7 @@ def _draw_gear(painter: QPainter) -> None:
 _DRAW = {
     Glyph.SORT: _draw_sort,
     Glyph.NEW_NOTE: _draw_new_note,
+    Glyph.OUTLINE: _draw_outline,
     Glyph.GEAR: _draw_gear,
     Glyph.ALL: _draw_all,
     Glyph.PINNED: _draw_pinned,

@@ -43,8 +43,12 @@ BUTTON_RADIUS = 5
 # 生の Markdown を出す切り替え（ユーザー要望）。中身はソースモード
 RAW_LABEL = "Raw"
 # アウトラインの開閉（ユーザー要望）。`Cmd+5` と表示メニューだけでは
-# **あることに気づけない**。Raw の隣に置く
-OUTLINE_LABEL = "見出し"
+# **あることに気づけない**。Raw の隣に置く。
+#
+# **絵で描く。** 文字にすると「見出し」と書くことになり、メニューの
+# 「アウトライン」と呼び名が食い違う（ユーザー指摘）。呼び名は
+# ツールチップに一本化する
+OUTLINE_LABEL = "アウトライン"
 # 本文との境目。ペインの区切り（`QSplitter::handle`）と同じ太さに揃える
 RULE_HEIGHT = 1
 
@@ -124,13 +128,12 @@ class FormatToolbar(QWidget):
         # **押すのはここではない**（ツールバーはウィンドウを知らない）。
         # Raw と同じ形で、状態は外から入れてもらう
         self._outline = QToolButton(self)
-        self._outline.setFont(raw_font)
-        self._outline.setFixedHeight(BUTTON_SIZE)
-        self._outline.setText(OUTLINE_LABEL)
+        self._outline.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
+        self._outline.setFixedSize(BUTTON_SIZE, BUTTON_SIZE)
         self._outline.setCheckable(True)
         self._outline.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._outline.setToolTip("アウトラインを開閉する（⌘5）")
-        self._outline.setAccessibleName("アウトライン")
+        self._outline.setToolTip(f"{OUTLINE_LABEL}を開閉する（⌘5）")
+        self._outline.setAccessibleName(OUTLINE_LABEL)
         self._outline.clicked.connect(lambda _checked: self.outline_toggled.emit())
         layout.addWidget(self._outline)
 
@@ -185,6 +188,7 @@ class FormatToolbar(QWidget):
     def _apply_theme(self) -> None:
         for action, found in zip(self.ACTIONS, self._buttons, strict=True):
             found.setIcon(glyph_icon(action.glyph, self._theme.foreground))
+        self._outline.setIcon(glyph_icon(Glyph.OUTLINE, self._theme.foreground))
         for line in self._separators:
             line.setStyleSheet(f"color: {self._theme.rule};")
         self.setStyleSheet(

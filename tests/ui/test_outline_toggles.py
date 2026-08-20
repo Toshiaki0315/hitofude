@@ -18,6 +18,34 @@ class TestToolbarButton:
         assert toolbar.outline_button is not None
         assert "アウトライン" in toolbar.outline_button.toolTip()
 
+    def test_絵で描く(self, window) -> None:
+        """**文字にしない。** 「見出し」と書くと、メニューの「アウトライン」と
+        呼び名が食い違う（ユーザー指摘）。呼び名はツールチップに一本化する。"""
+        from hitofude.ui.format_toolbar import BUTTON_SIZE, ICON_SIZE
+
+        button = window.editor_pane.toolbar.outline_button
+        assert not button.text()
+        assert not button.icon().isNull()
+        assert button.iconSize().width() == ICON_SIZE
+        assert button.size().width() == BUTTON_SIZE
+
+    def test_箇条書きと別の絵(self, window) -> None:
+        """並びの中で見分けが付かないと、押し間違える。"""
+        toolbar = window.editor_pane.toolbar
+        bullets = next(
+            b
+            for b, a in zip(toolbar.buttons(), toolbar.ACTIONS, strict=True)
+            if a.label == "箇条書き"
+        )
+        assert toolbar.outline_button.icon().cacheKey() != bullets.icon().cacheKey()
+
+    def test_テーマで描き直す(self, window) -> None:
+        from hitofude.theme import DARK
+
+        before = window.editor_pane.toolbar.outline_button.icon().cacheKey()
+        window.editor_pane.toolbar.set_theme(DARK)
+        assert window.editor_pane.toolbar.outline_button.icon().cacheKey() != before
+
     def test_押すと開く(self, window, qtbot) -> None:
         from PySide6.QtCore import Qt
 
