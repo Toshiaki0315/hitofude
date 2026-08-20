@@ -164,18 +164,10 @@ _HIDDEN_MARKER_TYPES = frozenset({BlockType.HEADING, BlockType.BLOCKQUOTE})
 
 _MONO_TYPES = frozenset({BlockType.TABLE_ROW, BlockType.TABLE_DELIMITER})
 
-# 帯の上下の縁になる行（フェンス・$$）。隠すと高さがほぼ 0 になり、
-# 1 行目の文字が帯の上端に張り付く（ユーザー要望）。数 px の高さを残して
-# 帯の内側の余白にする。水平線と front matter は帯ではないので含めない
-_BAND_EDGE_TYPES = frozenset(
-    {
-        BlockType.CODE_FENCE_OPEN,
-        BlockType.CODE_FENCE_CLOSE,
-        BlockType.MATH_DELIMITER,
-    }
-)
-
-# 縁の行に残す高さ（px）。帯の中の 1 行目・最終行の呼吸になる
+# 縁の行に残す高さ（px）。帯の中の 1 行目の呼吸になる。
+# **開き側だけ。** 行間（leading）が各行の下側に付くフォントでは、
+# 最終行が既に下の余白を持っており、閉じ側にも足すと下だけ大きく
+# 空いて見える（ユーザー指摘）
 BAND_EDGE_PADDING = 7.0
 
 
@@ -610,8 +602,8 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             tall.setForeground(QColor("transparent"))
             self.setFormat(0, 1, tall)
             self._pending_diagram = source
-        elif number in (start, end):
-            self._pad_band_edge(text)  # フェンスの行は帯の縁の余白になる
+        elif number == start:
+            self._pad_band_edge(text)  # 開きのフェンスは帯の縁の余白になる
         return True
 
     def _math_run(self) -> tuple[int, int, str] | None:
@@ -673,8 +665,8 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             tall.setForeground(QColor("transparent"))
             self.setFormat(0, 1, tall)
             self._pending_figure = latex
-        elif number in (start, end):
-            self._pad_band_edge(text)  # $$ の行は帯の縁の余白になる
+        elif number == start:
+            self._pad_band_edge(text)  # 開きの $$ は帯の縁の余白になる
         return True
 
     def _caret_in_lines(self, start: int, end: int) -> bool:
@@ -856,11 +848,15 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         elif info.type is BlockType.NOTE_DELIMITER:
             if info.note_kind != UNKNOWN_NOTE_KIND:
                 self._hide(0, len(text))
-                self._pad_band_edge(text)
+                if text.strip() != ":::":
+                    self._pad_band_edge(text)  # 開き（:::note 種類）だけ
         elif info.type in _FULLY_HIDDEN_TYPES and info.type is not BlockType.TABLE_DELIMITER:
             self._hide(0, len(text))
-            if info.type in _BAND_EDGE_TYPES:
-                self._pad_band_edge(text)
+            if info.type is BlockType.CODE_FENCE_OPEN or (
+                info.type is BlockType.MATH_DELIMITER
+                and not _decode_in_math(self.currentBlock().previous())
+            ):
+                self._pad_band_edge(text)  # 帯の開き側の余白
         elif info.type in _HIDDEN_MARKER_TYPES:
             self._hide(0, info.marker_len)
         elif info.type in (BlockType.TABLE_ROW, BlockType.TABLE_DELIMITER):

@@ -51,8 +51,10 @@ WRAP_CELL_PADDING = 4.0
 TABLE_FAMILIES = ["BIZ UDGothic", "Menlo", "Monaco", "Courier New"]
 # ファイル名の大きさ（本文に対する比）。見出しとして読めて、かつ主張しない
 CODE_NAME_SCALE = 0.85
-# インラインの帯が文字の箱から上へはみ出す量と角の丸み
-INLINE_BAND_RISE = 3.0
+# インラインの帯の上下の余白と角の丸み。**文字の実寸（ascent+descent）を
+# 基準**に上下対称で付ける。行ボックス（line.height()）を使うと、行間
+# （leading）が下側に付くフォントで帯の下だけ大きく空く（ユーザー指摘）
+INLINE_BAND_PAD = 3.0
 INLINE_BAND_RADIUS = 3.0
 
 RULE_HEIGHT = 1
@@ -519,8 +521,7 @@ _INLINE_BAND_NAMES = {
 def _span_rects(block: QTextBlock, geometry: QRectF, start: int, end: int) -> list[QRectF]:
     """文中の範囲 [start, end)（Python 単位）が占める矩形。折り返しは行ごと。
 
-    上へ INLINE_BAND_RISE だけはみ出させる。下は文字の箱のまま
-    （ディセントぶんの余白が既にある）。
+    帯は文字の実寸（ascent + descent）の上下に INLINE_BAND_PAD ずつ。
     """
     if end <= start:
         return []
@@ -549,9 +550,9 @@ def _span_rects(block: QTextBlock, geometry: QRectF, start: int, end: int) -> li
         found.append(
             QRectF(
                 geometry.left() + x1,
-                geometry.top() + line.y() - INLINE_BAND_RISE,
+                geometry.top() + line.y() - INLINE_BAND_PAD,
                 x2 - x1,
-                line.height() + INLINE_BAND_RISE,
+                line.ascent() + line.descent() + INLINE_BAND_PAD * 2,
             )
         )
     return found

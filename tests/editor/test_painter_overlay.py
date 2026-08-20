@@ -631,10 +631,15 @@ class TestBlockBandPadding:
         block = editor.document().findBlockByNumber(number)
         return editor.blockBoundingGeometry(block).height()
 
-    def test_フェンス行が余白ぶんの高さを持つ(self, editor) -> None:
+    def test_開きのフェンス行が余白ぶんの高さを持つ(self, editor) -> None:
         away(editor, "```python\nprint(1)\n```\n\n本文\n")
         assert self.line_height(editor, 0) >= 6  # 開き
-        assert self.line_height(editor, 2) >= 6  # 閉じ
+
+    def test_閉じ側には足さない(self, editor) -> None:
+        """最終行の行間（leading）が既に下の余白になっている。閉じ側にも
+        足すと下だけ大きく空く（ユーザー指摘）。"""
+        away(editor, "```python\nprint(1)\n```\n\n本文\n")
+        assert self.line_height(editor, 2) < 6  # 閉じは薄いまま
 
     def test_数式の区切り行も余白になる(self, editor) -> None:
         away(editor, "$$\nE = mc^2\n$$\n\n本文\n")
