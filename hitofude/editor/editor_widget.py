@@ -166,7 +166,7 @@ class MarkdownEditor(QPlainTextEdit):
         # Mermaid の描画（ADR-0021）。非同期なので、描き上がったら掛け直す
         self._mermaid = MermaidCache(self)
         self._mermaid.rendered.connect(self._on_mermaid_rendered)
-        self._mermaid.set_background(theme.code_background)
+        self._mermaid.set_background(theme.figure_background)
         self._tag_candidates: list[str] = []
         self._tag_popup = QListWidget(self)
         self._tag_popup.setWindowFlags(Qt.WindowType.ToolTip)
@@ -235,7 +235,7 @@ class MarkdownEditor(QPlainTextEdit):
     def set_theme(self, theme: ThemeColors) -> None:
         self._theme = theme
         self._apply_palette()
-        self._mermaid.set_background(theme.code_background)  # 図の下地もテーマに追従
+        self._mermaid.set_background(theme.figure_background)  # 図の下地もテーマに追従
         self._highlighter.set_theme(theme)
 
     def _apply_palette(self) -> None:

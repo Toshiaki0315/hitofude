@@ -100,6 +100,9 @@ class DecorationKind(Enum):
     TABLE_HEADER = auto()
     TABLE_RULE = auto()
     CODE_BACKGROUND = auto()
+    FIGURE_BACKGROUND = auto()
+    """組版される図（数式・Mermaid）の帯。コードより薄い色（ユーザー要望）。"""
+
     CODE_NAME = auto()
     """` ```python:aaa.py ` のファイル名（B-3）。"""
 
@@ -425,7 +428,12 @@ def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decora
     result: list[Decoration] = []
 
     if info.type in _CODE_TYPES:
-        result.append(Decoration(DecorationKind.CODE_BACKGROUND, QRectF(geometry)))
+        band = (
+            DecorationKind.FIGURE_BACKGROUND
+            if getattr(block.userData(), "figure_band", False)
+            else DecorationKind.CODE_BACKGROUND
+        )
+        result.append(Decoration(band, QRectF(geometry)))
 
     if info.type is BlockType.CODE_FENCE_OPEN and info.code_name:
         result.append(
@@ -584,6 +592,8 @@ def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) 
         match decoration.kind:
             case DecorationKind.CODE_BACKGROUND:
                 painter.fillRect(decoration.rect, QColor(theme.code_background))
+            case DecorationKind.FIGURE_BACKGROUND:
+                painter.fillRect(decoration.rect, QColor(theme.figure_background))
             case DecorationKind.TABLE_HEADER:
                 painter.fillRect(decoration.rect, QColor(theme.code_background))
             case DecorationKind.TABLE_RULE:

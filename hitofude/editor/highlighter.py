@@ -196,6 +196,7 @@ class BlockData(QTextBlockUserData):
         *,
         figure_latex: str | None = None,
         diagram: str | None = None,
+        figure_band: bool = False,
     ) -> None:
         super().__init__()
         self.info = info
@@ -204,6 +205,8 @@ class BlockData(QTextBlockUserData):
         """収まらない表の折り返し内容（ADR-0017）。折り返し表示中の行だけ持つ。"""
         self.figure_latex = figure_latex
         """数式ブロックの中身（I-1 / ADR-0020）。図で表示中の最初の本文行だけ持つ。"""
+        self.figure_band = figure_band
+        """帯を「図の色」で塗るか（数式 / mermaid。描画が読む）。"""
         self.diagram = diagram
         """Mermaid 図の中身（I-1 / ADR-0021）。図で表示中の最初の本文行だけ持つ。"""
 
@@ -258,6 +261,8 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._pending_wrapped: WrappedRow | None = None
         # 数式ブロックの図（I-1 / ADR-0020）。最初の本文行にだけ載せる
         self._pending_figure: str | None = None
+        # このブロックの帯は「図の色」か（数式 / mermaid。ユーザー要望）
+        self._pending_band = False
         # 式の絵の大きさの問い合わせ口。エディタが挿す（画像と同じ分担）
         self._math_size: object = None
         # Mermaid 図の中身（ADR-0021）。最初の本文行にだけ載せる
@@ -388,6 +393,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._pending_wrapped = None
         self._pending_figure = None
         self._pending_diagram = None
+        self._pending_band = False
         state = BlockState.decode(self.previousBlockState())
         info, next_state = classify_line(text, block.blockNumber(), state)
 
@@ -426,6 +432,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
                 self._pending_wrapped,
                 figure_latex=self._pending_figure,
                 diagram=self._pending_diagram,
+                figure_band=self._pending_band,
             )
         )
         self.setCurrentBlockState(next_state.encode())
@@ -500,6 +507,29 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         """その高さの行になる文字サイズ。"""
         ratio = line_height_ratio(self.document().defaultFont())
         return max(1.0, height / ratio)
+
+    def _mermaid_band(self, info: BlockInfo) -> bool:
+        """このフェンスは mermaid か（帯の色分け用）。
+
+        閉じの有無は問わない（打ちかけでも色は図側にしておく。閉じた
+        瞬間に帯の色が変わるとチラつく）。今のブロック自身は `info` で
+        見る（初回パスでは userData がまだ無い）。
+        """
+        if info.type is BlockType.CODE_FENCE_OPEN:
+            return info.lang == "mermaid"
+        block = self.currentBlock()
+        probe = block.previous()
+        steps = 0
+        while probe.isValid() and steps <= MAX_HIGHLIGHT_LINES:
+            kind = _data_type(probe)
+            if kind is BlockType.CODE_FENCE_OPEN:
+                data = probe.userData()
+                return data is not None and data.info.lang == "mermaid"
+            if kind is not BlockType.CODE_FENCE_BODY:
+                return False
+            probe = probe.previous()
+            steps += 1
+        return False
 
     def _mermaid_run(self, info: BlockInfo) -> tuple[int, int, str] | None:
         """この行が属する Mermaid ブロックの（開始行, 終了行, ソース）。
@@ -722,14 +752,16 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         match info.type:
             case BlockType.HEADING:
                 self.setFormat(0, len(text), self._heading[info.level])
-            case (
-                BlockType.CODE_FENCE_BODY
-                | BlockType.CODE_FENCE_OPEN
-                | BlockType.CODE_FENCE_CLOSE
-                | BlockType.MATH_BODY
-                | BlockType.MATH_DELIMITER
-            ):
-                self.setFormat(0, len(text), self._code_block)
+            case BlockType.MATH_BODY | BlockType.MATH_DELIMITER:
+                # 図になるブロックはコードより薄い背景（ユーザー要望）
+                self._pending_band = True
+                self.setFormat(0, len(text), self._figure_block)
+            case BlockType.CODE_FENCE_BODY | BlockType.CODE_FENCE_OPEN | BlockType.CODE_FENCE_CLOSE:
+                if self._mermaid_band(info):
+                    self._pending_band = True
+                    self.setFormat(0, len(text), self._figure_block)
+                else:
+                    self.setFormat(0, len(text), self._code_block)
             case BlockType.BLOCKQUOTE:
                 self.setFormat(0, len(text), self._quote)
             case _ if info.type in _MONO_TYPES:
@@ -998,6 +1030,10 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._code_block.setFontFamilies(mono_families(self._mono_family))
         self._code_block.setForeground(QColor(theme.code_foreground))
         self._code_block.setBackground(QColor(theme.code_background))
+        # 図（数式・mermaid）の生表示。文字はコードと同じ等幅で、
+        # 背景だけ薄い図の色にする（ユーザー要望）
+        self._figure_block = QTextCharFormat(self._code_block)
+        self._figure_block.setBackground(QColor(theme.figure_background))
 
         self._quote = QTextCharFormat()
         self._quote.setForeground(QColor(theme.quote_foreground))

@@ -27,6 +27,12 @@ class ThemeColors:
     accent: str
     selection_background: str
     code_background: str
+
+    figure_background: str
+    """組版される図（数式・Mermaid）の背景（ユーザー要望）。
+
+    コードより**薄く**して、「コード」と「図になるもの」を色で見分ける。
+    """
     code_foreground: str
     quote_bar: str
     quote_foreground: str
@@ -71,7 +77,9 @@ LIGHT = ThemeColors(
     muted_foreground="#8A8A8E",
     accent="#D2553C",
     selection_background="#CCE2FF",
-    code_background="#F0F0F2",  # spec §5.2
+    # コードは濃いめ、図（数式・Mermaid）は薄めに分ける（ユーザー要望）
+    code_background="#E9E9EE",  # spec §5.2 の帯。図と見分くため一段濃く
+    figure_background="#F6F6F8",
     code_foreground="#3A3A3C",
     quote_bar="#C7C7CC",
     quote_foreground="#6B6B70",  # spec §5.2: 60% グレー
@@ -104,7 +112,8 @@ DARK = ThemeColors(
     muted_foreground="#7C7C84",
     accent="#FF7A5C",
     selection_background="#2F5480",
-    code_background="#2A2A2E",
+    code_background="#35353B",
+    figure_background="#232327",
     code_foreground="#D6D6DA",
     quote_bar="#4A4A50",
     quote_foreground="#A0A0A8",

@@ -543,3 +543,37 @@ class TestCodeNameBadge:
 
         css = _stylesheet(LIGHT)
         assert LIGHT.code_name_background in css
+
+
+class TestFigureBackground:
+    """図（数式・Mermaid）の背景はコードより薄い別色（ユーザー要望）。
+
+    同じ色だと「コード」と「組版される図」の区別が画面から読めない。
+    """
+
+    def test_数式の帯は図の色(self, editor) -> None:
+        editor.setPlainText("$$\nE = mc^2\n$$\n\n本文\n")
+        away(editor, editor.toPlainText())
+        found = kinds(editor)
+        assert DecorationKind.FIGURE_BACKGROUND in found
+        assert DecorationKind.CODE_BACKGROUND not in found
+
+    def test_mermaidの帯も図の色(self, editor) -> None:
+        editor.setPlainText("```mermaid\ngraph TD\n  A --> B\n```\n\n本文\n")
+        away(editor, editor.toPlainText())
+        found = kinds(editor)
+        assert DecorationKind.FIGURE_BACKGROUND in found
+        assert DecorationKind.CODE_BACKGROUND not in found
+
+    def test_普通のコードは今まで通り(self, editor) -> None:
+        editor.setPlainText("```python\nprint(1)\n```\n\n本文\n")
+        away(editor, editor.toPlainText())
+        found = kinds(editor)
+        assert DecorationKind.CODE_BACKGROUND in found
+        assert DecorationKind.FIGURE_BACKGROUND not in found
+
+    def test_色はコードと図で別(self) -> None:
+        from hitofude.theme import DARK, LIGHT
+
+        assert LIGHT.figure_background != LIGHT.code_background
+        assert DARK.figure_background != DARK.code_background
