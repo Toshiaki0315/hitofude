@@ -291,7 +291,7 @@
       [
         49,
         8,
-        "mono+bg:#e9e9ee+fg:#3a3a3c"
+        "mono+bg:#e1e1e8+fg:#3a3a3c"
       ],
       [
         57,
@@ -508,7 +508,7 @@
       [
         0,
         9,
-        "hidden:0.5+mono+bg:#e9e9ee+fg:#3a3a3c"
+        "hidden:0.5+mono+bg:#e1e1e8+fg:#3a3a3c"
       ]
     ]
   },
@@ -520,42 +520,42 @@
       [
         0,
         3,
-        "bold+mono+bg:#e9e9ee+fg:#007020"
+        "bold+mono+bg:#e1e1e8+fg:#007020"
       ],
       [
         3,
         1,
-        "mono+bg:#e9e9ee+fg:#bbbbbb"
+        "mono+bg:#e1e1e8+fg:#bbbbbb"
       ],
       [
         4,
         5,
-        "mono+bg:#e9e9ee+fg:#06287e"
+        "mono+bg:#e1e1e8+fg:#06287e"
       ],
       [
         9,
         3,
-        "mono+bg:#e9e9ee+fg:#3a3a3c"
+        "mono+bg:#e1e1e8+fg:#3a3a3c"
       ],
       [
         12,
         2,
-        "mono+bg:#e9e9ee+fg:#666666"
+        "mono+bg:#e1e1e8+fg:#666666"
       ],
       [
         14,
         1,
-        "mono+bg:#e9e9ee+fg:#3a3a3c"
+        "mono+bg:#e1e1e8+fg:#3a3a3c"
       ],
       [
         15,
         3,
-        "mono+bg:#e9e9ee+fg:#007020"
+        "mono+bg:#e1e1e8+fg:#007020"
       ],
       [
         18,
         1,
-        "mono+bg:#e9e9ee+fg:#3a3a3c"
+        "mono+bg:#e1e1e8+fg:#3a3a3c"
       ]
     ]
   },
@@ -567,22 +567,22 @@
       [
         0,
         4,
-        "mono+bg:#e9e9ee+fg:#3a3a3c"
+        "mono+bg:#e1e1e8+fg:#3a3a3c"
       ],
       [
         4,
         6,
-        "bold+mono+bg:#e9e9ee+fg:#007020"
+        "bold+mono+bg:#e1e1e8+fg:#007020"
       ],
       [
         10,
         1,
-        "mono+bg:#e9e9ee+fg:#3a3a3c"
+        "mono+bg:#e1e1e8+fg:#3a3a3c"
       ],
       [
         11,
         7,
-        "mono+bg:#e9e9ee+fg:#4070a0"
+        "mono+bg:#e1e1e8+fg:#4070a0"
       ]
     ]
   },
@@ -594,7 +594,7 @@
       [
         0,
         3,
-        "hidden:0.5+mono+bg:#e9e9ee+fg:#3a3a3c"
+        "hidden:0.5+mono+bg:#e1e1e8+fg:#3a3a3c"
       ]
     ]
   },
