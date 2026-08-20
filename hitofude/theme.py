@@ -78,7 +78,7 @@ LIGHT = ThemeColors(
     accent="#D2553C",
     selection_background="#CCE2FF",
     # コードは濃いめ、図（数式・Mermaid）は薄めに分ける（ユーザー要望）
-    code_background="#E1E1E8",  # spec §5.2 の帯。図と見分くため濃いめに
+    code_background="#D8D8E0",  # spec §5.2 の帯。図と見分くため濃いめに
     figure_background="#FAFAFC",
     code_foreground="#3A3A3C",
     quote_bar="#C7C7CC",
