@@ -101,3 +101,34 @@ class TestGearMenu:
         menu = window.menu_button.menu()
         found = next(a for a in menu.actions() if a.text() == "アウトライン")
         assert found is window.menu_actions["アウトライン"]
+
+
+class TestDebounce:
+    """打鍵のたびに全文スキャンしない（コードレビュー指摘 / §6.6）。
+
+    アウトラインを出したまま 10,000 語のノートを打つと、1 打ごとに
+    toPlainText()（全文コピー）+ 全行分類が走って 16ms 予算を食う。
+    統計（_stats_timer）と同じくデバウンスする。
+    """
+
+    def test_打鍵では即スキャンせず少し待って反映する(self, window, qtbot, monkeypatch) -> None:
+        from hitofude.ui import main_window as module
+
+        note = window.vault.create("骨子", "本文\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        window.open_note(note.path)
+        window.toggle_outline()  # 表示中だけが対象
+
+        calls = []
+        original = module.headings
+        monkeypatch.setattr(module, "headings", lambda text: calls.append(1) or original(text))
+
+        from PySide6.QtGui import QTextCursor
+
+        window.editor.moveCursor(QTextCursor.MoveOperation.End)
+        window.editor.textCursor().insertText("\n# 見出し\n")
+        assert calls == []  # 打った瞬間には走らない
+
+        qtbot.waitUntil(lambda: calls != [], timeout=3000)  # 少し待つと走る
+        qtbot.waitUntil(lambda: window.outline_pane.labels() == ["見出し"], timeout=3000)

@@ -133,3 +133,14 @@ class TestInWindow:
             assert second.outline_pane.isHidden() is False
         finally:
             second.close()
+
+
+class TestInitialState:
+    def test_最初から案内だけが見える(self, qtbot) -> None:
+        """コードレビュー指摘の回帰。初期化が「同じなら何もしない」の
+        早期 return に落ち、空のリストと案内が同時に見えていた。"""
+        pane = OutlinePane()
+        qtbot.addWidget(pane)
+        pane.show()
+        assert pane._empty.isVisibleTo(pane)
+        assert not pane._list.isVisibleTo(pane)

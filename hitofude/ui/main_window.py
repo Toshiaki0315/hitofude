@@ -99,6 +99,9 @@ PINNED_NOTICE = "ピン留めしているノートは削除できません。先
 HUGE_NOTE_NOTICE = "大きなノートのため、装飾を無効にして開きました（編集と保存はできます）"
 NOTICE_MS = 5000
 
+# アウトラインを打鍵に追従させる間隔。即時だと 1 打ごとに全文スキャンになる
+OUTLINE_DELAY_MS = 300
+
 # `Cmd +` / `Cmd -` の 1 押しで動く量（G-5）。環境設定の刻みは 0.5pt だが、
 # **押して分からない変化はもう一度押される**ので、こちらは 1pt にする
 ZOOM_STEP = 1.0
@@ -241,6 +244,12 @@ class MainWindow(QMainWindow):
         self._stats_label = self._status.stats_label
         self._stats_reporter = self._status.reporter
         self._stats_timer = self._status.stats_timer
+        # アウトラインの掛け直し。打鍵ごとに全文スキャンすると §6.6 の
+        # 16ms 予算を食うので、統計と同じくデバウンスする（コードレビュー指摘）
+        self._outline_timer = QTimer(self)
+        self._outline_timer.setSingleShot(True)
+        self._outline_timer.setInterval(OUTLINE_DELAY_MS)
+        self._outline_timer.timeout.connect(self._update_outline)
 
         self._list_pane.new_note_requested.connect(self.new_note)
         self._list_pane.sort_order_changed.connect(self.set_sort_order)
@@ -798,9 +807,10 @@ class MainWindow(QMainWindow):
         self._debouncer.touch()
         self._update_title()
         self._stats_timer.start()
-        # 見出しは打つほどに変わる。**同じなら差し替えない**ので、
-        # そのまま呼んでよい（`OutlinePane.set_headings`）
-        self._update_outline()
+        # 見出しの掛け直しはデバウンス。即時だと 1 打ごとに全文コピー +
+        # 全行分類が走り、§6.6 の 16ms 予算を食う（コードレビュー指摘）
+        if not self._outline.isHidden():
+            self._outline_timer.start()
         # 古い時刻が残っていると今の状態と食い違う（C-5）
         self._show_saved(None)
 

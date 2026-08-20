@@ -49,7 +49,11 @@ class OutlinePane(QWidget):
 
         self.setMinimumWidth(OUTLINE_MIN_WIDTH)
         self.set_theme(theme)
-        self.set_headings([])
+        # 初期表示を明示する。set_headings([]) は「同じなら何もしない」の
+        # 早期 return に落ち、空のリストと案内が同時に見えていた
+        # （コードレビュー指摘）
+        self._list.setVisible(False)
+        self._empty.setVisible(True)
 
     # ------------------------------------------------------------------ 中身
 
