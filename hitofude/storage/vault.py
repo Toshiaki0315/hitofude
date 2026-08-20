@@ -334,6 +334,59 @@ class Vault:
 
     # ----------------------------------------------------------------- 移動
 
+    def move_note(self, path: Path, folder: str) -> Path:
+        """ノートをフォルダへ移す（K-3 / ADR-0024）。移した先を返す。
+
+        `folder` は vault からの相対（`仕事/2026`）。空文字は直下。
+        **無いフォルダはここで作られる**（「新しいフォルダ」の入口は
+        移動だけ。空フォルダは索引由来のツリーに見えないため）。
+
+        **本文は書き換えない（R1）。** 添付リンクは vault ルート基準で
+        解決するので、どこへ動いても表示と書き出しは壊れない。
+        移動で空になった元のフォルダは掃除する。
+        """
+        if not self._inside(path):
+            raise ValueError(f"保管フォルダの外: {path}")
+        raw_parts = [part.strip() for part in folder.split("/") if part.strip()]
+        # **生の名前で先に弾く。** sanitize は先頭のドットを剥ぐので、
+        # 後で調べると `.trash` が `trash` に化けてすり抜ける
+        if raw_parts and (raw_parts[0] in SKIP_DIRS or raw_parts[0].startswith(".")):
+            raise ValueError(f"予約フォルダには移せない: {folder}")
+        cleaned = "/".join(sanitize_filename(part) for part in raw_parts)
+        destination = self._writable_folder(self.root / cleaned if cleaned else self.root)
+        destination.mkdir(parents=True, exist_ok=True)
+
+        target = unique_path(destination, path.stem, path.suffix)
+        if target.parent == path.parent:
+            return path  # 同じ場所。動かす意味が無い
+        source_dir = path.parent
+        path.rename(target)
+        self._prune_empty_dirs(source_dir)
+        return target
+
+    def _prune_empty_dirs(self, start: Path) -> None:
+        """空になったフォルダを root の手前まで遡って消す（ADR-0024）。
+
+        **完全に空のときだけ。** 何か 1 つでも残っていれば触らない。
+        """
+        probe = start
+        while probe != self.root and self._inside(probe):
+            try:
+                relative = probe.resolve().relative_to(self.root.resolve())
+            except (OSError, ValueError):
+                return
+            if not relative.parts or relative.parts[0] in SKIP_DIRS:
+                return
+            try:
+                next(probe.iterdir())
+                return  # 空ではない
+            except StopIteration:
+                pass
+            except OSError:
+                return
+            probe.rmdir()
+            probe = probe.parent
+
     def rename(self, path: Path, title: str) -> Path:
         """タイトル変更に合わせてファイル名を変える。
 

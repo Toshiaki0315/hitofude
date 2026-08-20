@@ -641,6 +641,10 @@ class MainWindow(QMainWindow):
         """ノートを雛形として登録する（一覧の右クリック）。"""
         return self._notes.register_template(path)
 
+    def move_note_to_folder(self, path: Path) -> Path | None:
+        """ノートをフォルダへ移す（一覧の右クリック / K-3）。"""
+        return self._notes.move_note_to_folder(path)
+
     def copy_note_link(self, path: Path) -> str:
         """`[[名前]]` をクリップボードへ入れる（一覧の右クリック）。"""
         return self._notes.copy_note_link(path)

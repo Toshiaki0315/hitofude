@@ -360,3 +360,87 @@ class TestDuplicateNaming:
         title = title_of(text, "無題")
         assert copy.stem == title, f"ファイル名 {copy.stem} と題名 {title} が乖離"
         assert "-2-2" not in copy.stem, "二重の連番が付いた"
+
+
+class TestMoveToFolder:
+    """一覧の右クリック → フォルダへ移動…（K-3 / ADR-0024）。"""
+
+    def make(self, window, title="動かすメモ"):
+        note = window.vault.create(title, f"# {title}\n\n本文\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        return note
+
+    def test_メニューに項目がある(self, window) -> None:
+        note = self.make(window)
+        relative = note.path.relative_to(window.vault.root)
+        found = [a.text() for a in window.context_menu_for(relative).actions()]
+        assert "フォルダへ移動…" in found
+
+    def test_選んだフォルダへ移り索引も追従する(self, window, monkeypatch) -> None:
+        from hitofude.ui import note_actions as module
+
+        note = self.make(window)
+        monkeypatch.setattr(
+            module.QInputDialog, "getItem", staticmethod(lambda *a, **k: ("仕事/2026", True))
+        )
+        moved = window.move_note_to_folder(note.path)
+        assert moved == window.vault.root / "仕事" / "2026" / "動かすメモ.md"
+        rows = {str(row.path) for row in window.vault_index.notes()}
+        assert "仕事/2026/動かすメモ.md" in rows
+        assert str(note.path.relative_to(window.vault.root)) not in rows
+        assert "移動しました" in window.notice()
+
+    def test_開いているノートを移すと追いかける(self, window, monkeypatch) -> None:
+        from hitofude.ui import note_actions as module
+
+        note = self.make(window)
+        window.open_note(note.path)
+        monkeypatch.setattr(
+            module.QInputDialog, "getItem", staticmethod(lambda *a, **k: ("仕事", True))
+        )
+        moved = window.move_note_to_folder(note.path)
+        assert window.current_note is not None
+        assert window.current_note.path == moved
+
+    def test_やめれば何も起きない(self, window, monkeypatch) -> None:
+        from hitofude.ui import note_actions as module
+
+        note = self.make(window)
+        monkeypatch.setattr(
+            module.QInputDialog, "getItem", staticmethod(lambda *a, **k: ("", False))
+        )
+        assert window.move_note_to_folder(note.path) is None
+        assert note.path.exists()
+
+    def test_直下へ戻す選択肢がある(self, window, monkeypatch) -> None:
+        from hitofude.ui import note_actions as module
+
+        (window.vault.root / "仕事").mkdir(parents=True, exist_ok=True)
+        source = window.vault.root / "仕事" / "帰るメモ.md"
+        source.write_text("# 帰るメモ\n", encoding="utf-8")
+        from hitofude.core.document import Note
+
+        window.vault_index.upsert_note(Note.read(source), window.vault.root)
+        window.refresh()
+
+        captured = {}
+
+        def fake(parent, title, label, items, current=0, editable=True):
+            captured["items"] = list(items)
+            return (items[0], True)  # 先頭 = 直下
+
+        monkeypatch.setattr(module.QInputDialog, "getItem", staticmethod(fake))
+        moved = window.move_note_to_folder(source)
+        assert moved == window.vault.root / "帰るメモ.md"
+        assert captured["items"][0] == module.ROOT_FOLDER_CHOICE
+
+    def test_移動に失敗したら知らせて何も壊さない(self, window, monkeypatch) -> None:
+        from hitofude.ui import note_actions as module
+
+        note = self.make(window)
+        monkeypatch.setattr(
+            module.QInputDialog, "getItem", staticmethod(lambda *a, **k: (".trash", True))
+        )
+        assert window.move_note_to_folder(note.path) is None
+        assert note.path.exists()

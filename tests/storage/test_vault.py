@@ -726,3 +726,72 @@ class TestWritableFolderGuards:
         trashed = vault.trash(note.path)
         renamed = vault.rename(trashed, "改名後")
         assert renamed.parent == vault.trash_dir
+
+
+class TestMoveNote:
+    """ノートをフォルダへ移す（K-3 / ADR-0024）。"""
+
+    def test_既存のフォルダへ移せる(self, vault) -> None:
+        note = vault.create("会議メモ", "# 会議メモ\n\n本文\n")
+        (vault.root / "仕事").mkdir()
+        moved = vault.move_note(note.path, "仕事")
+        assert moved == vault.root / "仕事" / "会議メモ.md"
+        assert moved.exists() and not note.path.exists()
+
+    def test_新しいフォルダはその場で作られる(self, vault) -> None:
+        note = vault.create("メモ", "# メモ\n")
+        moved = vault.move_note(note.path, "新規/2026")
+        assert moved.parent == vault.root / "新規" / "2026"
+
+    def test_直下へ戻せる(self, vault) -> None:
+        (vault.root / "仕事").mkdir(parents=True)
+        path = vault.root / "仕事" / "メモ.md"
+        path.write_text("# メモ\n", encoding="utf-8")
+        moved = vault.move_note(path, "")
+        assert moved == vault.root / "メモ.md"
+
+    def test_同名があれば連番を付ける(self, vault) -> None:
+        note = vault.create("メモ", "# メモ\n")
+        (vault.root / "仕事").mkdir()
+        (vault.root / "仕事" / "メモ.md").write_text("# 先客\n", encoding="utf-8")
+        moved = vault.move_note(note.path, "仕事")
+        assert moved.name == "メモ-2.md"
+
+    def test_本文は変わらない(self, vault) -> None:
+        """R1: 添付リンクは vault ルート基準で解決するので書き換え不要。"""
+        note = vault.create("絵入り", "# 絵入り\n\n![](attachments/a.png)\n")
+        moved = vault.move_note(note.path, "仕事")
+        assert "![](attachments/a.png)" in moved.read_text(encoding="utf-8")
+
+    def test_予約フォルダへは移せない(self, vault) -> None:
+        note = vault.create("メモ", "# メモ\n")
+        for reserved in (".trash", ".hitofude", "templates", "attachments"):
+            with pytest.raises(ValueError):
+                vault.move_note(note.path, reserved)
+
+    def test_保管フォルダの外のノートは拒む(self, vault, tmp_path) -> None:
+        outsider = tmp_path / "外.md"
+        outsider.write_text("# 外\n", encoding="utf-8")
+        with pytest.raises(ValueError):
+            vault.move_note(outsider, "仕事")
+
+    def test_フォルダ名は掃除される(self, vault) -> None:
+        note = vault.create("メモ", "# メモ\n")
+        moved = vault.move_note(note.path, " 仕事 / 2026 ")
+        assert moved.parent == vault.root / "仕事" / "2026"
+
+    def test_空になった元フォルダは消える(self, vault) -> None:
+        path = vault.root / "古い" / "深い" / "メモ.md"
+        path.parent.mkdir(parents=True)
+        path.write_text("# メモ\n", encoding="utf-8")
+        vault.move_note(path, "")
+        assert not (vault.root / "古い").exists()  # 祖先まで掃除
+
+    def test_中身が残る元フォルダは消えない(self, vault) -> None:
+        keep = vault.root / "古い" / "残る.md"
+        keep.parent.mkdir(parents=True)
+        keep.write_text("# 残る\n", encoding="utf-8")
+        path = vault.root / "古い" / "メモ.md"
+        path.write_text("# メモ\n", encoding="utf-8")
+        vault.move_note(path, "")
+        assert keep.exists() and keep.parent.is_dir()

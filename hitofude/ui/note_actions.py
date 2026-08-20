@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 # 片づけの確認に並べる名前の数（E-5）。全部並べるとダイアログが画面を溢れる
 CLEANUP_PREVIEW = 10
 
+# 「フォルダへ移動…」の先頭の選択肢。直下（フォルダから出す）を表す
+ROOT_FOLDER_CHOICE = "（保管フォルダ直下）"
+
 PINNED_NOTICE = "ピン留めしているノートは削除できません。先にピン留めを外してください。"
 
 
@@ -402,6 +405,7 @@ class NoteActions:
         menu.addAction("テンプレートに登録…").triggered.connect(
             lambda: self.register_template(path)
         )
+        menu.addAction("フォルダへ移動…").triggered.connect(lambda: self.move_note_to_folder(path))
         menu.addSeparator()
         menu.addAction("リンクをコピー").triggered.connect(lambda: self.copy_note_link(path))
         menu.addAction("Finder で表示").triggered.connect(lambda: self.reveal_note(path))
@@ -413,6 +417,57 @@ class NoteActions:
         return menu
 
     # ------------------------------------------------------------- テンプレート
+
+    def move_note_to_folder(self, path: Path) -> Path | None:
+        """ノートをフォルダへ移す（K-3 / ADR-0024）。移した先を返す。
+
+        移動先は既存フォルダの一覧から選ぶか、**新しい名前を打てば
+        その時フォルダが作られる**（editable なコンボ）。空フォルダは
+        ツリーに見えないので、「新しいフォルダ」の入口はここに集約する。
+        """
+        window = self._window
+        folders = [count.folder for count in window._db.folder_tree()]
+        items = [ROOT_FOLDER_CHOICE, *folders]
+        current_folder = path.parent.relative_to(window._vault.root).as_posix()
+        current = items.index(current_folder) if current_folder in items else 0
+
+        choice, accepted = QInputDialog.getItem(
+            window,
+            "フォルダへ移動",
+            "移動先（新しい名前を入力すると作成）",
+            items,
+            current,
+            True,
+        )
+        if not accepted:
+            return None
+        folder = "" if choice.strip() in ("", ROOT_FOLDER_CHOICE) else choice.strip()
+
+        was_open = window.current_note is not None and window.current_note.path == path
+        window.flush()
+        window._watcher.suppress(path)
+        try:
+            moved = window._vault.move_note(path, folder)
+        except (ValueError, OSError) as error:
+            logger.warning("フォルダへ移動できなかった: %s", error)
+            window.notify(f"移動できませんでした: {error}")
+            return None
+        if moved == path:
+            return path  # 同じ場所。何も変わらない
+
+        window._watcher.suppress(moved)
+        window._db.remove_path(window._vault.root, path)
+        note = window._vault.read(moved)
+        window._db.upsert_note(note, window._vault.root)
+        window.refresh()
+        if was_open:
+            window._note = note  # 開いているノートの居場所を追いかける
+            window._remember_note(moved)
+        window._note_list.select_path(moved.relative_to(window._vault.root))
+        shown = folder or "保管フォルダ直下"
+        window.notify(f"「{note.title}」を {shown} へ移動しました")
+        logger.info("移動した: %s -> %s", path.name, moved)
+        return moved
 
     def register_template(self, path: Path) -> Path | None:
         """ノートを雛形として登録する（ユーザー要望）。登録先を返す。
