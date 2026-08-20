@@ -59,10 +59,19 @@ class Version:
 
     path: Path
     saved_at: datetime
-    title: str
 
     def read(self) -> str:
         return self.path.read_text(encoding="utf-8")
+
+    @property
+    def title(self) -> str:
+        """その版の題名。**触るまで読まない**（コードレビュー指摘）。
+
+        題名が要るのは一覧（履歴ダイアログ）だけ。保存のたびの間引き
+        判定や起動時の整理が全版の中身（最大 6.3MB/ノート）を読むのは
+        無駄で、16ms / 1.5s の予算（CLAUDE.md §7）を食い潰す。
+        """
+        return _title_of(self.path)
 
 
 def keep(root: Path, key: str, text: str, *, now: datetime, force: bool = False) -> Path | None:
@@ -80,13 +89,15 @@ def keep(root: Path, key: str, text: str, *, now: datetime, force: bool = False)
     note_id = folder_name(key)
     latest = _latest(root, note_id)
     if latest is not None:
+        # **時刻の判定が先。** ファイル名だけで済み、中身を読まずに
+        # 大半（5 分以内の自動保存）を弾ける。中身の比較はその後
+        if not force and now - latest.saved_at < timedelta(minutes=MIN_INTERVAL_MINUTES):
+            return None
         try:
             if latest.read() == text:
                 return None
         except OSError:
             logger.warning("前の版を読めなかった: %s", latest.path)
-        if not force and now - latest.saved_at < timedelta(minutes=MIN_INTERVAL_MINUTES):
-            return None
 
     target = root / note_id / f"{now.strftime(_STAMP_FORMAT)}.md"
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -106,7 +117,7 @@ def versions(root: Path, key: str) -> list[Version]:
         saved_at = _stamp_of(path)
         if saved_at is None:
             continue
-        found.append(Version(path=path, saved_at=saved_at, title=_title_of(path)))
+        found.append(Version(path=path, saved_at=saved_at))
     found.sort(key=lambda version: version.saved_at, reverse=True)
     return found
 

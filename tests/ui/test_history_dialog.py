@@ -20,9 +20,8 @@ def make_versions(tmp_path) -> list[Version]:
     for index, minutes in enumerate((0, 30, 60)):
         path = tmp_path / f"{index}.md"
         path.write_text(f"# 版 {index}\n\n本文 {index}\n", encoding="utf-8")
-        found.append(
-            Version(path=path, saved_at=NOW - timedelta(minutes=minutes), title=f"版 {index}")
-        )
+        # title は Version が中身から遅延で読む（コードレビュー対応）
+        found.append(Version(path=path, saved_at=NOW - timedelta(minutes=minutes)))
     return found
 
 
@@ -62,7 +61,7 @@ class TestList:
             "---\nid: 01ABC\nmodified: 2026-08-20T10:00:00+09:00\n---\n# 題名\n\n本文\n",
             encoding="utf-8",
         )
-        widget = HistoryDialog([Version(path=path, saved_at=NOW, title="題名")])
+        widget = HistoryDialog([Version(path=path, saved_at=NOW)])
         qtbot.addWidget(widget)
 
         assert "01ABC" not in widget.preview_text()

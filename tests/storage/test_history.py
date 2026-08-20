@@ -133,3 +133,47 @@ class TestSize:
         """**容量は増える。** 見えないところで太らせない。"""
         history.keep(root, NOTE_ID, "あ" * 1000, now=NOW)
         assert history.total_bytes(root) > 1000
+
+
+class TestLazyReads:
+    """保存・整理の道で版の中身を読まない（コードレビュー指摘）。
+
+    50 版 × 50k 字 ≈ 6.3MB（ADR-0023 の実測）を自動保存のたびに全読み
+    していた。題名は一覧（ダイアログ）を開くときだけ読めばよい。
+    """
+
+    def test_一覧の組み立ては中身を読まない(self, tmp_path, monkeypatch) -> None:
+        from hitofude.storage import history
+
+        history.keep(tmp_path, "note", "# 題\n本文", now=datetime(2026, 8, 20, 10, 0))
+        reads = []
+        monkeypatch.setattr(history, "_title_of", lambda path: reads.append(path) or "題")
+        found = history.versions(tmp_path, "note")
+        assert len(found) == 1
+        assert reads == []  # versions() だけでは読まない
+        assert found[0].title == "題"
+        assert len(reads) == 1  # 触ったときに初めて読む
+
+    def test_間引きの判定は前の版を読まない(self, tmp_path, monkeypatch) -> None:
+        from hitofude.storage import history
+
+        history.keep(tmp_path, "note", "一版目", now=datetime(2026, 8, 20, 10, 0))
+        reads = []
+        original = history.Version.read
+        monkeypatch.setattr(
+            history.Version, "read", lambda self: reads.append(self.path) or original(self)
+        )
+        # 5 分未満 → 時刻だけで捨てられる。中身の比較は要らない
+        kept = history.keep(tmp_path, "note", "二版目", now=datetime(2026, 8, 20, 10, 1))
+        assert kept is None
+        assert reads == []
+
+    def test_整理も中身を読まない(self, tmp_path, monkeypatch) -> None:
+        from hitofude.storage import history
+
+        history.keep(tmp_path, "note", "古い版", now=datetime(2026, 1, 1, 10, 0))
+        reads = []
+        monkeypatch.setattr(history, "_title_of", lambda path: reads.append(path) or "x")
+        removed = history.prune(tmp_path, now=datetime(2026, 8, 20, 10, 0))
+        assert len(removed) == 1  # 30 日超は消える
+        assert reads == []
