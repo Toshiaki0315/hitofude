@@ -109,3 +109,18 @@ class TestDateFilter:
 
     def test_案内に書き方が出る(self, window) -> None:
         assert "after:" in window._search.search_placeholder()
+
+
+class TestTagCase:
+    """大文字のタグでも引ける（コードレビュー指摘 / 回帰）。
+
+    索引は casefold 済みで格納するので、検索側も正規化しないと
+    サイドバーでは引けるのに Cmd+Shift+F だけ 0 件になる。"""
+
+    def test_大文字のタグで絞れる(self, window) -> None:
+        add(window, "やること", "買い出し\n\n#TODO")
+        assert titles(window, "#TODO") == {"やること"}
+
+    def test_区切りの打ち崩れも許す(self, window) -> None:
+        add(window, "会議の記録", "来期の話\n\n#仕事/会議")
+        assert titles(window, "#仕事//会議") == {"会議の記録"}

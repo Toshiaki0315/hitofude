@@ -13,9 +13,11 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime
 
-# 絞り込みのタグ。**行頭か空白のあと**に限る。本文の規則（`core/tags.py`）と
-# 揃える。揃えないと `http://example.com#anchor` が絞り込みに見える
-_TAG_RE = re.compile(r"(?:(?<=\s)|\A)#(?P<name>[^\s#]+)")
+from hitofude.core import tags as tag_rules
+
+# 絞り込みのタグは本文と**同じ規則・同じ正規表現**（`core/tags.py`）で拾う。
+# 判定を 2 箇所に書くと必ず片方だけ直されてずれる（tags.py 自身の警告）
+_TAG_RE = tag_rules.TAG_RE
 
 # 期間の絞り込み（案 A）。`after:2026-08-01` / `before:2026-08-31`。
 # **日付として読めるものだけ**を絞り込みと見なす（下の `_read_date`）
@@ -62,8 +64,10 @@ def parse(query: str) -> SearchQuery:
     """
     tags: list[str] = []
     for found in _TAG_RE.finditer(query):
-        name = found.group("name")
-        if name not in tags:
+        # 索引は正規化済み（casefold・空セグメント除去）で持っている。
+        # 揃えないと `#TODO` がサイドバーでは引けるのに検索だけ 0 件になる
+        name = tag_rules.normalize(found.group("name"))
+        if name and name not in tags:
             tags.append(name)
 
     edges: dict[str, date] = {}

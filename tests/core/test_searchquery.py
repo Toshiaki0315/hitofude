@@ -155,3 +155,18 @@ class TestBadDates:
     def test_日付の形をしていなければ何も覚えない(self) -> None:
         """`after` と書いていなければ、そもそも絞り込みのつもりではない。"""
         assert parse("きのうの予算").unreadable_dates == ()
+
+
+class TestTagNormalization:
+    """タグは索引と同じ形（casefold・空セグメント除去）へ揃える
+    （コードレビュー指摘）。揃えないと #TODO がサイドバーでは引けるのに
+    検索では 0 件になる。"""
+
+    def test_大文字はcasefoldされる(self) -> None:
+        assert parse("#TODO 予算").tags == ("todo",)
+
+    def test_空のセグメントは畳まれる(self) -> None:
+        assert parse("#仕事//会議").tags == ("仕事/会議",)
+
+    def test_正規化後の重複はまとまる(self) -> None:
+        assert parse("#TODO #todo").tags == ("todo",)

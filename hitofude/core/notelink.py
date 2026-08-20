@@ -8,6 +8,8 @@
 
 import re
 
+from hitofude.core import tags as _tags
+
 # 打ちかけの `[[名前`。**閉じていないものだけ**を拾う。
 #
 # - `|` と `]` を含まない … 別名の記法（`[[名前|表示]]`）は未対応で、
@@ -46,14 +48,9 @@ def closing_tail(rest: str) -> int | None:
 def matches(prefix: str, titles: list[str]) -> list[str]:
     """前方一致で候補を絞る。大文字小文字は区別しない。
 
-    **打ったものと同じだけの候補は返さない。** 選ぶものが無いのに一覧が
-    出ていると、Enter が決定なのか改行なのか分からなくなる。
-
-    `[[` と打った直後（`prefix` が空）は全部返す。何から選べるのかを
-    見せたい場面なので、ここだけは「候補が同じ」の判定に掛からない。
+    絞りの規則はタグ補完と**同じもの**を使う（`tags.matches`）。
+    「打ったものと同じだけなら出さない」という Enter の解釈に関わる
+    規則が 2 か所にあると、片方だけ直されて挙動がずれる。
+    `[[` 直後（`prefix` が空）に全部出るのも同じ実装で成立する。
     """
-    lowered = prefix.lower()
-    found = [title for title in titles if title.lower().startswith(lowered)]
-    if found == [prefix]:
-        return []
-    return found
+    return _tags.matches(prefix, titles)
