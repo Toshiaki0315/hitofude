@@ -336,3 +336,27 @@ class TestTrashGhost:
 
         folders = [count.folder for count in window.vault_index.folder_tree()]
         assert all(".trash" not in folder for folder in folders)
+
+
+class TestDuplicateNaming:
+    """複製の命名は 1 つの権威で決める（コードレビュー指摘）。
+
+    呼び側と create の 2 回 unique_path を通すと、手作りのファイル名
+    （sanitize で変わる名前）で -2-2 の二重接尾や、H1 とファイル名の
+    乖離が起きる。
+    """
+
+    def test_空白の乱れたファイル名でも題名とファイル名が一致する(self, window) -> None:
+        # 手作りファイル（アプリを通らない名前）を直接置く
+        (window.vault.root / "a  b.md").write_text("# a  b\n\n本文\n", encoding="utf-8")
+        (window.vault.root / "a b-2.md").write_text("# a b-2\n\n本文\n", encoding="utf-8")
+        window.refresh()
+
+        copy = window.duplicate_note(window.vault.root / "a  b.md")
+        assert copy is not None
+        from hitofude.core.document import title_of
+
+        text = copy.read_text(encoding="utf-8")
+        title = title_of(text, "無題")
+        assert copy.stem == title, f"ファイル名 {copy.stem} と題名 {title} が乖離"
+        assert "-2-2" not in copy.stem, "二重の連番が付いた"

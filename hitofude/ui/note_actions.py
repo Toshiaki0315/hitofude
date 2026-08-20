@@ -346,7 +346,11 @@ class NoteActions:
         # **元と同じフォルダに作る**（K-1）。分類して置いたノートの複製が
         # vault 直下に出ると、片方だけ箱から外れる
         folder = path.parent
-        target = unique_path(folder, path.stem, path.suffix)
+        # **先に sanitize してから空きを探す。** create も同じ順で計算する
+        # ので、2 回の unique_path が必ず同じ答えになる。生の stem から
+        # 探すと、手作りのファイル名（sanitize で変わる名前）で -2-2 の
+        # 二重接尾や H1 とファイル名の乖離が起きる（コードレビュー指摘）
+        target = unique_path(folder, sanitize_filename(path.stem), path.suffix)
         note = window._vault.create(target.stem, with_title(text, target.stem), folder=folder)
         window._db.upsert_note(note, window._vault.root)
         window.refresh()

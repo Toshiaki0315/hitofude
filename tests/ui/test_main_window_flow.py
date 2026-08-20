@@ -967,3 +967,32 @@ class TestClearedNote:
         model = window.note_list.model()
         titles = [model.data(model.index(row), NoteRole.TITLE) for row in range(model.rowCount())]
         assert titles == ["無題"]
+
+
+class TestRecoveryKeepsFolder:
+    """クラッシュ復元がフォルダのノートを直下へ出さない（コードレビュー指摘。
+    K-1「分類したのに箱から飛び出す」の取り漏らし）。"""
+
+    def test_復元コピーは元のフォルダにできる(self, window) -> None:
+        from hitofude.storage import autosave
+
+        folder = window.vault.root / "仕事"
+        folder.mkdir()
+        source = folder / "会議メモ.md"
+        source.write_text("# 会議メモ\n\n本文\n", encoding="utf-8")
+        autosave.stash(window._saver.recovery_root, source, "# 会議メモ\n\n未保存の本文\n")
+
+        restored = window.restore_pending()
+        assert len(restored) == 1
+        assert restored[0].parent == folder, "復元コピーが直下へ出た"
+
+    def test_フォルダが消えていれば直下へ(self, window) -> None:
+        from hitofude.storage import autosave
+
+        gone = window.vault.root / "消えた"
+        source = gone / "メモ.md"
+        autosave.stash(window._saver.recovery_root, source, "# メモ\n\n本文\n")
+
+        restored = window.restore_pending()
+        assert len(restored) == 1
+        assert restored[0].parent == window.vault.root  # 無い箱は作らない（§7.1）

@@ -487,7 +487,12 @@ class MainWindow(QMainWindow):
         restored: list[Path] = []
         for stashed in self.pending_recovery():
             stamp = datetime.fromtimestamp(stashed.stashed_at).date().isoformat()
-            target = unique_path(self._vault.root, f"{stashed.source.stem} (復元 {stamp})")
+            # **元のフォルダに戻す**（K-1 と同じ理屈。コードレビュー指摘）。
+            # 箱が消えていたら直下へ（無い箱は作らない。spec §7.1）
+            folder = stashed.source.parent
+            if not folder.is_dir():
+                folder = self._vault.root
+            target = unique_path(folder, f"{stashed.source.stem} (復元 {stamp})")
             self._watcher.suppress(target)
             self._vault.write(target, stashed.text)
             self._db.upsert_note(self._vault.read(target), self._vault.root)
