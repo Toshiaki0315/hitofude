@@ -471,7 +471,11 @@ class NoteActions:
         window = self._window
         for row in window._db.notes():
             if row.title == title:
-                return window._vault.root / row.path
+                found = window._vault.root / row.path
+                # **索引はキャッシュ（R9）。** watcher の反映前は実態と
+                # ずれうる。消えたファイルを盲信すると、Cmd+T が開きも
+                # 作りもしないで終わる（コードレビュー指摘）
+                return found if found.exists() else None
         return None
 
     def open_adjacent_daily(self, *, forward: bool) -> bool:

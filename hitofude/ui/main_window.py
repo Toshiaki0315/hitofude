@@ -767,7 +767,7 @@ class MainWindow(QMainWindow):
     def create_from_template(self, path: Path) -> Note | None:
         return self._notes.create_from_template(path)
 
-    def open_daily_note(self, day: datetime | None = None) -> Note:
+    def open_daily_note(self, day: datetime | None = None) -> Note | None:
         """`Cmd+T`（E-4）。"""
         return self._notes.open_daily_note(day)
 

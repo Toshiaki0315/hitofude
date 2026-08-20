@@ -199,3 +199,28 @@ class TestHistorySelection:
 
         assert window.current_note.path == paths[0]
         assert window.note_list.current_path() == paths[0].relative_to(window.vault.root)
+
+
+class TestStaleIndex:
+    """索引が指す先が消えていたとき（コードレビュー指摘）。
+
+    索引はキャッシュ（R9）で、watcher の反映前は実態とずれうる。
+    ずれたパスを盲信すると Cmd+T が「開きも作りもしない」で終わる。
+    """
+
+    def test_ファイルが消えていれば作り直す(self, window) -> None:
+        from datetime import datetime
+
+        from hitofude.core.template import daily_title
+
+        day = datetime(2026, 8, 20)
+        first = window.open_daily_note(day)
+        assert first is not None
+
+        # Finder で消された想定（watcher はまだ反映していない）
+        first.path.unlink()
+
+        again = window.open_daily_note(day)
+        assert again is not None
+        assert again.path.exists()
+        assert again.title == daily_title(day)
