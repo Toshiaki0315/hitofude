@@ -44,8 +44,8 @@ from hitofude.core.outline import headings
 from hitofude.core.stats import is_huge
 from hitofude.core.wikilink import context_line, normalize, resolve
 from hitofude.editor.editor_widget import MarkdownEditor
-from hitofude.storage import autosave
-from hitofude.storage.index_db import IndexDb, NoteRow, SortOrder
+from hitofude.storage import autosave, history
+from hitofude.storage.index_db import IndexDb, NoteRow, SortOrder, note_key
 from hitofude.storage.vault import (
     Vault,
     unique_path,
@@ -55,6 +55,7 @@ from hitofude.theme import ThemeColors, ThemeMode
 from hitofude.ui.backlink_bar import Backlink
 from hitofude.ui.editor_pane import EditorPane
 from hitofude.ui.export_actions import ExportActions
+from hitofude.ui.history_dialog import HistoryDialog
 from hitofude.ui.icons import Glyph, glyph_icon
 from hitofude.ui.index_sync import IndexSyncTask, SyncReporter
 from hitofude.ui.menus import build_gear_menu, build_menus
@@ -128,6 +129,7 @@ class MainWindow(QMainWindow):
         self._vault = Vault(self._config.vault_path)
         self._vault.ensure_layout()
         self._vault.purge_trash(self._config.trash_days)
+        history.prune(self.history_root(), now=self._history_now())
         self._vault.sweep_temp_files()  # クラッシュで残った .tmp の掃除（H-1）
 
         self._db = IndexDb(self._vault.managed_dir / "index.sqlite")
@@ -1008,6 +1010,80 @@ class MainWindow(QMainWindow):
         if showing:
             self._update_outline()
 
+    def history_root(self) -> Path:
+        """版の置き場（ADR-0023）。`.hitofude` の中で、一覧にも検索にも出ない。"""
+        return self._vault.managed_dir / "history"
+
+    def keep_version(self, text: str, *, force: bool = False) -> Path | None:
+        """今の内容を 1 版として残す（ADR-0023）。保存の道から呼ぶ。
+
+        **id で分ける。** 題名（＝ファイル名）は変わるが、front matter の
+        ULID は変わらないので、名前を変えても履歴が途切れない。
+        """
+        note = self._note
+        if note is None:
+            return None
+        return history.keep(
+            self.history_root(),
+            note_key(note, self._vault.root),
+            text,
+            now=self._history_now(),
+            force=force,
+        )
+
+    def note_versions(self) -> list[history.Version]:
+        """開いているノートの版（新しい順）。無ければ空。"""
+        note = self._note
+        if note is None:
+            return []
+        return history.versions(self.history_root(), note_key(note, self._vault.root))
+
+    def restore_version(self, version: history.Version) -> bool:
+        """その版に戻す。戻せたら True。
+
+        **戻す前に今の内容を 1 版残す。** 「やっぱり戻す前がよかった」と
+        言えるようにする（取り消せない操作を増やさない）。
+        """
+        if self._note is None:
+            return False
+        try:
+            text = version.read()
+        except OSError:
+            logger.warning("版を読めなかった: %s", version.path)
+            return False
+
+        self.keep_version(self._editor.toPlainText(), force=True)
+        self._editor.setPlainText(text)
+        self.flush()
+        self.notify(f"{version.saved_at:%Y-%m-%d %H:%M} の版に戻しました")
+        return True
+
+    def build_history_dialog(self) -> "HistoryDialog | None":
+        """版の履歴の画面を作る。ノートを開いていなければ `None`。
+
+        **開く前に今の内容を書く。** 打ちかけのまま開くと、いちばん新しい
+        版と画面の内容が食い違う。
+        """
+        if self._note is None:
+            return None
+        self.flush()
+        dialog = HistoryDialog(self.note_versions(), self)
+        dialog.restore_requested.connect(self.restore_version)
+        return dialog
+
+    def show_history(self) -> None:
+        """`Cmd+Shift+H`。版の履歴を開く（ADR-0023）。"""
+        dialog = self.build_history_dialog()
+        if dialog is None:
+            self.notify("ノートを開いてから使ってください")
+            return
+        dialog.exec()
+        dialog.deleteLater()
+
+    def _history_now(self):
+        """今の時刻。**テストが差し替える**ので 1 か所にまとめる。"""
+        return datetime.now()
+
     def _update_outline(self) -> None:
         """本文の見出しを一覧へ流す。
 
@@ -1212,6 +1288,7 @@ class MainWindow(QMainWindow):
         self._apply_list_font()
         self._theme_watcher.set_mode(self._config.theme_mode)
         self._vault.purge_trash(self._config.trash_days)
+        history.prune(self.history_root(), now=self._history_now())
 
     # ------------------------------------------------------------------ 表示
 

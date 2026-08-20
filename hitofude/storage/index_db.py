@@ -577,13 +577,20 @@ def _quote(text: str) -> str:
     return f'"{escaped}"'
 
 
-def _note_id(note: Note, root: Path) -> str:
+def note_key(note: Note, root: Path) -> str:
     """front matter に `id` があればそれ、無ければ相対パスから作る。
 
     外部エディタで作られたノートには front matter が無い。索引の主キーは
     必ず要るので、パスから安定した ID を合成する。
+
+    **版の履歴（ADR-0023）も同じ鍵を使う。** 別々に決めると、索引と履歴で
+    「同じノート」の判定がずれる。
     """
     return note.id or f"path:{note.relative_to(root)}"
+
+
+# 旧名。索引の中からはこちらで呼ばれている
+_note_id = note_key
 
 
 def _to_row(row: sqlite3.Row) -> NoteRow:

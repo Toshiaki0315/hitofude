@@ -57,6 +57,9 @@ def build_menus(window) -> None:
     file_menu.addSeparator()
     add(file_menu, "ピン留め", "Ctrl+Shift+P", window.toggle_pin_current)
     add(file_menu, "ゴミ箱へ移動", "Ctrl+Backspace", window.trash_current)
+    # 版の履歴（ADR-0023）。**ファイルの仲間**（保存・ゴミ箱と同じ、
+    # ノートそのものの扱い）
+    add(file_menu, "版の履歴…", "Ctrl+Shift+H", window.show_history)
     file_menu.addSeparator()
     # 取り込み（F-2）。**キーは付けない。** ファイルを選ぶ操作で急がない
     add(file_menu, "読み込む…", "", window.import_document)

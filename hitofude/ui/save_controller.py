@@ -108,6 +108,9 @@ class SaveController:
         payload = window._vault.touch_modified(text)
         window._watcher.suppress(note.path)
         window._vault.write(note.path, payload)
+        # **書けたあとに残す**（ADR-0023）。書けなかった内容を版にすると、
+        # ファイルに無いものが履歴に出る
+        window.keep_version(payload)
         # 書けた時点で「ここが保存済みの状態」。これを怠ると、保存後の
         # カーソル移動（リビールの textChanged）が編集扱いに戻ってしまう
         window._editor.document().setModified(False)
