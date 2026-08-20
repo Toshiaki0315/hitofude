@@ -69,21 +69,20 @@ class TestInlineFormats:
         set_text(document, "~~削除~~")
         assert char_format(document, 0, 2).fontStrikeOut() is True
 
-    def test_インラインコードに背景がつく(self, document, highlighter) -> None:
-        from hitofude.theme import LIGHT
+    def test_インラインコードは文字書式に背景を持たない(self, document, highlighter) -> None:
+        """背景の帯は paintEvent が描く（上の余白のため。ユーザー要望）。
 
+        文字書式に背景があると帯と二重に塗られて角丸が汚れる。
+        等幅フォントは文字書式のまま。
+        """
         set_text(document, "`code`")
-        # 未設定のブラシも「黒・不透明」を返すので、alpha ではなく実際の色で比べる
-        assert (
-            char_format(document, 0, 1).background().color().name() == LIGHT.code_background.lower()
-        )
+        found = char_format(document, 0, 1)
+        assert found.fontFamilies(), "等幅の指定が消えている"
+        assert found.background().style().name == "NoBrush" or not found.hasProperty(0x0820)
 
-    def test_ハイライトに背景がつく(self, document, highlighter) -> None:
-        from hitofude.theme import LIGHT
-
+    def test_ハイライトは文字書式に背景を持たない(self, document, highlighter) -> None:
         set_text(document, "::目立つ::")
-        got = char_format(document, 0, 2).background().color().name()
-        assert got == LIGHT.highlight_background.lower()
+        assert not char_format(document, 0, 2).hasProperty(0x0820)  # BackgroundBrush
 
     def test_装飾のない文字には背景を付けない(self, document, highlighter) -> None:
         from PySide6.QtCore import Qt
@@ -263,16 +262,13 @@ class TestReveal:
 
 class TestTheme:
     def test_テーマ変更で色が変わる(self, document, highlighter) -> None:
-        from hitofude.theme import DARK, LIGHT
+        from hitofude.theme import DARK
 
         set_text(document, "`code`")
-        light = char_format(document, 0, 1).background().color().name()
         highlighter.set_theme(DARK)
         document.documentLayout().documentSize()
-        dark = char_format(document, 0, 1).background().color().name()
-        assert light != dark
-        assert light == LIGHT.code_background.lower()
-        assert dark == DARK.code_background.lower()
+        # 帯は paintEvent 側（テーマ追従もそちら）。文字書式は背景を持たない
+        assert not char_format(document, 0, 1).hasProperty(0x0820)  # BackgroundBrush
 
 
 class TestWithWidget:

@@ -241,7 +241,7 @@
       [
         9,
         3,
-        "bold+mono+bg:#d8d8e0+fg:#3a3a3c"
+        "bold+mono+fg:#3a3a3c"
       ],
       [
         12,
@@ -302,7 +302,7 @@
       [
         1,
         13,
-        "mono+bg:#d8d8e0+fg:#3a3a3c"
+        "mono+fg:#3a3a3c"
       ],
       [
         14,
@@ -317,7 +317,7 @@
       [
         19,
         10,
-        "mono+bg:#d8d8e0+fg:#3a3a3c"
+        "mono+fg:#3a3a3c"
       ],
       [
         29,
@@ -332,7 +332,7 @@
       [
         34,
         6,
-        "mono+bg:#d8d8e0+fg:#3a3a3c"
+        "mono+fg:#3a3a3c"
       ],
       [
         40,
@@ -713,7 +713,7 @@
       [
         1,
         4,
-        "mono+bg:#d8d8e0+fg:#3a3a3c"
+        "mono+fg:#3a3a3c"
       ],
       [
         5,

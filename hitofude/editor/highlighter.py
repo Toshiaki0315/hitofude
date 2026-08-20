@@ -1054,16 +1054,17 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         strong_em.setFontWeight(QFont.Weight.Bold)
         strong_em.setFontItalic(True)
 
+        # 背景は付けない。帯は paintEvent が上に余白を持たせて描く
+        # （ユーザー要望。QTextCharFormat の背景では上の余白が作れない）
         code = QTextCharFormat()
         code.setFontFamilies(mono_families(self._mono_family))
-        code.setBackground(QColor(theme.code_background))
         code.setForeground(QColor(theme.code_foreground))
 
         strike = QTextCharFormat()
         strike.setFontStrikeOut(True)
 
+        # ハイライトも帯は paintEvent（同上）。文字書式としては何も持たない
         highlight = QTextCharFormat()
-        highlight.setBackground(QColor(theme.highlight_background))
 
         link = QTextCharFormat()
         link.setForeground(QColor(theme.accent))

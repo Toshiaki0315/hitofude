@@ -577,3 +577,43 @@ class TestFigureBackground:
 
         assert LIGHT.figure_background != LIGHT.code_background
         assert DARK.figure_background != DARK.code_background
+
+
+class TestInlineBand:
+    """インラインコード・ハイライトの帯（ユーザー要望）。
+
+    QTextCharFormat の背景は文字の箱にぴったりで上の余白が作れない。
+    帯を paintEvent で描き、上に少し余白を持たせる。
+    """
+
+    def band(self, editor, name: str):
+        return [
+            d
+            for d in visible_decorations(editor)
+            if d.kind is DecorationKind.INLINE_BAND and d.text == name
+        ]
+
+    def test_インラインコードに帯が出る(self, editor) -> None:
+        away(editor, "前 `code` 後\n")
+        assert len(self.band(editor, "code")) == 1
+
+    def test_ハイライトに帯が出る(self, editor) -> None:
+        away(editor, "::目立つ:: 本文\n")
+        assert len(self.band(editor, "highlight")) == 1
+
+    def test_文中の数式もコードの帯(self, editor) -> None:
+        away(editor, "式 $x$ を含む\n")
+        assert len(self.band(editor, "code")) == 1
+
+    def test_上に余白がある(self, editor) -> None:
+        away(editor, "前 `code` 後\n")
+        block = editor.document().findBlockByNumber(0)
+        geometry = editor.blockBoundingGeometry(block).translated(editor.contentOffset())
+        line_top = geometry.top() + block.layout().lineAt(0).y()
+        found = self.band(editor, "code")[0]
+        assert found.rect.top() < line_top  # 文字の箱より上へはみ出している
+
+    def test_Rawでは出ない(self, editor) -> None:
+        editor.setPlainText("`code`\n")
+        editor.set_source_mode(True)
+        assert self.band(editor, "code") == []

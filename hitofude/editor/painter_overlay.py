@@ -20,7 +20,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen, QTextBlock
 
 from hitofude.core.inline_scanner import image_only_line
-from hitofude.core.models import BlockType
+from hitofude.core.models import BlockType, SpanType
 from hitofude.core.table import CELL_OVERHEAD, fits
 from hitofude.core.textpos import py_to_utf16
 from hitofude.theme import ThemeColors
@@ -51,6 +51,10 @@ WRAP_CELL_PADDING = 4.0
 TABLE_FAMILIES = ["BIZ UDGothic", "Menlo", "Monaco", "Courier New"]
 # ファイル名の大きさ（本文に対する比）。見出しとして読めて、かつ主張しない
 CODE_NAME_SCALE = 0.85
+# インラインの帯が文字の箱から上へはみ出す量と角の丸み
+INLINE_BAND_RISE = 2.0
+INLINE_BAND_RADIUS = 3.0
+
 RULE_HEIGHT = 1
 LEFT_INSET = 2
 
@@ -100,6 +104,12 @@ class DecorationKind(Enum):
     TABLE_HEADER = auto()
     TABLE_RULE = auto()
     CODE_BACKGROUND = auto()
+    INLINE_BAND = auto()
+    """インラインコード / ハイライトの帯（ユーザー要望）。種類は `text`。
+
+    QTextCharFormat の背景は文字の箱にぴったりで上の余白が作れない。
+    帯をこちらで描いて、上に少しはみ出させる。"""
+
     FIGURE_BACKGROUND = auto()
     """組版される図（数式・Mermaid）の帯。コードより薄い色（ユーザー要望）。"""
 
@@ -487,7 +497,64 @@ def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decora
         if marker is not None:
             result.append(marker)
 
+    data = block.userData()
+    for span in getattr(data, "spans", []):
+        name = _INLINE_BAND_NAMES.get(span.type)
+        if name is None:
+            continue
+        for rect in _span_rects(block, geometry, span.content_start, span.content_end):
+            result.append(Decoration(DecorationKind.INLINE_BAND, rect, name))
+
     return result
+
+
+# 帯を敷くインライン装飾。数式（$x$）は等幅で見せているのでコードと同色
+_INLINE_BAND_NAMES = {
+    SpanType.CODE: "code",
+    SpanType.MATH: "code",
+    SpanType.HIGHLIGHT: "highlight",
+}
+
+
+def _span_rects(block: QTextBlock, geometry: QRectF, start: int, end: int) -> list[QRectF]:
+    """文中の範囲 [start, end)（Python 単位）が占める矩形。折り返しは行ごと。
+
+    上へ INLINE_BAND_RISE だけはみ出させる。下は文字の箱のまま
+    （ディセントぶんの余白が既にある）。
+    """
+    if end <= start:
+        return []
+    layout = block.layout()
+    if layout is None or layout.lineCount() == 0:
+        return []
+    text = block.text()
+    begin16 = py_to_utf16(text, start)
+    end16 = py_to_utf16(text, end)
+    first = layout.lineForTextPosition(begin16)
+    last = layout.lineForTextPosition(max(begin16, end16 - 1))
+    if not first.isValid() or not last.isValid():
+        return []
+
+    found: list[QRectF] = []
+    for number in range(first.lineNumber(), last.lineNumber() + 1):
+        line = layout.lineAt(number)
+        line_begin = max(begin16, line.textStart())
+        line_end = min(end16, line.textStart() + line.textLength())
+        x1 = line.cursorToX(line_begin)
+        x2 = line.cursorToX(line_end)
+        x1 = float(x1[0]) if isinstance(x1, tuple) else float(x1)
+        x2 = float(x2[0]) if isinstance(x2, tuple) else float(x2)
+        if x2 <= x1:
+            continue
+        found.append(
+            QRectF(
+                geometry.left() + x1,
+                geometry.top() + line.y() - INLINE_BAND_RISE,
+                x2 - x1,
+                line.height() + INLINE_BAND_RISE,
+            )
+        )
+    return found
 
 
 def _fold_marker(editor, block: QTextBlock, geometry: QRectF) -> Decoration | None:
@@ -592,6 +659,17 @@ def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) 
         match decoration.kind:
             case DecorationKind.CODE_BACKGROUND:
                 painter.fillRect(decoration.rect, QColor(theme.code_background))
+            case DecorationKind.INLINE_BAND:
+                color = (
+                    theme.highlight_background
+                    if decoration.text == "highlight"
+                    else theme.code_background
+                )
+                painter.save()
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                painter.setBrush(QColor(color))
+                painter.drawRoundedRect(decoration.rect, INLINE_BAND_RADIUS, INLINE_BAND_RADIUS)
+                painter.restore()
             case DecorationKind.FIGURE_BACKGROUND:
                 painter.fillRect(decoration.rect, QColor(theme.figure_background))
             case DecorationKind.TABLE_HEADER:
