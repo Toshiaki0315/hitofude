@@ -546,3 +546,20 @@ class TestSweepTempFiles:
         note = vault.create("大事なメモ")
         vault.sweep_temp_files()
         assert note.path.exists()
+
+
+class TestCreateIdentity:
+    """create は**新しいノートを作る**。持ち込まれた front matter が
+    ULID を乗っ取ってはいけない（コードレビュー指摘 / 回帰）。"""
+
+    def test_持ち込んだidは新しいULIDに置き換わる(self, vault) -> None:
+        source = vault.create("元ノート", "本文\n")
+        text = source.path.read_text(encoding="utf-8")
+
+        copy = vault.create("写し", text)
+        assert copy.id is not None
+        assert copy.id != source.id, "複製が元の ULID を引き継いでいる"
+
+    def test_id以外のメタは持ち込める(self, vault) -> None:
+        note = vault.create("旗つき", "---\npinned: true\n---\n本文\n")
+        assert note.pinned is True

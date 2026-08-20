@@ -253,11 +253,15 @@ class Vault:
 
         parsed = frontmatter.split(text or "")
         timestamp = _now()
+        # **id はこちらが勝つ。** 持ち込まれた front matter（複製・取り込み）
+        # の id を通すと 2 つのノートが同じ ULID になり、版の履歴（ADR-0023、
+        # id が鍵）が混線して「この版に戻す」が別ノートの内容を書き込む。
+        # created / modified は持ち込みを尊重する（取り込みで日付を保つ）
         meta = {
-            "id": new_id(),
             "created": timestamp,
             "modified": timestamp,
             **parsed.meta,
+            "id": new_id(),
         }
         save_atomic(path, frontmatter.join(meta, parsed.body))
         return self.read(path)
