@@ -12,7 +12,7 @@ import logging
 import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
 
@@ -235,7 +235,11 @@ class IndexDb:
                 "title": note.title,
                 "preview": note.preview,
                 "created": str(parsed.get("created", "")),
-                "modified": str(parsed.get("modified", "")),
+                # modified が無い（外部エディタ製の front matter 無し）
+                # ノートはファイルの mtime で代用する。空文字のままだと
+                # 文字列比較の after: に永遠に掛からず before: には常に
+                # 掛かり、並び順でも最下位に沈む（コードレビュー指摘）
+                "modified": str(parsed.get("modified", "")) or _mtime_stamp(note.mtime_ns),
                 "mtime": note.mtime_ns,
                 "size": note.size_bytes,
                 "pinned": int(note.pinned),
@@ -575,6 +579,15 @@ def _quote(text: str) -> str:
     """
     escaped = text.replace('"', '""')
     return f'"{escaped}"'
+
+
+def _mtime_stamp(mtime_ns: int) -> str:
+    """mtime を front matter の modified と比べられる形にする。
+
+    日付の絞り込みは先頭 10 文字（YYYY-MM-DD）の文字列比較なので、
+    その形で始まってさえいればよい。
+    """
+    return datetime.fromtimestamp(mtime_ns / 1_000_000_000).isoformat(timespec="seconds")
 
 
 def note_key(note: Note, root: Path) -> str:

@@ -666,3 +666,45 @@ class TestSearchWithDates:
     def test_短い言葉でも絞れる(self, dated) -> None:
         titles = {hit.title for hit in dated.search("予算", after=date(2026, 8, 15))}
         assert titles == {"今月の記録"}
+
+
+class TestDateFallback:
+    """front matter の無いノートの日付（コードレビュー指摘）。
+
+    外部エディタで作ったノートは modified が無い。空文字で格納すると
+    文字列比較の after: に永遠に掛からず、before: には常に掛かる。
+    ファイルの mtime へフォールバックする。
+    """
+
+    def make_external(self, tmp_path, body: str = "外部エディタのノート\n"):
+        import os
+        from datetime import datetime
+
+        from hitofude.core.document import Note
+
+        path = tmp_path / "外部.md"
+        path.write_text(body, encoding="utf-8")
+        stamp = datetime(2026, 8, 10, 12, 0, 0).timestamp()
+        os.utime(path, (stamp, stamp))
+        return Note.read(path)
+
+    def test_mtimeが日付として入る(self, db, tmp_path) -> None:
+        note = self.make_external(tmp_path)
+        db.upsert_note(note, tmp_path)
+        row = db.notes()[0]
+        assert row.modified_at.startswith("2026-08-10")
+
+    def test_afterで引ける(self, db, tmp_path) -> None:
+        note = self.make_external(tmp_path)
+        db.upsert_note(note, tmp_path)
+        from datetime import date
+
+        found = db.search("", after=date(2026, 8, 1))
+        assert [hit.title for hit in found] == [note.title]
+
+    def test_beforeで正しく除外される(self, db, tmp_path) -> None:
+        from datetime import date
+
+        note = self.make_external(tmp_path)
+        db.upsert_note(note, tmp_path)
+        assert db.search("", before=date(2020, 1, 1)) == []
