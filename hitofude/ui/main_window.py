@@ -1181,7 +1181,9 @@ class MainWindow(QMainWindow):
         候補に混ざると選び間違える。ゴミ箱の中も外す（`notes()` の既定）。
         """
         current = self._note.title if self._note is not None else None
-        return [row.title for row in self._db.notes() if row.title != current]
+        # 打鍵ごとに呼ばれるので、題名だけの軽い問い合わせを使う
+        # （notes() は preview 込みの全列で、大きな vault では 16ms 予算を食う）
+        return [title for title in self._db.titles() if title != current]
 
     def _known_tags(self) -> list[str]:
         """索引にあるタグ（C-4 / 補完の候補）。件数の多い順ではなく名前順。

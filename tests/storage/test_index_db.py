@@ -708,3 +708,22 @@ class TestDateFallback:
         note = self.make_external(tmp_path)
         db.upsert_note(note, tmp_path)
         assert db.search("", before=date(2020, 1, 1)) == []
+
+
+class TestTitles:
+    """題名だけの一覧（コードレビュー指摘）。
+
+    [[ の補完は打鍵ごとに候補を引く。notes()（SELECT * + NoteRow 構築）
+    では 5,000 ノートの vault で 16ms 予算を食うので、題名だけの列を返す。
+    """
+
+    def test_ゴミ箱以外の題名が返る(self, db, vault) -> None:
+        for name in ("会議メモ", "日報"):
+            note = vault.create(name, f"# {name}\n")
+            db.upsert_note(note, vault.root)
+        trashed = vault.create("捨てる", "# 捨てる\n")
+        db.upsert_note(trashed, vault.root, trashed=True)
+
+        found = db.titles()
+        assert "会議メモ" in found and "日報" in found
+        assert "捨てる" not in found

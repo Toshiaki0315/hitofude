@@ -374,6 +374,16 @@ class IndexDb:
             sql += f" LIMIT {int(limit)}"
         return [_to_row(row) for row in self._connection.execute(sql)]
 
+    def titles(self) -> list[str]:
+        """ゴミ箱以外の題名だけの一覧。
+
+        `[[` の補完（打鍵ごとに呼ばれる）用。`notes()` は SELECT * で
+        preview まで運んで NoteRow を組むため、大きな vault では打鍵の
+        16ms 予算（§6.6）を食う（コードレビュー指摘）。
+        """
+        rows = self._connection.execute("SELECT title FROM notes WHERE trashed = 0")
+        return [row["title"] for row in rows]
+
     def notes_with_tag(self, tag: str, *, order: "SortOrder" = SortOrder.MODIFIED) -> list[NoteRow]:
         """そのタグ、または配下のタグを持つノート。"""
         normalized = tag_utils.normalize(tag)
