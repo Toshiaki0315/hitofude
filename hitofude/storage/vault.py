@@ -463,6 +463,15 @@ class Vault:
         save_atomic(target, body)
         return target
 
+    def delete_template(self, path: Path) -> None:
+        """テンプレートを消す（ユーザー要望）。
+
+        `templates/` の中のファイルだけを受ける。ノート本体を巻き込まない。
+        """
+        if not self._inside_templates(path):
+            raise ValueError(f"テンプレートではないパス: {path}")
+        path.unlink(missing_ok=True)
+
     def create_from_template(
         self, path: Path, *, title: str | None = None, now: datetime | None = None
     ) -> NewNote:

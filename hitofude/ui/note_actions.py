@@ -458,11 +458,58 @@ class NoteActions:
             )
             return False
 
-        palette = Palette(window, placeholder="雛形を選ぶ…", theme=window._theme_watcher.colors)
+        palette = Palette(
+            window, placeholder="テンプレートを選ぶ…", theme=window._theme_watcher.colors
+        )
         palette.set_provider(self._template_items)
         palette.chosen.connect(lambda item: self.create_from_template(item.path))
         palette.finished.connect(palette.deleteLater)
         palette.open_with()
+        return True
+
+    def delete_template(self) -> bool:
+        """テンプレートを選んで削除する（ユーザー要望）。入口を開けたら True。
+
+        新規作成と同じパレットで選び、**確認してから**消す。テンプレートは
+        ゴミ箱を経由しない（ノートではないので「戻す」の導線が無い）ぶん、
+        確認は必須。
+        """
+        window = self._window
+        if not window._vault.templates():
+            QMessageBox.information(
+                window,
+                "テンプレートがありません",
+                "削除できるテンプレートがまだありません。",
+            )
+            return False
+
+        palette = Palette(
+            window,
+            placeholder="削除するテンプレートを選ぶ…",
+            theme=window._theme_watcher.colors,
+        )
+        palette.set_provider(self._template_items)
+        palette.chosen.connect(lambda item: self.delete_template_at(item.path))
+        palette.finished.connect(palette.deleteLater)
+        palette.open_with()
+        return True
+
+    def delete_template_at(self, path: Path) -> bool:
+        """確認してからテンプレートを消す。消したら True。"""
+        window = self._window
+        answer = QMessageBox.question(
+            window,
+            "テンプレートを削除",
+            f"テンプレート「{path.stem}」を削除しますか？\n元に戻せません。",
+        )
+        if answer is not QMessageBox.StandardButton.Yes:
+            return False
+        try:
+            window._vault.delete_template(path)
+        except (ValueError, OSError) as error:
+            logger.warning("テンプレートを削除できなかった: %s", error)
+            return False
+        window.notify(f"テンプレート「{path.stem}」を削除しました")
         return True
 
     def create_from_template(self, path: Path) -> Note | None:

@@ -621,3 +621,22 @@ class TestRegisterTemplate:
         outsider.write_text("# 外\n", encoding="utf-8")
         with _pytest.raises(ValueError):
             vault.register_template(outsider, "雛形")
+
+
+class TestDeleteTemplate:
+    """テンプレートの削除（ユーザー要望）。"""
+
+    def test_消せる(self, vault) -> None:
+        note = vault.create("元", "# 元\n\n本文\n")
+        target = vault.register_template(note.path, "使い捨て")
+        vault.delete_template(target)
+        assert target not in vault.templates()
+        assert not target.exists()
+
+    def test_templates以外は拒む(self, vault) -> None:
+        import pytest as _pytest
+
+        note = vault.create("本物", "# 本物\n\n本文\n")
+        with _pytest.raises(ValueError):
+            vault.delete_template(note.path)
+        assert note.path.exists()

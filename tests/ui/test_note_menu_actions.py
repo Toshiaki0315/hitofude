@@ -186,3 +186,72 @@ class TestRegisterTemplate:
         window.register_template(note.path)
         assert asked, "上書きの確認が出ていない"
         assert (window.vault.templates_dir / "雛形.md").read_text(encoding="utf-8") == first
+
+
+class TestDeleteTemplate:
+    """テンプレートの削除（ユーザー要望）。選んで、確認してから消す。"""
+
+    def register(self, window, monkeypatch, name="消す雛形"):
+        from hitofude.ui import note_actions as module
+
+        note = window.vault.create("削除元", "# 削除元\n\n本文\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        monkeypatch.setattr(
+            module.QInputDialog, "getText", staticmethod(lambda *a, **k: (name, True))
+        )
+        return window.register_template(note.path)
+
+    def test_確認してから消える(self, window, monkeypatch) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        from hitofude.ui import note_actions as module
+
+        target = self.register(window, monkeypatch)
+        monkeypatch.setattr(
+            module.QMessageBox,
+            "question",
+            staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes),
+        )
+        assert window._notes.delete_template_at(target) is True
+        assert not target.exists()
+        assert "削除しました" in window.notice()
+
+    def test_やめれば残る(self, window, monkeypatch) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        from hitofude.ui import note_actions as module
+
+        target = self.register(window, monkeypatch)
+        monkeypatch.setattr(
+            module.QMessageBox,
+            "question",
+            staticmethod(lambda *a, **k: QMessageBox.StandardButton.No),
+        )
+        assert window._notes.delete_template_at(target) is False
+        assert target.exists()
+
+    def test_メニューに入口がある(self, window) -> None:
+        labels = [action.text() for action in window.actions()]
+        assert "テンプレートを削除…" in labels
+
+
+class TestPalettePlaceholder:
+    def test_テンプレートを選ぶという文言(self, window, monkeypatch) -> None:
+        """「雛形を選ぶ」は登録機能の文言（テンプレートに登録）と揃わない
+        （ユーザー要望）。"""
+        from hitofude.ui import note_actions as module
+
+        captured = {}
+        original = module.Palette
+
+        class Spy(original):
+            def __init__(self, *args, **kwargs):
+                captured["placeholder"] = kwargs.get("placeholder")
+                super().__init__(*args, **kwargs)
+
+            def open_with(self, *args, **kwargs):
+                self.deleteLater()  # 開かない（モーダル回避）
+
+        monkeypatch.setattr(module, "Palette", Spy)
+        window.new_from_template()
+        assert captured["placeholder"] == "テンプレートを選ぶ…"

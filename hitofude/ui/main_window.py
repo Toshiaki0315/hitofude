@@ -773,6 +773,10 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------- テンプレート
 
+    def delete_template(self) -> bool:
+        """テンプレートを選んで削除する。"""
+        return self._notes.delete_template()
+
     def new_from_template(self) -> bool:
         """`Cmd+Shift+N`（E-4）。"""
         return self._notes.new_from_template()
