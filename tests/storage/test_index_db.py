@@ -790,3 +790,39 @@ class TestFolders:
         note = vault.create("直下だけ")
         db.upsert_note(note, vault.root)
         assert db.folder_tree() == []
+
+
+class TestFolderRangeQuery:
+    """フォルダ絞りは範囲述語で引く（コードレビュー指摘）。
+
+    LIKE は既定の大文字小文字非区別と BINARY 索引が噛み合わず常に全表
+    走査になる（EXPLAIN で実測）。範囲（path >= '仕事/' AND path < '仕事0'）
+    なら UNIQUE 索引をそのまま使える。
+    """
+
+    def make(self, db, vault, relative: str):
+        path = vault.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"# {path.stem}\n", encoding="utf-8")
+        from hitofude.core.document import Note
+
+        db.upsert_note(Note.read(path), vault.root)
+
+    def test_境界の隣の名前を拾わない(self, db, vault) -> None:
+        self.make(db, vault, "仕事/中.md")
+        self.make(db, vault, "仕事場/外.md")
+        found = [str(row.path) for row in db.notes_in_folder("仕事")]
+        assert found == ["仕事/中.md"]
+
+    def test_LIKEの記号を含むフォルダ名も引ける(self, db, vault) -> None:
+        self.make(db, vault, "50%off_セール/対象.md")
+        found = [row.title for row in db.notes_in_folder("50%off_セール")]
+        assert found == ["対象"]
+
+    def test_索引を使って引けている(self, db, vault) -> None:
+        self.make(db, vault, "仕事/中.md")
+        plan = db._connection.execute(
+            "EXPLAIN QUERY PLAN SELECT * FROM notes WHERE trashed = 0 AND path >= ? AND path < ?",
+            ("仕事/", "仕事0"),
+        ).fetchall()
+        assert any("SEARCH" in row["detail"] for row in plan)

@@ -135,10 +135,6 @@ class FolderCount:
     count: int
 
     @property
-    def depth(self) -> int:
-        return self.folder.count("/")
-
-    @property
     def label(self) -> str:
         """画面に出す名前。**末端だけ**（階層は字下げで見せる）。"""
         return self.folder.rsplit("/", 1)[-1]
@@ -478,13 +474,20 @@ class IndexDb:
         **区切りまで含めて前方一致する。** `仕事` で `仕事場/` を拾わない。
         """
         prefix = f"{folder.strip('/')}/"
+        # **LIKE ではなく範囲で引く**（コードレビュー指摘）。既定の LIKE は
+        # 大文字小文字を区別せず、BINARY の UNIQUE 索引と噛み合わないため
+        # 常に全表走査になる（EXPLAIN で実測）。前方一致は
+        # `path >= '仕事/' AND path < '仕事0'`（'/' の次の文字が '0'）で
+        # 表せて、索引をそのまま使える。ワイルドカードが無いので
+        # エスケープも要らない
+        upper = prefix[:-1] + chr(ord(prefix[-1]) + 1)
         rows = self._connection.execute(
             f"""
             SELECT * FROM notes
-            WHERE trashed = 0 AND path LIKE ? ESCAPE '\\'
+            WHERE trashed = 0 AND path >= ? AND path < ?
             ORDER BY {_order_by(order)}
             """,
-            (f"{_like_escape(prefix)}%",),
+            (prefix, upper),
         )
         return [_to_row(row) for row in rows]
 
@@ -617,8 +620,7 @@ class IndexDb:
         """
         # `%` と `_` は LIKE のワイルドカード。エスケープしないと
         # 「%」の 1 文字検索が全件に一致する（打った文字をそのまま探す）
-        escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        pattern = f"%{escaped}%"
+        pattern = f"%{_like_escape(text)}%"
         clause, tag_params = self._tag_clause(tags)
         date_clause, date_params = self._date_clause(after, before)
         rows = self._connection.execute(

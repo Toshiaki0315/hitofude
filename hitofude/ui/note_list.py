@@ -95,10 +95,15 @@ class NoteListModel(QAbstractListModel):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._rows: list[NoteRow] = []
+        self._folder_labels: list[str] = []
 
     def set_rows(self, rows: list[NoteRow]) -> None:
         self.beginResetModel()
         self._rows = list(rows)
+        # 置き場所ラベルはここで 1 回だけ作る。data() は描画のたびに
+        # 呼ばれるので、そこで pathlib を回すと行数 × 再描画ぶん無駄になる
+        # （コードレビュー指摘）
+        self._folder_labels = [folder_label(row.path) for row in rows]
         self.endResetModel()
 
     def rowCount(self, parent: QModelIndex | None = None) -> int:
@@ -123,7 +128,7 @@ class NoteListModel(QAbstractListModel):
             case NoteRole.PINNED:
                 return row.pinned
             case NoteRole.FOLDER:
-                return folder_label(row.path)
+                return self._folder_labels[index.row()]
             case _:
                 return None
 
@@ -213,6 +218,12 @@ class NoteItemDelegate(QStyledItemDelegate):
         super().__init__(parent)
         self._theme = theme
         self._metrics = _Metrics()
+        # 置き場所ラベルの省略計算のキャッシュ（コードレビュー指摘）。
+        # paint は可視行 × 再描画のたびに呼ばれ、QFontMetrics の生成と
+        # elidedText を毎回やると 16ms の描画予算に乗る。ラベルは
+        # 数種類しか無いので、(ラベル, 上限幅) で覚えれば実質ゼロになる
+        self._folder_cache: dict[tuple[str, int], tuple[str, int]] = {}
+        self._folder_font_key: tuple[str, float] | None = None
 
     def _draw_separator(self, painter: QPainter, option, index: QModelIndex) -> None:
         """行の下に 1px の仕切り線を引く（ユーザー要望）。
@@ -235,6 +246,21 @@ class NoteItemDelegate(QStyledItemDelegate):
 
     def set_metrics(self, metrics: _Metrics) -> None:
         self._metrics = metrics
+
+    def _elided_folder(self, folder: str, font, cap: int) -> tuple[str, int]:
+        """置き場所ラベルの省略形と幅。同じ入力は計算し直さない。"""
+        key = (font.family(), font.pointSizeF())
+        if key != self._folder_font_key:
+            self._folder_font_key = key
+            self._folder_cache.clear()
+        found = self._folder_cache.get((folder, cap))
+        if found is None:
+            metrics = QFontMetrics(font)
+            limit = min(cap, metrics.horizontalAdvance(folder))
+            elided = metrics.elidedText(folder, Qt.TextElideMode.ElideLeft, limit)
+            found = (elided, metrics.horizontalAdvance(elided) + FOLDER_GAP)
+            self._folder_cache[(folder, cap)] = found
+        return found
 
     def set_theme(self, theme: ThemeColors) -> None:
         self._theme = theme
@@ -277,12 +303,9 @@ class NoteItemDelegate(QStyledItemDelegate):
         # 置き場所は日付の左隣。**題名を削り過ぎない**よう上限を設ける
         # （深い階層でも題名が読めるほうが大事）
         folder = index.data(NoteRole.FOLDER) or ""
-        folder_metrics = QFontMetrics(option.font)
         folder_width = 0
         if folder:
-            limit = min(body.width() // 3, folder_metrics.horizontalAdvance(folder))
-            folder = folder_metrics.elidedText(folder, Qt.TextElideMode.ElideLeft, limit)
-            folder_width = folder_metrics.horizontalAdvance(folder) + FOLDER_GAP
+            folder, folder_width = self._elided_folder(folder, option.font, body.width() // 3)
 
         title_rect = QRect(
             body.left(), body.top(), body.width() - date_width - folder_width, line_height
