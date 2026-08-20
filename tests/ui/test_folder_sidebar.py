@@ -165,3 +165,15 @@ class TestExpansion:
         sidebar.set_folders([FolderCount(folder="仕事", count=3)])  # 件数が変わって再構築
         index = self.folder_index(sidebar)
         assert not sidebar.isExpanded(index), "畳んだ枝が再構築で開き直された"
+
+
+class TestFilterValidation:
+    def test_フォルダ指定なしのFOLDERは作れない(self, qtbot) -> None:
+        """folder=None のまま作ると、ラベルが 'None/'・一覧は黙って空に
+        なっていた（コードレビュー指摘）。作る時点で大声で失敗させる。"""
+        import pytest as _pytest
+
+        from hitofude.ui.sidebar import Filter, FilterKind
+
+        with _pytest.raises(ValueError):
+            Filter(FilterKind.FOLDER)

@@ -345,6 +345,10 @@ class Vault:
         箱から飛び出す。同名の衝突も**同じフォルダの中だけ**を見る
         （別のフォルダの同名は別のノート）。
         """
+        if not self._inside(path):
+            # 旧実装は宛先を root 固定で組んでいて構造的に外へ書けなかった。
+            # K-1 で path.parent 由来になったぶん、保証を明示する
+            raise ValueError(f"保管フォルダの外: {path}")
         folder = path.parent
         target = folder / f"{sanitize_filename(title)}.md"
         if target == path:
@@ -354,14 +358,24 @@ class Vault:
         return target
 
     def _writable_folder(self, folder: Path) -> Path:
-        """ノートを作ってよいフォルダとして受け取る。外なら `ValueError`。
+        """ノートを作ってよいフォルダとして受け取る。駄目なら `ValueError`。
 
         **`_inside()` とは別物。** あちらは走査中のリンクを辿るかどうかの
         判定（真偽）で、こちらは書き込み先の受け取り（駄目なら止める）。
+
+        予約フォルダ（.trash / .hitofude / templates / attachments）も
+        弾く（コードレビュー指摘）。生きたノートがそこへ入ると、走査
+        （scan）から見えない迷子になる。
         """
         resolved = Path(folder).expanduser()
         if not self._inside(resolved):
             raise ValueError(f"保管フォルダの外には作れない: {folder}")
+        try:
+            relative = resolved.resolve().relative_to(self.root.resolve())
+        except ValueError:
+            relative = Path()
+        if relative.parts and relative.parts[0] in SKIP_DIRS:
+            raise ValueError(f"予約フォルダには作れない: {folder}")
         return resolved
 
     def trash(self, path: Path) -> Path:

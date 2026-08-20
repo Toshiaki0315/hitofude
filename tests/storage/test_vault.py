@@ -695,3 +695,34 @@ class TestDeleteTemplate:
         with _pytest.raises(ValueError):
             vault.delete_template(note.path)
         assert note.path.exists()
+
+
+class TestWritableFolderGuards:
+    """書き込み先ガードの強化（コードレビュー指摘）。
+
+    「保管フォルダの外」だけでなく、予約フォルダ（.trash / .hitofude /
+    templates / attachments）も弾く。生きたノートがそこへ入ると、走査
+    （scan）から見えない迷子になる。
+    """
+
+    @pytest.mark.parametrize("reserved", [".trash", ".hitofude", "templates", "attachments"])
+    def test_予約フォルダには作れない(self, vault, reserved) -> None:
+        with pytest.raises(ValueError):
+            vault.create("迷子", "# 迷子\n", folder=vault.root / reserved)
+
+    def test_予約フォルダの子孫も弾く(self, vault) -> None:
+        with pytest.raises(ValueError):
+            vault.create("迷子", "# 迷子\n", folder=vault.root / ".hitofude" / "history")
+
+    def test_renameは保管フォルダの外を弾く(self, vault, tmp_path) -> None:
+        outsider = tmp_path / "外.md"
+        outsider.write_text("# 外\n", encoding="utf-8")
+        with pytest.raises(ValueError):
+            vault.rename(outsider, "新しい名前")
+
+    def test_ゴミ箱の中のrenameは通る(self, vault) -> None:
+        """ゴミ箱のノートの見出し編集で使う経路。塞がない。"""
+        note = vault.create("捨てる", "# 捨てる\n")
+        trashed = vault.trash(note.path)
+        renamed = vault.rename(trashed, "改名後")
+        assert renamed.parent == vault.trash_dir

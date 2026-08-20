@@ -73,6 +73,14 @@ class Filter:
     folder: str | None = None
     """`FilterKind.FOLDER` のときの相対パス（`仕事/2026`）。"""
 
+    def __post_init__(self) -> None:
+        # 中身の無い FOLDER/TAG は、ラベルが「None/」になり一覧が黙って
+        # 空になる（コードレビュー指摘）。作る時点で大声で失敗させる
+        if self.kind is FilterKind.FOLDER and not self.folder:
+            raise ValueError("FOLDER のフィルタには folder が要る")
+        if self.kind is FilterKind.TAG and not self.tag:
+            raise ValueError("TAG のフィルタには tag が要る")
+
     @property
     def label(self) -> str:
         match self.kind:
