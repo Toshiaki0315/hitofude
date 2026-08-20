@@ -28,6 +28,21 @@ def prefix_at(line: str, column: int) -> str | None:
     return found.group("name") if found is not None else None
 
 
+# カーソルから閉じ `]]` までに残っている名前。閉じたリンクの中で
+# 確定したとき、この分も一緒に置き換える（残すと `[[会議メモ]]モ]]` になる）
+_TAIL_RE = re.compile(r"\A(?P<name>[^\[\]|\n]*)\]\]")
+
+
+def closing_tail(rest: str) -> int | None:
+    """カーソル位置から閉じ `]]` までに残っている名前の長さ。
+
+    閉じが無ければ `None`（開きかけのリンク。行の残りは名前ではないので
+    食べてはいけない）。
+    """
+    found = _TAIL_RE.match(rest)
+    return len(found.group("name")) if found is not None else None
+
+
 def matches(prefix: str, titles: list[str]) -> list[str]:
     """前方一致で候補を絞る。大文字小文字は区別しない。
 

@@ -124,3 +124,48 @@ class TestSource:
         editor.setTextCursor(QTextCursor(editor.document()))
         type_text(editor, "[[")
         assert editor.tag_candidates() == ["最初", "あとから"]
+
+
+class TestCompleteInsideLink:
+    """既存リンクの名前の途中で確定したとき（コードレビュー指摘 / 回帰）。
+
+    閉じ判定がカーソル直後 2 文字しか見ておらず、[[会議メモ]] の途中で
+    確定すると [[会議メモ]]モ]] のように壊れていた。
+    """
+
+    def test_名前の途中で確定しても壊れない(self, editor) -> None:
+        editor.set_note_source(lambda: ["会議メモ"])
+        editor.setPlainText("[[会議メ]] のあと")
+        cursor = editor.textCursor()
+        cursor.setPosition(4)  # [[会議 | メ]] — 名前の途中
+        editor.setTextCursor(cursor)
+        editor.update_tag_completion()
+        assert "会議メモ" in editor.tag_candidates()
+
+        editor.complete_tag("会議メモ")
+        assert editor.toPlainText() == "[[会議メモ]] のあと"
+
+    def test_確定後のカーソルは閉じ括弧の外(self, editor) -> None:
+        editor.set_note_source(lambda: ["会議メモ"])
+        editor.setPlainText("[[会議メ]]")
+        cursor = editor.textCursor()
+        cursor.setPosition(4)
+        editor.setTextCursor(cursor)
+        editor.update_tag_completion()
+        editor.complete_tag("会議メモ")
+        assert editor.textCursor().position() == len("[[会議メモ]]")
+
+    def test_タグ補完は後ろの括弧に反応しない(self, editor) -> None:
+        """カーソル送り（]] の外へ出す）はリンク補完だけの動き。
+        タグの確定でたまたま後ろに ]] があっても飛ばない。"""
+        editor.set_tag_source(lambda: ["日報"])
+        editor.setPlainText("#日]]")
+        cursor = editor.textCursor()
+        cursor.setPosition(2)  # #日 | ]]
+        editor.setTextCursor(cursor)
+        editor.update_tag_completion()
+        assert "日報" in editor.tag_candidates()
+
+        editor.complete_tag("日報")
+        assert editor.toPlainText() == "#日報]]"
+        assert editor.textCursor().position() == 3  # ]] の手前のまま

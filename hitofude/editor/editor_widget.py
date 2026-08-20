@@ -994,24 +994,39 @@ class MarkdownEditor(QPlainTextEdit):
         line = cursor.block().text()
         column = utf16_to_py(line, cursor.positionInBlock())
         closing = ""
+        tail_units = 0
+        inside_link = False
         prefix = self._lang_prefix(cursor, line, column)
         if prefix is None:
             prefix = notelink.prefix_at(line, column)
             if prefix is not None:
-                # **既にある `]]` は足さない。** 直すときに `]]]]` になる
-                closing = "" if line[column : column + 2] == "]]" else "]]"
+                # 閉じた `[[リンク]]` の中で確定したら、**閉じまでの残りの
+                # 名前ごと**置き換える。カーソル直後の 2 文字だけを見る
+                # 判定だと、名前の途中で `[[会議メモ]]モ]]` に壊れていた
+                # （コードレビュー指摘 / 回帰テストあり）
+                tail = notelink.closing_tail(line[column:])
+                if tail is None:
+                    closing = "]]"  # 開きかけ。閉じはこちらで足す
+                else:
+                    inside_link = True
+                    rest = line[column:]
+                    tail_units = py_to_utf16(rest, tail)
         if prefix is None:
             prefix = tags.prefix_at(line, column)
         if prefix is None:
             return
 
         cursor.beginEditBlock()
-        # 戻る距離は UTF-16 単位で数える（タグに BMP 外の文字が入っても壊さない）
+        # 距離は UTF-16 単位で数える（BMP 外の文字が入っても壊さない）
         prefix_units = py_to_utf16(prefix, len(prefix))
-        cursor.setPosition(cursor.position() - prefix_units, QTextCursor.MoveMode.KeepAnchor)
+        origin = cursor.position()
+        cursor.setPosition(origin - prefix_units)
+        cursor.setPosition(origin + tail_units, QTextCursor.MoveMode.KeepAnchor)
         cursor.insertText(tag + closing)
-        if not closing and line[column : column + 2] == "]]":
-            # 閉じ括弧の内側で決めたときは、その外へ出す（続けて書けるように）
+        if inside_link:
+            # 既にある閉じ `]]` の外へ出す（続けて書けるように）。
+            # **リンク補完だけの動き。** タグの確定でたまたま後ろに `]]` が
+            # あっても飛ばない（コードレビュー指摘）
             cursor.setPosition(cursor.position() + 2)
         cursor.endEditBlock()
         self.setTextCursor(cursor)

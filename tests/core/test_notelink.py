@@ -66,3 +66,23 @@ class TestMatches:
 
     def test_無ければ空(self) -> None:
         assert notelink.matches("存在しない", TITLES) == []
+
+
+class TestClosingTail:
+    """閉じ `]]` までに残っている名前の長さ（コードレビュー指摘の修正）。"""
+
+    @pytest.mark.parametrize(
+        ("rest", "expected"),
+        [
+            ("メモ]] のあと", 2),  # 名前の途中
+            ("]]", 0),  # 閉じの直前
+            ("]] のあと", 0),
+            (" のあと", None),  # 閉じが無い（開きかけ）
+            ("", None),
+            ("メモ| 別名]]", None),  # 別名記法は未対応（食べない）
+        ],
+    )
+    def test_長さ(self, rest, expected) -> None:
+        from hitofude.core.notelink import closing_tail
+
+        assert closing_tail(rest) == expected
