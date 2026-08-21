@@ -280,12 +280,17 @@ class Sidebar(QTreeView):
             root.appendRow(_sized(_make_item(filter_.label, filter_, color), height))
 
         if self._folders:
-            # **入れ物が先、ラベルが後。** 場所を探すほうが先に目に入る
-            folders = QStandardItem(glyph_icon(Glyph.FOLDER, color), FOLDERS_LABEL)
-            folders.setSelectable(False)
-            folders.setEditable(False)
+            # **入れ物が先、ラベルが後。** 場所を探すほうが先に目に入る。
+            # 見出しは飾りではなく**直下そのもの**（ユーザー要望）。
+            # 見出しと「直下」で 2 行使うのに、見出しは押しても何も
+            # 起きなかった。1 つにすると、その下のフォルダが Finder と
+            # 同じく 1 段だけ下がって見える
+            children = [count for count in self._folders if count.folder != ROOT_FOLDER]
+            here = next((count for count in self._folders if count.folder == ROOT_FOLDER), None)
+            label = FOLDERS_LABEL if here is None else f"{FOLDERS_LABEL}  {here.count}"
+            folders = _make_item(label, Filter(FilterKind.FOLDER, folder=ROOT_FOLDER), color)
             root.appendRow(_sized(folders, height))
-            for item in _folder_items(self._folders, color, height):
+            for item in _folder_items(children, color, height):
                 folders.appendRow(item)
 
         if self._saved_searches:
@@ -465,15 +470,16 @@ def _folder_items(counts: list["FolderCount"], color: str, height: int) -> list[
 
     索引は `仕事` と `仕事/2026` のように**全部の階層**を返すので、
     親の下に子を差し込むだけでよい（タグツリーのように組み直さない）。
+
+    **ルート（直下）はここに来ない。** 見出し「フォルダ」がその役を担う。
     """
     items: dict[str, QStandardItem] = {}
     roots: list[QStandardItem] = []
     # folder_tree() が名前順で返す（親が先）。並びの契約はあちらが持つ
     for count in counts:
-        label = ROOT_FOLDER_LABEL if count.folder == ROOT_FOLDER else count.label
         item = _sized(
             _make_item(
-                f"{label}  {count.count}",
+                f"{count.label}  {count.count}",
                 Filter(FilterKind.FOLDER, folder=count.folder),
                 color,
             ),

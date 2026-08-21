@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from hitofude.storage.index_db import FolderCount
+from hitofude.storage.index_db import ROOT_FOLDER, FolderCount
 from hitofude.ui.main_window import MainWindow
 from hitofude.ui.sidebar import Filter, FilterKind, Sidebar
 
@@ -38,12 +38,12 @@ def labels(sidebar: Sidebar) -> list[str]:
 class TestTree:
     def test_フォルダの見出しが出る(self, sidebar) -> None:
         sidebar.set_folders(FOLDERS)
-        assert "フォルダ" in labels(sidebar)
+        assert any(label.startswith("フォルダ") for label in labels(sidebar))
 
     def test_フォルダが無ければ見出しも出さない(self, sidebar) -> None:
         """タグと同じ作法。空の見出しは場所を取るだけ。"""
         sidebar.set_folders([])
-        assert "フォルダ" not in labels(sidebar)
+        assert not any(label.startswith("フォルダ") for label in labels(sidebar))
 
     def test_階層は入れ子で出す(self, sidebar) -> None:
         sidebar.set_folders(FOLDERS)
@@ -51,7 +51,7 @@ class TestTree:
         header = next(
             model.item(row)
             for row in range(model.rowCount())
-            if model.item(row).text() == "フォルダ"
+            if model.item(row).text().startswith("フォルダ")
         )
         top = [header.child(row).text() for row in range(header.rowCount())]
         assert any("仕事" in text for text in top)
@@ -69,7 +69,7 @@ class TestTree:
         header = next(
             model.item(row)
             for row in range(model.rowCount())
-            if model.item(row).text() == "フォルダ"
+            if model.item(row).text().startswith("フォルダ")
         )
         assert "2" in header.child(0).text()
 
@@ -80,7 +80,8 @@ class TestTree:
         sidebar.set_folders(FOLDERS)
         sidebar.set_tags([TagCount(tag="仕事", count=1)])
         found = labels(sidebar)
-        assert found.index("フォルダ") < found.index("タグ")
+        folders = next(row for row, label in enumerate(found) if label.startswith("フォルダ"))
+        assert folders < found.index("タグ")
 
 
 class TestSelect:
@@ -111,7 +112,7 @@ class TestInWindow:
 
     def test_フォルダが出る(self, window) -> None:
         self.put(window, "仕事", "会議")
-        assert "フォルダ" in labels(window.sidebar)
+        assert any(label.startswith("フォルダ") for label in labels(window.sidebar))
 
     def test_選ぶとその中だけ出る(self, window) -> None:
         self.put(window, "仕事", "会議")
@@ -179,38 +180,97 @@ class TestFilterValidation:
             Filter(FilterKind.FOLDER)
 
 
-class TestRootEntry:
-    """ルートを「フォルダ」として常に並べる（ユーザー要望）。"""
+NESTED = [
+    FolderCount(folder=ROOT_FOLDER, count=9),
+    FolderCount(folder="仕事", count=1),
+    FolderCount(folder="嗚呼あ", count=0),
+    FolderCount(folder="嗚呼あ/テスト２", count=0),
+]
 
-    def labels(self, sidebar) -> list[str]:
+
+class TestRootEntry:
+    """「フォルダ」の行そのものが直下（ユーザー要望 2026-08-21）。
+
+    以前は見出し「フォルダ」の下に「直下」という子を置いていたが、
+    **見出しは押しても何も起きない**のに 1 行を使い、直下がもう 1 行を
+    使っていた。見出しを直下そのものにすると、`仕事` や `嗚呼あ` が
+    そこから 1 段だけ下がり、Finder の見え方と重なる。
+    """
+
+    def header(self, sidebar: Sidebar):
         model = sidebar.model()
-        found = []
+        return next(
+            model.item(row)
+            for row in range(model.rowCount())
+            if model.item(row).text().startswith("フォルダ")
+        )
+
+    def all_labels(self, sidebar: Sidebar) -> list[str]:
+        found: list[str] = []
+
+        def walk(item) -> None:
+            for row in range(item.rowCount()):
+                child = item.child(row)
+                found.append(child.text())
+                walk(child)
+
+        model = sidebar.model()
         for row in range(model.rowCount()):
             item = model.item(row)
             found.append(item.text())
-            for child in range(item.rowCount()):
-                found.append(item.child(child).text())
+            walk(item)
         return found
 
-    def test_直下という項目が出る(self, qtbot) -> None:
-        from hitofude.storage.index_db import ROOT_FOLDER, FolderCount
-        from hitofude.ui.sidebar import Sidebar
+    def test_見出しを選ぶと直下になる(self, sidebar, qtbot) -> None:
+        sidebar.set_folders(NESTED)
+        target = Filter(FilterKind.FOLDER, folder=ROOT_FOLDER)
+        with qtbot.waitSignal(sidebar.filter_changed, timeout=1000) as blocker:
+            sidebar.select(target)
+        assert blocker.args[0] == target
+        assert sidebar.current_filter() == target
 
-        sidebar = Sidebar()
-        qtbot.addWidget(sidebar)
-        sidebar.set_folders(
-            [FolderCount(folder=ROOT_FOLDER, count=2), FolderCount(folder="仕事", count=1)]
+    def test_直下という別の行は出さない(self, sidebar) -> None:
+        """**同じものを 2 行に分けない。** 見出しと直下は同じ場所を指す。"""
+        sidebar.set_folders(NESTED)
+        assert not any(label.startswith("直下") for label in self.all_labels(sidebar))
+        assert not any(label.startswith("./") for label in self.all_labels(sidebar)), (
+            "記号が素で出た"
         )
-        found = self.labels(sidebar)
-        assert any(label.startswith("直下") for label in found)
-        assert not any(label.startswith("./") for label in found), "記号が素で出ている"
+
+    def test_件数は見出しに出す(self, sidebar) -> None:
+        """選ぶと何件出るかは、ほかのフォルダと同じ読み方で分かるように。"""
+        sidebar.set_folders(NESTED)
+        assert "9" in self.header(sidebar).text()
+
+    def test_フォルダは見出しの子として並ぶ(self, sidebar) -> None:
+        sidebar.set_folders(NESTED)
+        header = self.header(sidebar)
+        assert [header.child(row).text().split()[0] for row in range(header.rowCount())] == [
+            "仕事",
+            "嗚呼あ",
+        ]
+
+    def test_子フォルダはさらに一段下がる(self, sidebar) -> None:
+        sidebar.set_folders(NESTED)
+        header = self.header(sidebar)
+        deep = next(
+            header.child(row)
+            for row in range(header.rowCount())
+            if "嗚呼あ" in header.child(row).text()
+        )
+        assert [deep.child(row).text().split()[0] for row in range(deep.rowCount())] == ["テスト２"]
+
+    def test_直下が空のときの案内(self, window) -> None:
+        """記号（`.`）を見せない。案内は文章なので「直下」と読ませる。"""
+        window.set_filter(Filter(FilterKind.FOLDER, folder=ROOT_FOLDER))
+        notice = window.note_list_pane.empty_notice_text()
+        assert "直下" in notice
+        assert "." not in notice.split("\n")[0].replace("`", "")
 
     def test_ルートのフィルタが作れる(self) -> None:
-        from hitofude.storage.index_db import ROOT_FOLDER
-        from hitofude.ui.sidebar import Filter, FilterKind
-
-        target = Filter(FilterKind.FOLDER, folder=ROOT_FOLDER)
-        assert target.label == "直下"
+        """画面の言葉は「フォルダ」だが、文章の中では「直下」と読ませる
+        （空の案内で「「フォルダ」にノートはありません」は意味を成さない）。"""
+        assert Filter(FilterKind.FOLDER, folder=ROOT_FOLDER).label == "直下"
 
 
 class TestCreateFolderMenu:

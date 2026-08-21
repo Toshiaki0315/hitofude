@@ -129,8 +129,9 @@ def _empty_notice(target: Filter) -> str:
         case FilterKind.TAG:
             return f"「#{target.tag}」のノートはありません。\n本文に書くとここに集まります。"
         case FilterKind.FOLDER:
+            # 記号（ルートの "."）を見せない。案内は文章なので `label` で読ませる
             return (
-                f"「{target.folder}」にノートはありません。\n"
+                f"「{target.label}」にノートはありません。\n"
                 "Finder でこのフォルダに `.md` を入れると出ます。"
             )
         case _:
