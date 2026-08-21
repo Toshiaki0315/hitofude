@@ -342,6 +342,9 @@ class NoteActions:
             menu = QMenu(self._window)
             apply_menu_font(menu)
             menu.addAction("新しいフォルダ…").triggered.connect(lambda: self.create_folder(target))
+            menu.addAction("Finder で開く").triggered.connect(
+                lambda: self.open_folder_in_finder(target)
+            )
             # **「直下」には出さない。** 保管フォルダそのものは消せない
             if target.folder != ROOT_FOLDER:
                 menu.addAction("フォルダを削除…").triggered.connect(
@@ -358,6 +361,12 @@ class NoteActions:
         # 見せる（一覧の「ゴミ箱へ移動」がピン留め時にそうなっているのと同じ）
         action.setEnabled(bool(self.trash_entries()))
         return menu
+
+    def open_folder_in_finder(self, target: Filter) -> None:
+        """フォルダを Finder で開く（ユーザー要望）。「直下」は保管フォルダ。"""
+        window = self._window
+        relative = "" if target.folder in (None, ROOT_FOLDER) else target.folder
+        window.open_in_finder(window._vault.root / relative if relative else window._vault.root)
 
     def create_folder(self, target: Filter) -> Path | None:
         """選んだフォルダの中に新しいフォルダを作る（ユーザー要望）。

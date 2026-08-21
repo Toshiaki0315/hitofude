@@ -438,3 +438,53 @@ class TestDeleteFolderMenu:
         self.yes(monkeypatch)
         window.delete_folder(self.folder_filter())
         assert window._filter.kind is FilterKind.ALL
+
+
+class TestOpenInFinder:
+    """フォルダを Finder で開く（ユーザー要望 2026-08-22）。
+
+    **実物を見たい場面がある。** ノートには「Finder で表示」があるのに、
+    フォルダには実物への道が無かった。ノートのほうは 1 件を選ばせたい
+    ので `open -R`（親を開いて選択）だが、**フォルダはそれ自体を開く**
+    （中のファイルを見たいのだから、親を開いても一手足りない）。
+    """
+
+    def labels(self, window, target: Filter) -> list[str]:
+        menu = window.sidebar_menu_for(target)
+        assert menu is not None
+        try:
+            return [action.text() for action in menu.actions()]
+        finally:
+            menu.deleteLater()
+
+    def opened(self, window, monkeypatch, target: Filter) -> list[list[str]]:
+        from hitofude.ui import export_actions as module
+
+        ran: list[list[str]] = []
+        monkeypatch.setattr(module.subprocess, "run", lambda args, **kwargs: ran.append(args))
+        window.open_folder_in_finder(target)
+        return ran
+
+    def test_メニューに出る(self, window) -> None:
+        window.vault.create_folder("日報")
+        window.refresh()
+        assert "Finder で開く" in self.labels(window, Filter(FilterKind.FOLDER, folder="日報"))
+
+    def test_直下にも出る(self, window) -> None:
+        """保管フォルダそのものを開きたいことも多い。"""
+        assert "Finder で開く" in self.labels(window, Filter(FilterKind.FOLDER, folder=ROOT_FOLDER))
+
+    def test_そのフォルダを開く(self, window, monkeypatch) -> None:
+        window.vault.create_folder("日報")
+        window.refresh()
+        ran = self.opened(window, monkeypatch, Filter(FilterKind.FOLDER, folder="日報"))
+        assert ran == [["open", str(window.vault.root / "日報")]]
+
+    def test_直下は保管フォルダを開く(self, window, monkeypatch) -> None:
+        ran = self.opened(window, monkeypatch, Filter(FilterKind.FOLDER, folder=ROOT_FOLDER))
+        assert ran == [["open", str(window.vault.root)]]
+
+    def test_無いフォルダなら何もしない(self, window, monkeypatch) -> None:
+        """メニューを開いてから Finder で消された、はありうる。"""
+        ran = self.opened(window, monkeypatch, Filter(FilterKind.FOLDER, folder="消えた"))
+        assert ran == []

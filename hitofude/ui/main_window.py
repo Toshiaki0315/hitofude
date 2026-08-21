@@ -1306,6 +1306,14 @@ class MainWindow(QMainWindow):
     def reveal_in_finder(self, path: Path) -> None:
         self._exports.reveal_in_finder(path)
 
+    def open_in_finder(self, path: Path) -> None:
+        """フォルダ自体を Finder で開く。サイドバーの右クリックから。"""
+        self._exports.open_in_finder(path)
+
+    def open_folder_in_finder(self, target) -> None:
+        """サイドバーで選んだフォルダを Finder で開く。実体は NoteActions。"""
+        self._notes.open_folder_in_finder(target)
+
     def import_document(self) -> Path | None:
         """「ファイル」→「読み込む…」（F-2）。"""
         return self._exports.import_document()

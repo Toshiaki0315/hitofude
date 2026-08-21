@@ -224,6 +224,20 @@ class ExportActions:
             return
         subprocess.run(["open", "-R", str(path)], check=False)
 
+    def open_in_finder(self, path: Path) -> None:
+        """Finder でそのフォルダ自体を開く（ユーザー要望）。
+
+        **ノートの「Finder で表示」とは別物。** あちらは 1 件を選ばせたい
+        ので親を開いて選択する（`open -R`）。フォルダは中のファイルを見に
+        行くのだから、それ自体を開かないと一手足りない。
+
+        メニューを開いてから Finder で消された場合は何もしない。
+        """
+        if not path.is_dir():
+            logger.info("フォルダが見つからない: %s", path)
+            return
+        subprocess.run(["open", str(path)], check=False)
+
     # ------------------------------------------------------------- 取り込み
 
     def import_document(self) -> Path | None:
