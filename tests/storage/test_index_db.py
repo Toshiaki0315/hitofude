@@ -747,29 +747,25 @@ class TestFolders:
         return db
 
     def test_フォルダを数える(self, foldered) -> None:
+        """**どのフォルダも直下だけを数える**（ユーザー要望）。
+
+        選んだときに出るノートと同じ数でなければ、「2 と出ているのに
+        1 件しか出ない」になる。
+        """
         from hitofude.storage.index_db import ROOT_FOLDER
 
         found = {row.folder: row.count for row in foldered.folder_tree()}
-        found.pop(ROOT_FOLDER)  # ルートは常に先頭に付く（別テストで見る）
-        assert found == {"仕事": 2, "仕事/2026": 1, "私用": 1}
+        assert found == {ROOT_FOLDER: 1, "仕事": 1, "仕事/2026": 1, "私用": 1}
 
-    def test_親は子も数える(self, foldered) -> None:
-        """`仕事` は直下の 1 件と `仕事/2026` の 1 件で 2 件。"""
+    def test_親は子を数えない(self, foldered) -> None:
+        """`仕事` は直下の 1 件だけ（`仕事/2026` のぶんは子が持つ）。"""
         found = {row.folder: row.count for row in foldered.folder_tree()}
-        assert found["仕事"] == 2
-
-    def test_直下も並ぶが非再帰(self, foldered) -> None:
-        """ルートも「フォルダ」として出す（ユーザー要望）。ただし直下の
-        ノートだけを数える（子孫まで含めると「すべて」と同義になる）。"""
-        from hitofude.storage.index_db import ROOT_FOLDER
-
-        found = {row.folder: row.count for row in foldered.folder_tree()}
-        assert ROOT_FOLDER in found
-        assert found[ROOT_FOLDER] < found["仕事"] + found[ROOT_FOLDER]  # 子孫は含まない
+        assert found["仕事"] == 1
 
     def test_フォルダで絞れる(self, foldered) -> None:
+        """**直下だけ**。`仕事/2026` の「年始」は含まない（ユーザー要望）。"""
         titles = {row.title for row in foldered.notes_in_folder("仕事")}
-        assert titles == {"会議", "年始"}
+        assert titles == {"会議"}
 
     def test_子フォルダだけでも絞れる(self, foldered) -> None:
         titles = {row.title for row in foldered.notes_in_folder("仕事/2026")}
@@ -791,7 +787,7 @@ class TestFolders:
         foldered.upsert_note(vault.read(path), vault.root, trashed=True)
 
         found = {row.folder: row.count for row in foldered.folder_tree()}
-        assert found["仕事"] == 2
+        assert found["仕事"] == 1  # 捨てたぶんは数えない（直下は「会議」だけ）
 
     def test_フォルダが無くてもルートだけは出る(self, db, vault) -> None:
         """「常に表示」（ユーザー要望）。サブフォルダがゼロでも直下は出す。"""
@@ -890,7 +886,7 @@ class TestRootFolder:
         self.seed(db, vault)
         found = db.folder_tree()
         assert found[0].folder == ROOT_FOLDER
-        assert found[0].count == 2  # 直下の 2 件だけ（子孫は数えない）
+        assert found[0].count == 2  # 直下の 2 件だけ
 
     def test_フォルダが無くてもルートは出る(self, db, vault) -> None:
         from hitofude.storage.index_db import ROOT_FOLDER
@@ -906,10 +902,11 @@ class TestRootFolder:
         rows = db.notes_in_folder(ROOT_FOLDER)
         assert {row.title for row in rows} == {"直下A", "直下B"}
 
-    def test_他のフォルダは今まで通り子孫も含む(self, db, vault) -> None:
+    def test_どのフォルダも直下だけ(self, db, vault) -> None:
+        """ルートと同じ規則に揃えた（ユーザー要望）。"""
         self.seed(db, vault)
-        rows = db.notes_in_folder("仕事")
-        assert {row.title for row in rows} == {"中", "深い"}
+        assert {row.title for row in db.notes_in_folder("仕事")} == {"中"}
+        assert {row.title for row in db.notes_in_folder("仕事/2026")} == {"深い"}
 
 
 class TestMergeFolders:
@@ -942,3 +939,41 @@ class TestMergeFolders:
         counts = [FolderCount(folder=ROOT_FOLDER, count=0), FolderCount(folder="消えた", count=3)]
         found = merge_folders(counts, [])
         assert [row.folder for row in found] == [ROOT_FOLDER]
+
+
+class TestDirectChildrenOnly:
+    """フォルダを選んだら**そのフォルダ直下だけ**（ユーザー要望）。
+
+    ルートが非再帰なのにサブフォルダは再帰、という食い違いを揃える。
+    """
+
+    def seed(self, db, vault):
+        for relative in (
+            "直下.md",
+            "仕事/浅い.md",
+            "仕事/2026/深い.md",
+            "仕事/2026/期末/もっと深い.md",
+        ):
+            path = vault.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"# {path.stem}\n", encoding="utf-8")
+            db.upsert_note(vault.read(path), vault.root)
+
+    def test_孫は出さない(self, db, vault) -> None:
+        self.seed(db, vault)
+        assert {row.title for row in db.notes_in_folder("仕事")} == {"浅い"}
+
+    def test_中間のフォルダも直下だけ(self, db, vault) -> None:
+        self.seed(db, vault)
+        assert {row.title for row in db.notes_in_folder("仕事/2026")} == {"深い"}
+
+    def test_末端も引ける(self, db, vault) -> None:
+        self.seed(db, vault)
+        assert {row.title for row in db.notes_in_folder("仕事/2026/期末")} == {"もっと深い"}
+
+    def test_件数と一覧が一致する(self, db, vault) -> None:
+        """サイドバーの数字と、選んだときに出る件数がずれない。"""
+        self.seed(db, vault)
+        counts = {row.folder: row.count for row in db.folder_tree()}
+        for folder, count in counts.items():
+            assert len(db.notes_in_folder(folder)) == count, folder

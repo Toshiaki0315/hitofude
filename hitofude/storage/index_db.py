@@ -458,11 +458,11 @@ class IndexDb:
         return [TagCount(tag=row["tag"], count=row["count"]) for row in rows]
 
     def folder_tree(self) -> list["FolderCount"]:
-        """フォルダごとの件数（K-2）。**親は子も数える**（タグと同じ）。
+        """フォルダごとの件数（K-2）。**そのフォルダ直下だけを数える**。
 
-        **ルート（直下）も常に先頭に並べる**（ユーザー要望）。ただし
-        ルートだけは非再帰で、直下のノートだけを数える。子孫まで含めると
-        「すべて」と同義になり、選ぶ意味が無くなる。
+        **ルート（直下）も常に先頭に並べる**（ユーザー要望）。
+        数え方はどのフォルダも同じ（直下だけ）で、選んだときに出る
+        ノートの数と一致する。
 
         パスの組み立ては SQL でやらず Python 側で数える。ノート数ぶんの
         文字列操作だが、5,000 件でも数 ms（実測）で、SQL に階層を
@@ -476,9 +476,10 @@ class IndexDb:
             if not parts:
                 root_count += 1
                 continue
-            for depth in range(1, len(parts) + 1):
-                folder = "/".join(parts[:depth])
-                counts[folder] = counts.get(folder, 0) + 1
+            # **直下だけを数える。** 親が子のぶんまで数えると、選んだ
+            # ときに出る件数と食い違う（ユーザー指摘）
+            folder = "/".join(parts)
+            counts[folder] = counts.get(folder, 0) + 1
         found = [FolderCount(folder=ROOT_FOLDER, count=root_count)]
         found.extend(FolderCount(folder=folder, count=counts[folder]) for folder in sorted(counts))
         return found
@@ -486,12 +487,13 @@ class IndexDb:
     def notes_in_folder(
         self, folder: str, *, order: "SortOrder" = SortOrder.MODIFIED
     ) -> list[NoteRow]:
-        """そのフォルダ（子孫を含む）のノート。
+        """そのフォルダ**直下**のノート（ユーザー要望）。
+
+        **子孫は含めない。** ルートだけ非再帰でサブフォルダは再帰、と
+        いう食い違いがあった。Finder と同じで、選んだフォルダの中身が
+        出るほうが読める。
 
         **区切りまで含めて前方一致する。** `仕事` で `仕事場/` を拾わない。
-
-        `ROOT_FOLDER` のときだけ非再帰（直下のノートだけ）。子孫まで
-        含めると「すべて」と同義になる（ユーザー要望）。
         """
         if folder.strip("/") in ("", ROOT_FOLDER):
             rows = self._connection.execute(
@@ -511,13 +513,16 @@ class IndexDb:
         # 表せて、索引をそのまま使える。ワイルドカードが無いので
         # エスケープも要らない
         upper = prefix[:-1] + chr(ord(prefix[-1]) + 1)
+        # 範囲で索引を使い（前方一致）、そのうえで**残りに区切りが無い**
+        # ものだけを採る = 直下のノート。substr の開始は 1 始まり
         rows = self._connection.execute(
             f"""
             SELECT * FROM notes
             WHERE trashed = 0 AND path >= ? AND path < ?
+              AND instr(substr(path, ?), '/') = 0
             ORDER BY {_order_by(order)}
             """,
-            (prefix, upper),
+            (prefix, upper, len(prefix) + 1),
         )
         return [_to_row(row) for row in rows]
 
