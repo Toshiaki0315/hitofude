@@ -12,7 +12,7 @@ from datetime import datetime
 from enum import IntEnum
 from pathlib import Path
 
-from PySide6.QtCore import QAbstractListModel, QModelIndex, QRect, QSize, Qt, Signal
+from PySide6.QtCore import QAbstractListModel, QMimeData, QModelIndex, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import QListView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QWidget
 
@@ -21,6 +21,18 @@ from hitofude.storage.index_db import NoteRow
 from hitofude.storage.vault import MARKDOWN_SUFFIXES
 from hitofude.theme import LIGHT, ThemeColors
 from hitofude.ui.icons import Glyph, glyph_icon
+
+# ドラッグで運ぶノートの合図。中身は vault からの相対パス（UTF-8）。
+# 外のアプリへ渡すものではないので、独自の型で十分
+NOTE_MIME = "application/x-hitofude-note"
+
+
+def dropped_note(mime) -> Path | None:
+    """ドラッグ中のノートの相対パス。ノートのドラッグでなければ None。"""
+    if not mime.hasFormat(NOTE_MIME):
+        return None
+    raw = bytes(mime.data(NOTE_MIME)).decode("utf-8", errors="replace").strip()
+    return Path(raw) if raw else None
 
 
 def dropped_markdown(mime) -> list[Path]:
@@ -136,6 +148,26 @@ class NoteListModel(QAbstractListModel):
                 return self._folder_labels[index.row()]
             case _:
                 return None
+
+    def flags(self, index: QModelIndex) -> Qt.ItemFlag:
+        """行はドラッグの元になる（フォルダへ移すため）。"""
+        found = super().flags(index)
+        if index.isValid():
+            found |= Qt.ItemFlag.ItemIsDragEnabled
+        return found
+
+    def mimeTypes(self) -> list[str]:
+        return [NOTE_MIME]
+
+    def mimeData(self, indexes) -> QMimeData:
+        """運ぶのは**場所だけ**。中身はドロップ先が索引とファイルから読む。"""
+        mime = QMimeData()
+        for index in indexes:
+            row = self.note_at(index)
+            if row is not None:
+                mime.setData(NOTE_MIME, str(row.path).encode("utf-8"))
+                break
+        return mime
 
     def note_at(self, index: QModelIndex) -> NoteRow | None:
         if not index.isValid() or not 0 <= index.row() < len(self._rows):
@@ -390,6 +422,11 @@ class NoteListView(QListView):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setFrameShape(QListView.Shape.NoFrame)
         self.setAcceptDrops(True)
+        # 行をつまんでサイドバーのフォルダへ落とせるようにする（ユーザー要望）。
+        # 受けるほうは `.md` の取り込みだけで、一覧の中での並べ替えはしない
+        self.setDragEnabled(True)
+        self.setDragDropMode(QListView.DragDropMode.DragDrop)
+        self.setDefaultDropAction(Qt.DropAction.MoveAction)
 
     # ------------------------------------------------- ドラッグ＆ドロップ
 
@@ -397,11 +434,19 @@ class NoteListView(QListView):
         if dropped_markdown(event.mimeData()):
             event.acceptProposedAction()
             return
+        if dropped_note(event.mimeData()) is not None:
+            # 自分から出たノート。一覧の中に落としても行き先が無い
+            event.ignore()
+            return
         super().dragEnterEvent(event)
 
     def dragMoveEvent(self, event) -> None:
         if dropped_markdown(event.mimeData()):
             event.acceptProposedAction()
+            return
+        if dropped_note(event.mimeData()) is not None:
+            # 自分から出たノート。一覧の中に落としても行き先が無い
+            event.ignore()
             return
         super().dragMoveEvent(event)
 

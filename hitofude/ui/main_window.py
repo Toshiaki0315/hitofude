@@ -282,6 +282,8 @@ class MainWindow(QMainWindow):
         self._editor.set_content_width(CONTENT_WIDTH_PIXELS[self._config.content_width])
         self.reload_saved_searches()
         self._sidebar.filter_changed.connect(self._on_filter_changed)
+        # 一覧の行をフォルダへ落として移す（ユーザー要望）
+        self._sidebar.note_dropped.connect(self._on_note_dropped)
         self._sidebar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._sidebar.customContextMenuRequested.connect(self._show_sidebar_menu)
         self._note_list.note_activated.connect(self._on_note_activated)
@@ -663,6 +665,10 @@ class MainWindow(QMainWindow):
     def move_note_to_folder(self, path: Path) -> Path | None:
         """ノートをフォルダへ移す（一覧の右クリック / K-3）。"""
         return self._notes.move_note_to_folder(path)
+
+    def _on_note_dropped(self, relative: Path, folder: str) -> None:
+        """サイドバーのフォルダへ落とされたノートを移す。"""
+        self._notes.move_note_to(self._vault.root / relative, folder)
 
     def create_folder(self, target: Filter) -> Path | None:
         """選んだフォルダの中に新しいフォルダを作る（サイドバーの右クリック）。"""

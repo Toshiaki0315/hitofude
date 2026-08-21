@@ -18,6 +18,7 @@ from hitofude.core import tags as tag_utils
 from hitofude.storage.index_db import ROOT_FOLDER, FolderCount, TagCount
 from hitofude.theme import LIGHT, ThemeColors
 from hitofude.ui.icons import Glyph, glyph_icon
+from hitofude.ui.note_list import dropped_note
 
 ALL_LABEL = "すべて"
 PINNED_LABEL = "お気に入り"
@@ -161,6 +162,12 @@ def build_tag_tree(counts: list[TagCount]) -> list[TagNode]:
 
 class Sidebar(QTreeView):
     filter_changed = Signal(object)
+
+    note_dropped = Signal(object, str)
+    """落とされたノートの相対 `Path` と、移動先のフォルダ（直下は空文字）。
+
+    **移すのは受け手（MainWindow）の仕事。** サイドバーは vault も索引も
+    知らない（一覧が `files_dropped` で知らせるのと同じ分担）。"""
     """選ばれた `Filter`。"""
 
     def __init__(self, parent: QWidget | None = None, *, theme: ThemeColors = LIGHT) -> None:
@@ -179,6 +186,10 @@ class Sidebar(QTreeView):
         self._apply()  # set_tags([]) は「変化なし」で素通りするので直接組む
         self.selectionModel().currentChanged.connect(self._on_current_changed)
         self.select(ALL)
+        # 一覧の行を落として移せるようにする（ユーザー要望）。
+        # 受けるだけ（サイドバーの中身はドラッグしない）
+        self.setAcceptDrops(True)
+        self.setDragDropMode(QTreeView.DragDropMode.DropOnly)
 
     # ------------------------------------------------------------------ 構築
 
@@ -356,6 +367,48 @@ class Sidebar(QTreeView):
             if found is not None:
                 return found.index()
         return None
+
+    # ------------------------------------------------- ドラッグ＆ドロップ
+
+    def _drop_folder(self, position) -> str | None:
+        """その位置で受けられるフォルダ。受けられないなら None。
+
+        **フォルダの上だけ**。タグや「すべて」に落としても行き先が無い
+        （タグは本文の `#タグ` が真実で、移して付くものではない）。
+        """
+        index = self.indexAt(position)
+        if not index.isValid():
+            return None
+        target = index.data(_FILTER_ROLE)
+        if target is None or target.kind is not FilterKind.FOLDER:
+            return None
+        return "" if target.folder == ROOT_FOLDER else (target.folder or "")
+
+    def _acceptable(self, event) -> bool:
+        if dropped_note(event.mimeData()) is None:
+            return False
+        return self._drop_folder(event.position().toPoint()) is not None
+
+    def dragEnterEvent(self, event) -> None:
+        if self._acceptable(event):
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dragMoveEvent(self, event) -> None:
+        if self._acceptable(event):
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dropEvent(self, event) -> None:
+        relative = dropped_note(event.mimeData())
+        folder = self._drop_folder(event.position().toPoint())
+        if relative is None or folder is None:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        self.note_dropped.emit(relative, folder)
 
     def _find_label(self, label: str):
         """文言で行を探す（フィルタを持たない見出し行用）。"""

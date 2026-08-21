@@ -543,6 +543,16 @@ class NoteActions:
             return None
         folder = "" if choice.strip() in ("", ROOT_FOLDER_CHOICE) else choice.strip()
 
+        return self.move_note_to(path, folder)
+
+    def move_note_to(self, path: Path, folder: str) -> Path | None:
+        """ノートをフォルダへ移す（対話なし）。移した先を返す。
+
+        入口は 2 つ（右クリックの「フォルダへ移動…」と、サイドバーへの
+        ドラッグ＆ドロップ）。**移動の後始末はここ 1 か所**に置く
+        （索引の付け替え・一覧の更新・開いているノートの追従）。
+        """
+        window = self._window
         was_open = window.current_note is not None and window.current_note.path == path
         window.flush()
         window._watcher.suppress(path)
