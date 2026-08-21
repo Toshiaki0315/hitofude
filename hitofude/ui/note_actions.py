@@ -78,6 +78,14 @@ class NoteActions:
             self._notify_pinned()
             return False
 
+        # **打ちかけを捨てない。** 自動保存は打ち終わって 0.8 秒で走るので、
+        # 打った直後に捨てると、まだ書かれていない内容ごとゴミ箱へ行く
+        # （戻しても消えている）。保存は見出しに合わせてファイル名を変える
+        # ことがある（K-1）ので、**捨てる相手は保存後のパス**を取り直す
+        window.flush()
+        if window._note is None:
+            return False  # 保存の途中で閉じられた（競合の解決など）
+
         path = window._note.path
         window._watcher.suppress(path)
         window._vault.trash(path)
@@ -144,7 +152,13 @@ class NoteActions:
         if window._note is not None and window._note.path == path:
             window._close_current()
         window._watcher.suppress(path)
-        window._vault.delete_permanently(path)
+        try:
+            window._vault.delete_permanently(path)
+        except ValueError as error:
+            # ゴミ箱の外を渡されたときだけ。押した人には落ちて見えないように
+            logger.warning("完全に削除できなかった: %s", error)
+            window.notify("ゴミ箱の中のノートだけ完全に削除できます")
+            return False
         window.refresh()
         window.notify("完全に削除しました")
         logger.info("完全に削除した: %s", path.name)
@@ -175,7 +189,7 @@ class NoteActions:
         if answer != QMessageBox.StandardButton.Yes:
             return 0
 
-        if window._note is not None and window._note.path.parent == window._vault.trash_dir:
+        if window._note is not None and window._note.path.is_relative_to(window._vault.trash_dir):
             window._close_current()
         for path in entries:
             window._watcher.suppress(path)
@@ -186,8 +200,14 @@ class NoteActions:
         return len(removed)
 
     def trash_entries(self) -> list[Path]:
-        """ゴミ箱の中身（ノートも添付も）。"""
-        return [path for path in self._window._vault.trash_dir.glob("*") if path.is_file()]
+        """ゴミ箱の中身（ノートも添付も）。
+
+        **奥まで数える。** K-5 でゴミ箱は階層を保つので、直下だけを見ると
+        サブフォルダから捨てたノートしか無いときに 0 件と判断し、
+        「ゴミ箱を空にする」が押せなくなる。フォルダ自体は数えない
+        （見せた数と消える数が食い違う）。
+        """
+        return [path for path in self._window._vault.trash_dir.rglob("*") if path.is_file()]
 
     # ------------------------------------------------------------- ピン留め
 

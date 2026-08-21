@@ -861,10 +861,18 @@ class Vault:
         既に無いファイルは何もしない（続けて押したときに落ちない）。
         """
         # 字句上の判定（`self.trash_dir in path.parents`）は
-        # `.trash/../メモ.md` を通してしまう。実体の親で見る
-        if path.resolve().parent != self.trash_dir.resolve():
+        # `.trash/../メモ.md` を通してしまう。実体で見る
+        #
+        # **直下に限らない。** K-5 でゴミ箱は階層を保つようになったので、
+        # `仕事/会議.md` は `.trash/仕事/会議.md` に入る。親だけを比べると
+        # サブフォルダから捨てたノートが 1 件も消せなくなる
+        resolved = path.resolve()
+        trash = self.trash_dir.resolve()
+        if resolved == trash or not resolved.is_relative_to(trash):
             raise ValueError(f"ゴミ箱の外は消せない: {path}")
         path.unlink(missing_ok=True)
+        # 空の殻を残さない（`restore` / `purge_trash` と同じ後始末）
+        self._prune_empty_dirs(path.parent, boundary=self.trash_dir)
 
     def sweep_temp_files(self, *, max_age_seconds: float = TEMP_SWEEP_AGE_SECONDS) -> list[Path]:
         """クラッシュで残った一時ファイル（`*.tmp`）を消す（H-1 層 1）。起動時に呼ぶ。
