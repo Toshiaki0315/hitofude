@@ -16,7 +16,7 @@ from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDro
 from hitofude.storage.index_db import ROOT_FOLDER
 from hitofude.ui.main_window import MainWindow
 from hitofude.ui.note_list import NOTE_MIME
-from hitofude.ui.sidebar import Filter, FilterKind
+from hitofude.ui.sidebar import _FILTER_ROLE, Filter, FilterKind
 
 pytestmark = pytest.mark.gui
 
@@ -362,3 +362,115 @@ class TestEnterAnywhere:
         window._sidebar.dropEvent(event)
         assert path.exists()
         assert not event.isAccepted()
+
+
+class TestSelectionDuringDrag:
+    """運んでいる間は、行き先だけを光らせる（ユーザー要望 2026-08-22）。
+
+    **今いるフォルダの帯が残ったままだと、色の付いた行が 2 つになる。**
+    どちらが行き先か読み取れないので、運んでいる間は今の選択を消す。
+    やめたら元に戻す（**絞り込みは変えていない**のだから、帯も戻るべき）。
+    """
+
+    def prepared(self, window: MainWindow):
+        window.vault.create_folder("日報")
+        window.vault.create_folder("仕事")
+        note = window.vault.create("動かす", "# 動かす\n\n本文\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        window._sidebar.expandAll()
+        window.set_filter(Filter(FilterKind.FOLDER, folder="仕事"))
+        window._sidebar.select(Filter(FilterKind.FOLDER, folder="仕事"))
+        return note.path
+
+    def point_of(self, window, target: Filter) -> QPoint:
+        index = window._sidebar._find(target)
+        assert index is not None, f"{target} が見つからない"
+        return window._sidebar.visualRect(index).center()
+
+    def move_over(self, window, target: Filter, mime: QMimeData) -> None:
+        event = QDragMoveEvent(
+            self.point_of(window, target),
+            Qt.DropAction.MoveAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        window._sidebar.dragMoveEvent(event)
+
+    def selected(self, window) -> list:
+        return [index.data(_FILTER_ROLE) for index in window._sidebar.selectedIndexes()]
+
+    def test_運んでいる間は今の帯を消す(self, window) -> None:
+        self.prepared(window)
+        mime = note_mime("動かす.md")
+        self.move_over(window, Filter(FilterKind.FOLDER, folder="日報"), mime)
+        assert self.selected(window) == []
+
+    def test_行き先は光ったまま(self, window) -> None:
+        self.prepared(window)
+        mime = note_mime("動かす.md")
+        self.move_over(window, Filter(FilterKind.FOLDER, folder="日報"), mime)
+        assert window._sidebar.drop_target() == Filter(FilterKind.FOLDER, folder="日報")
+
+    def test_やめたら帯が戻る(self, window) -> None:
+        self.prepared(window)
+        mime = note_mime("動かす.md")
+        self.move_over(window, Filter(FilterKind.FOLDER, folder="日報"), mime)
+        window._sidebar.dragLeaveEvent(QDragLeaveEvent())
+        assert self.selected(window) == [Filter(FilterKind.FOLDER, folder="仕事")]
+
+    def test_やめても絞り込みは変わらない(self, window) -> None:
+        """**帯を戻すだけ。** 一覧まで引き直すと、運んだ跡が残る。"""
+        self.prepared(window)
+        mime = note_mime("動かす.md")
+        self.move_over(window, Filter(FilterKind.FOLDER, folder="日報"), mime)
+        window._sidebar.dragLeaveEvent(QDragLeaveEvent())
+        assert window.filter == Filter(FilterKind.FOLDER, folder="仕事")
+
+
+class TestDropShowsDestination:
+    """落としたら、行き先のフォルダを開く（ユーザー要望 2026-08-22）。
+
+    **運んだノートが画面から消えるのが困る。** 元のフォルダで絞っている
+    ので、移した先は一覧に出ない。落とした人が次に見たいのは行き先。
+    """
+
+    def prepared(self, window: MainWindow):
+        window.vault.create_folder("日報")
+        note = window.vault.create("動かす", "# 動かす\n\n本文\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        window._sidebar.expandAll()
+        window.set_filter(Filter(FilterKind.FOLDER, folder=ROOT_FOLDER))
+        window._sidebar.select(Filter(FilterKind.FOLDER, folder=ROOT_FOLDER))
+
+    def drop_on(self, window, folder: str) -> None:
+        index = window._sidebar._find(Filter(FilterKind.FOLDER, folder=folder))
+        assert index is not None
+        event, _mime = drop_at(
+            window._sidebar, note_mime("動かす.md"), window._sidebar.visualRect(index).center()
+        )
+        window._sidebar.dropEvent(event)
+
+    def test_行き先で絞る(self, window) -> None:
+        self.prepared(window)
+        self.drop_on(window, "日報")
+        assert window.filter == Filter(FilterKind.FOLDER, folder="日報")
+
+    def test_左の選択も行き先へ(self, window) -> None:
+        self.prepared(window)
+        self.drop_on(window, "日報")
+        assert window._sidebar.current_filter() == Filter(FilterKind.FOLDER, folder="日報")
+
+    def test_一覧に運んだノートが出る(self, window) -> None:
+        self.prepared(window)
+        self.drop_on(window, "日報")
+        model = window.note_list.model()
+        titles = {model.note_at(model.index(row, 0)).title for row in range(model.rowCount())}
+        assert titles == {"動かす"}
+
+    def test_運んだノートが選ばれている(self, window) -> None:
+        self.prepared(window)
+        self.drop_on(window, "日報")
+        assert window.note_list.current_path() == Path("日報/動かす.md")

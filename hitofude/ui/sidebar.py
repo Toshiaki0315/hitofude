@@ -9,7 +9,14 @@
 from dataclasses import dataclass, field
 from enum import Enum, auto
 
-from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QSize, Qt, Signal
+from PySide6.QtCore import (
+    QItemSelectionModel,
+    QModelIndex,
+    QPersistentModelIndex,
+    QSize,
+    Qt,
+    Signal,
+)
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -504,6 +511,31 @@ class Sidebar(QTreeView):
         self._paint_drop(self._drop_index, marked=False)
         self._drop_index = QPersistentModelIndex(index) if index is not None else None
         self._paint_drop(self._drop_index, marked=True)
+        # **色の付いた行を 2 つにしない**（ユーザー要望 2026-08-22）。今いる
+        # フォルダの帯が残ったままだと、どちらが行き先か読み取れない
+        if index is None:
+            self._show_selection()
+        else:
+            self._hide_selection()
+
+    def _hide_selection(self) -> None:
+        """運んでいる間だけ帯を消す。
+
+        **`currentIndex` は動かさない。** 動かすと `filter_changed` が飛び、
+        運んでいる途中で一覧が入れ替わってしまう。消すのは選択（見た目）だけ。
+        """
+        self.selectionModel().clearSelection()
+
+    def _show_selection(self) -> None:
+        """帯を戻す。やめただけなら絞り込みは変わっていないのだから、
+        今いるフォルダに戻るのが正しい。"""
+        index = self.currentIndex()
+        if index.isValid():
+            self.selectionModel().select(
+                index,
+                QItemSelectionModel.SelectionFlag.ClearAndSelect
+                | QItemSelectionModel.SelectionFlag.Rows,
+            )
 
     def _acceptable_index(self, index) -> bool:
         target = index.data(_FILTER_ROLE) if index.isValid() else None

@@ -674,8 +674,20 @@ class MainWindow(QMainWindow):
         return self._notes.move_note_to_folder(path)
 
     def _on_note_dropped(self, relative: Path, folder: str) -> None:
-        """サイドバーのフォルダへ落とされたノートを移す。"""
-        self._notes.move_note_to(self._vault.root / relative, folder)
+        """サイドバーのフォルダへ落とされたノートを移す。
+
+        **落としたら行き先を開く**（ユーザー要望 2026-08-22）。元のフォルダで
+        絞ったままだと、運んだノートが画面から消える。落とした人が次に
+        見たいのは行き先のほう。
+        """
+        moved = self._notes.move_note_to(self._vault.root / relative, folder)
+        if moved is None:
+            return  # 移せなかった。知らせは NoteActions が出している
+
+        target = Filter(FilterKind.FOLDER, folder=folder or ROOT_FOLDER)
+        self._sidebar.select(target)
+        self.set_filter(target)
+        self._note_list.select_path(moved.relative_to(self._vault.root))
 
     def create_folder(self, target: Filter) -> Path | None:
         """選んだフォルダの中に新しいフォルダを作る（サイドバーの右クリック）。"""
