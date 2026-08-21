@@ -579,7 +579,8 @@ class NoteActions:
 
         入口は 2 つ（右クリックの「フォルダへ移動…」と、サイドバーへの
         ドラッグ＆ドロップ）。**移動の後始末はここ 1 か所**に置く
-        （索引の付け替え・一覧の更新・開いているノートの追従）。
+        （索引の付け替え・一覧の更新・開いているノートの追従・行き先を
+        開くこと）。片方だけに置くと、入口によって画面の動きが変わる。
         """
         window = self._window
         was_open = window.current_note is not None and window.current_note.path == path
@@ -602,6 +603,9 @@ class NoteActions:
         if was_open:
             window._note = note  # 開いているノートの居場所を追いかける
             window._remember_note(moved)
+        # **行き先を開く**（ユーザー決定 2026-08-22）。元のフォルダで絞った
+        # ままだと、移したノートが画面から消える。次に見たいのは行き先のほう
+        window.show_folder(folder)
         window._note_list.select_path(moved.relative_to(window._vault.root))
         shown = folder or "保管フォルダ直下"
         window.notify(f"「{note.title}」を {shown} へ移動しました")

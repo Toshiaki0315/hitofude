@@ -120,3 +120,94 @@ class TestOtherDoors:
         window.set_filter(Filter(FilterKind.FOLDER, folder="仕事"))
         window.activate_note("まだ無い")
         assert selected(window) == "まだ無い.md"
+
+
+class TestMoveShowsDestination:
+    """「フォルダへ移動…」でも行き先を開く（ユーザー決定 2026-08-22）。
+
+    ドラッグ＆ドロップは行き先を開くのに、メニューからだと元の絞り込みの
+    ままで、**移したノートが画面から消えていた**。同じ操作の入口が 2 つ
+    あるだけなので、後始末も揃える。
+    """
+
+    def prepared(self, window: MainWindow) -> Path:
+        put(window, "仕事/会議.md", "会議")
+        target = put(window, "仕事/予算.md", "予算")
+        window.vault.create_folder("私用")
+        window.refresh()
+        window.set_filter(Filter(FilterKind.FOLDER, folder="仕事"))
+        window.sidebar.select(Filter(FilterKind.FOLDER, folder="仕事"))
+        return target
+
+    def test_行き先で絞る(self, window) -> None:
+        target = self.prepared(window)
+        window.move_note_to(target, "私用")
+        assert window.filter == Filter(FilterKind.FOLDER, folder="私用")
+
+    def test_左の選択も行き先へ(self, window) -> None:
+        target = self.prepared(window)
+        window.move_note_to(target, "私用")
+        assert window.sidebar.current_filter() == Filter(FilterKind.FOLDER, folder="私用")
+
+    def test_移したノートが選ばれている(self, window) -> None:
+        target = self.prepared(window)
+        window.move_note_to(target, "私用")
+        assert window.note_list.current_path() == Path("私用/予算.md")
+
+    def test_直下へ戻すときも同じ(self, window) -> None:
+        target = self.prepared(window)
+        window.move_note_to(target, "")
+        assert window.filter == Filter(FilterKind.FOLDER, folder=ROOT_FOLDER)
+
+    def test_移せなければ何も動かさない(self, window) -> None:
+        """**失敗して画面だけ動くのがいちばん分かりにくい。**"""
+        self.prepared(window)
+        window.move_note_to(window.vault.root / "無い.md", "私用")
+        assert window.filter == Filter(FilterKind.FOLDER, folder="仕事")
+
+
+class TestLinkCreatesBeside:
+    """`[[まだ無いノート]]` は**書いたノートと同じフォルダ**に作る
+    （ユーザー決定 2026-08-22）。
+
+    今までは絞り込みに関係なく保管フォルダ直下だった。リンクは本文の中に
+    あるので、**書いた場所の隣**に生えるのがいちばん素直で、絞り込みを
+    どう変えても結果が変わらない。
+    """
+
+    def test_同じフォルダにできる(self, window) -> None:
+        window.open_and_select(put(window, "仕事/会議.md", "会議"))
+        window.activate_note("議事録")
+        assert window.current_note.path == window.vault.root / "仕事" / "議事録.md"
+
+    def test_絞り込みに引きずられない(self, window) -> None:
+        """**書いた場所が基準。** 一覧をどこで絞っていても同じ結果になる。"""
+        put(window, "私用/買い物.md", "買い物")
+        window.open_and_select(put(window, "仕事/会議.md", "会議"))
+        window.set_filter(Filter(FilterKind.FOLDER, folder="私用"))
+        window.activate_note("議事録")
+        assert window.current_note.path == window.vault.root / "仕事" / "議事録.md"
+
+    def test_直下のノートからは直下(self, window) -> None:
+        window.open_and_select(put(window, "覚え書き.md", "覚え書き"))
+        window.activate_note("続き")
+        assert window.current_note.path == window.vault.root / "続き.md"
+
+    def test_開いていなければ直下(self, window) -> None:
+        """パレットなど、本文の外から呼ばれることもある。"""
+        window.activate_note("いきなり")
+        assert window.current_note.path == window.vault.root / "いきなり.md"
+
+    def test_ゴミ箱の中には作らない(self, window) -> None:
+        """捨てたノートを開いたまま書いても、**ゴミ箱にノートを生やさない**。"""
+        path = put(window, "仕事/捨てる.md", "捨てる")
+        moved = window.vault.trash(path)
+        window.open_note(moved)
+        window.activate_note("新しい")
+        assert window.current_note.path == window.vault.root / "新しい.md"
+
+    def test_作った先が一覧に見える(self, window) -> None:
+        window.open_and_select(put(window, "仕事/会議.md", "会議"))
+        window.set_filter(ALL)
+        window.activate_note("議事録")
+        assert "議事録" in listed(window)

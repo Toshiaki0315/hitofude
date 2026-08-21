@@ -676,18 +676,14 @@ class MainWindow(QMainWindow):
     def _on_note_dropped(self, relative: Path, folder: str) -> None:
         """サイドバーのフォルダへ落とされたノートを移す。
 
-        **落としたら行き先を開く**（ユーザー要望 2026-08-22）。元のフォルダで
-        絞ったままだと、運んだノートが画面から消える。落とした人が次に
-        見たいのは行き先のほう。
+        **行き先を開くところまでが移動の後始末**（`move_note_to`）。
+        メニューの「フォルダへ移動…」と揃える。
         """
-        moved = self._notes.move_note_to(self._vault.root / relative, folder)
-        if moved is None:
-            return  # 移せなかった。知らせは NoteActions が出している
+        self._notes.move_note_to(self._vault.root / relative, folder)
 
-        target = Filter(FilterKind.FOLDER, folder=folder or ROOT_FOLDER)
-        self._sidebar.select(target)
-        self.set_filter(target)
-        self._note_list.select_path(moved.relative_to(self._vault.root))
+    def move_note_to(self, path: Path, folder: str) -> Path | None:
+        """ノートをフォルダへ移す（対話なし）。実体は NoteActions。"""
+        return self._notes.move_note_to(path, folder)
 
     def create_folder(self, target: Filter) -> Path | None:
         """選んだフォルダの中に新しいフォルダを作る（サイドバーの右クリック）。"""
@@ -804,20 +800,23 @@ class MainWindow(QMainWindow):
             self._show_where(relative)
         self._note_list.select_path(relative)
 
-    def _show_where(self, relative: Path) -> None:
-        """そのノートが見える絞り込みへ移る。**左の選択も動かす。**
+    def show_folder(self, folder: str) -> None:
+        """そのフォルダで絞る。**左の選択も動かす。**
 
         一覧だけ変わると、今どれで絞っているか分からなくなる
-        （`activate_tag` と同じ考え方）。
+        （`activate_tag` と同じ考え方）。空文字は直下。
         """
+        self._show_filter(Filter(FilterKind.FOLDER, folder=folder or ROOT_FOLDER))
+
+    def _show_where(self, relative: Path) -> None:
+        """そのノートが見える絞り込みへ移る。"""
         if relative.is_relative_to(TRASH_DIR):
-            target = TRASH
-        else:
-            folder = relative.parent
-            target = Filter(
-                FilterKind.FOLDER,
-                folder=ROOT_FOLDER if folder == Path() else folder.as_posix(),
-            )
+            self._show_filter(TRASH)
+            return
+        folder = relative.parent
+        self.show_folder("" if folder == Path() else folder.as_posix())
+
+    def _show_filter(self, target: Filter) -> None:
         self._sidebar.select(target)
         self.set_filter(target)
 
@@ -1118,10 +1117,28 @@ class MainWindow(QMainWindow):
             return path
 
         self.flush()
-        note = self._vault.create(target, f"# {target}\n\n")
+        note = self._vault.create(target, f"# {target}\n\n", folder=self._link_folder())
         self._open_created(note)
         logger.info("リンク先が無かったので作った: %s", note.path.name)
         return note.path
+
+    def _link_folder(self) -> Path | None:
+        """`[[…]]` から作るノートの置き場（ユーザー決定 2026-08-22）。
+
+        **書いたノートの隣に生やす。** リンクは本文の中にあるので、書いた
+        場所と同じフォルダにできるのがいちばん素直で、一覧をどこで絞って
+        いても結果が変わらない。
+
+        ゴミ箱の中（捨てたノートを開いたまま書いた）と vault の外は直下に
+        戻す。**捨てた場所にノートを生やさない。**
+        """
+        if self._note is None:
+            return None
+        folder = self._note.path.parent
+        if not folder.is_relative_to(self._vault.root):
+            return None
+        relative = folder.relative_to(self._vault.root)
+        return None if relative.is_relative_to(TRASH_DIR) else folder
 
     def _remember_backlinks(self, expanded: bool) -> None:
         self._config.backlinks_expanded = expanded
