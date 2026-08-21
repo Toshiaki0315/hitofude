@@ -747,7 +747,10 @@ class TestFolders:
         return db
 
     def test_フォルダを数える(self, foldered) -> None:
+        from hitofude.storage.index_db import ROOT_FOLDER
+
         found = {row.folder: row.count for row in foldered.folder_tree()}
+        found.pop(ROOT_FOLDER)  # ルートは常に先頭に付く（別テストで見る）
         assert found == {"仕事": 2, "仕事/2026": 1, "私用": 1}
 
     def test_親は子も数える(self, foldered) -> None:
@@ -755,10 +758,14 @@ class TestFolders:
         found = {row.folder: row.count for row in foldered.folder_tree()}
         assert found["仕事"] == 2
 
-    def test_直下は数えない(self, foldered) -> None:
-        """vault 直下は「すべて」と同じなので、フォルダとしては出さない。"""
-        assert "" not in {row.folder for row in foldered.folder_tree()}
-        assert "." not in {row.folder for row in foldered.folder_tree()}
+    def test_直下も並ぶが非再帰(self, foldered) -> None:
+        """ルートも「フォルダ」として出す（ユーザー要望）。ただし直下の
+        ノートだけを数える（子孫まで含めると「すべて」と同義になる）。"""
+        from hitofude.storage.index_db import ROOT_FOLDER
+
+        found = {row.folder: row.count for row in foldered.folder_tree()}
+        assert ROOT_FOLDER in found
+        assert found[ROOT_FOLDER] < found["仕事"] + found[ROOT_FOLDER]  # 子孫は含まない
 
     def test_フォルダで絞れる(self, foldered) -> None:
         titles = {row.title for row in foldered.notes_in_folder("仕事")}
@@ -786,10 +793,13 @@ class TestFolders:
         found = {row.folder: row.count for row in foldered.folder_tree()}
         assert found["仕事"] == 2
 
-    def test_フォルダが無ければ空(self, db, vault) -> None:
+    def test_フォルダが無くてもルートだけは出る(self, db, vault) -> None:
+        """「常に表示」（ユーザー要望）。サブフォルダがゼロでも直下は出す。"""
+        from hitofude.storage.index_db import ROOT_FOLDER
+
         note = vault.create("直下だけ")
         db.upsert_note(note, vault.root)
-        assert db.folder_tree() == []
+        assert [row.folder for row in db.folder_tree()] == [ROOT_FOLDER]
 
 
 class TestFolderRangeQuery:
@@ -856,3 +866,47 @@ class TestNotesMatching:
         db.upsert_note(pinned, vault.root)
         rows = db.notes_matching(text="", tags=("仕事",))
         assert rows[0].title == "仕事の雑務"
+
+
+class TestRootFolder:
+    """ルートも「フォルダ」として並べる（ユーザー要望）。
+
+    **ルートだけは非再帰**（直下のノートだけ）。子孫まで含めると
+    「すべて」と同義になり、選ぶ意味が無くなる。
+    """
+
+    def seed(self, db, vault):
+        for relative in ("直下A.md", "直下B.md", "仕事/中.md", "仕事/2026/深い.md"):
+            path = vault.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"# {path.stem}\n", encoding="utf-8")
+            from hitofude.core.document import Note
+
+            db.upsert_note(Note.read(path), vault.root)
+
+    def test_ルートが先頭に並ぶ(self, db, vault) -> None:
+        from hitofude.storage.index_db import ROOT_FOLDER
+
+        self.seed(db, vault)
+        found = db.folder_tree()
+        assert found[0].folder == ROOT_FOLDER
+        assert found[0].count == 2  # 直下の 2 件だけ（子孫は数えない）
+
+    def test_フォルダが無くてもルートは出る(self, db, vault) -> None:
+        from hitofude.storage.index_db import ROOT_FOLDER
+
+        note = vault.create("ひとつ", "# ひとつ\n")
+        db.upsert_note(note, vault.root)
+        assert [count.folder for count in db.folder_tree()] == [ROOT_FOLDER]
+
+    def test_ルートを選ぶと直下だけ(self, db, vault) -> None:
+        from hitofude.storage.index_db import ROOT_FOLDER
+
+        self.seed(db, vault)
+        rows = db.notes_in_folder(ROOT_FOLDER)
+        assert {row.title for row in rows} == {"直下A", "直下B"}
+
+    def test_他のフォルダは今まで通り子孫も含む(self, db, vault) -> None:
+        self.seed(db, vault)
+        rows = db.notes_in_folder("仕事")
+        assert {row.title for row in rows} == {"中", "深い"}

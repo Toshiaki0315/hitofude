@@ -18,7 +18,7 @@ from hitofude.app import apply_menu_font
 from hitofude.core import template
 from hitofude.core.document import Note, with_title
 from hitofude.core.template import daily_title
-from hitofude.storage.index_db import NoteRow
+from hitofude.storage.index_db import ROOT_FOLDER, NoteRow
 from hitofude.storage.vault import MARKDOWN_SUFFIXES, sanitize_filename, unique_path
 from hitofude.ui.note_list import NoteRole
 from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
@@ -451,7 +451,11 @@ class NoteActions:
         ツリーに見えないので、「新しいフォルダ」の入口はここに集約する。
         """
         window = self._window
-        folders = [count.folder for count in window._db.folder_tree()]
+        # ルートの合図（"."）は選択肢の文字として見せない。直下は
+        # 先頭の ROOT_FOLDER_CHOICE が担う
+        folders = [
+            count.folder for count in window._db.folder_tree() if count.folder != ROOT_FOLDER
+        ]
         items = [ROOT_FOLDER_CHOICE, *folders]
         current_folder = path.parent.relative_to(window._vault.root).as_posix()
         current = items.index(current_folder) if current_folder in items else 0

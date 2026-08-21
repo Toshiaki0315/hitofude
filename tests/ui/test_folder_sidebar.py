@@ -177,3 +177,37 @@ class TestFilterValidation:
 
         with _pytest.raises(ValueError):
             Filter(FilterKind.FOLDER)
+
+
+class TestRootEntry:
+    """ルートを「フォルダ」として常に並べる（ユーザー要望）。"""
+
+    def labels(self, sidebar) -> list[str]:
+        model = sidebar.model()
+        found = []
+        for row in range(model.rowCount()):
+            item = model.item(row)
+            found.append(item.text())
+            for child in range(item.rowCount()):
+                found.append(item.child(child).text())
+        return found
+
+    def test_直下という項目が出る(self, qtbot) -> None:
+        from hitofude.storage.index_db import ROOT_FOLDER, FolderCount
+        from hitofude.ui.sidebar import Sidebar
+
+        sidebar = Sidebar()
+        qtbot.addWidget(sidebar)
+        sidebar.set_folders(
+            [FolderCount(folder=ROOT_FOLDER, count=2), FolderCount(folder="仕事", count=1)]
+        )
+        found = self.labels(sidebar)
+        assert any(label.startswith("直下") for label in found)
+        assert not any(label.startswith("./") for label in found), "記号が素で出ている"
+
+    def test_ルートのフィルタが作れる(self) -> None:
+        from hitofude.storage.index_db import ROOT_FOLDER
+        from hitofude.ui.sidebar import Filter, FilterKind
+
+        target = Filter(FilterKind.FOLDER, folder=ROOT_FOLDER)
+        assert target.label == "直下"

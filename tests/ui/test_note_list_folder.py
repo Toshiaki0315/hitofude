@@ -174,3 +174,53 @@ class TestTrashRowsWithFolders:
         # .trash 自体は隠すが、その中の元の場所（戻る先）は役に立つ
         assert folder_label(Path(".trash/仕事/2026/メモ.md")) == "仕事/2026"
         assert folder_label(Path(".trash/メモ.md")) == ""
+
+
+class TestRootSelection:
+    """ルートを選んだときの一覧と新規作成（ユーザー要望）。"""
+
+    def seed(self, window):
+        from hitofude.core.document import Note
+
+        for relative in ("直下.md", "仕事/中.md"):
+            path = window.vault.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"# {path.stem}\n", encoding="utf-8")
+            window.vault_index.upsert_note(Note.read(path), window.vault.root)
+        window.refresh()
+
+    def select_root(self, window):
+        from hitofude.storage.index_db import ROOT_FOLDER
+        from hitofude.ui.sidebar import Filter, FilterKind
+
+        window.set_filter(Filter(FilterKind.FOLDER, folder=ROOT_FOLDER))
+
+    def test_直下のノートだけが出る(self, window) -> None:
+        self.seed(window)
+        self.select_root(window)
+        model = window._note_list.model()
+        titles = {model.note_at(model.index(row, 0)).title for row in range(model.rowCount())}
+        assert titles == {"直下"}
+
+    def test_新規ノートは直下にできる(self, window) -> None:
+        self.seed(window)
+        self.select_root(window)
+        window.new_note()
+        assert window.current_note.path.parent == window.vault.root
+
+    def test_移動先の一覧に記号は出さない(self, window, monkeypatch) -> None:
+        """ルートの合図（"."）を選択肢の文字として見せない。
+        直下は先頭の専用項目が担う。"""
+        from hitofude.ui import note_actions as module
+
+        self.seed(window)
+        captured = {}
+
+        def fake(parent, title, label, items, current=0, editable=True):
+            captured["items"] = list(items)
+            return ("", False)
+
+        monkeypatch.setattr(module.QInputDialog, "getItem", staticmethod(fake))
+        window.move_note_to_folder(window.vault.root / "直下.md")
+        assert "." not in captured["items"]
+        assert captured["items"][0] == module.ROOT_FOLDER_CHOICE

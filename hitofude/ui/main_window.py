@@ -45,7 +45,7 @@ from hitofude.core.stats import is_huge
 from hitofude.core.wikilink import context_line, normalize, resolve
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.storage import autosave, history
-from hitofude.storage.index_db import IndexDb, NoteRow, SortOrder, note_key
+from hitofude.storage.index_db import ROOT_FOLDER, IndexDb, NoteRow, SortOrder, note_key
 from hitofude.storage.vault import (
     Vault,
     unique_path,
@@ -802,6 +802,8 @@ class MainWindow(QMainWindow):
         書いていく、が素直にできる。
         """
         if self._filter.kind is FilterKind.FOLDER and self._filter.folder:
+            if self._filter.folder == ROOT_FOLDER:
+                return self._vault.root  # ルートを選んでいるときは直下へ
             return self._vault.root / self._filter.folder
         return None
 

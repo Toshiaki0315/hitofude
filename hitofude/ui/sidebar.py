@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QTreeView, QWidget
 
 from hitofude.config import LineSpacing
 from hitofude.core import tags as tag_utils
-from hitofude.storage.index_db import FolderCount, TagCount
+from hitofude.storage.index_db import ROOT_FOLDER, FolderCount, TagCount
 from hitofude.theme import LIGHT, ThemeColors
 from hitofude.ui.icons import Glyph, glyph_icon
 
@@ -45,6 +45,7 @@ def padding_for(spacing: LineSpacing) -> int:
 TAGS_LABEL = "タグ"
 FOLDERS_LABEL = "フォルダ"
 SEARCHES_LABEL = "検索"
+ROOT_FOLDER_LABEL = "直下"
 
 _FILTER_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 
@@ -108,6 +109,9 @@ class Filter:
             case FilterKind.SEARCH:
                 return self.name or ""
             case FilterKind.FOLDER:
+                # ルートは記号（"."）を見せず「直下」と読ませる
+                if self.folder == ROOT_FOLDER:
+                    return ROOT_FOLDER_LABEL
                 return f"{self.folder}/"
 
 
@@ -413,9 +417,10 @@ def _folder_items(counts: list["FolderCount"], color: str, height: int) -> list[
     roots: list[QStandardItem] = []
     # folder_tree() が名前順で返す（親が先）。並びの契約はあちらが持つ
     for count in counts:
+        label = ROOT_FOLDER_LABEL if count.folder == ROOT_FOLDER else count.label
         item = _sized(
             _make_item(
-                f"{count.label}  {count.count}",
+                f"{label}  {count.count}",
                 Filter(FilterKind.FOLDER, folder=count.folder),
                 color,
             ),

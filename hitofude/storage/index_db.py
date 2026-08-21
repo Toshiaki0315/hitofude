@@ -130,6 +130,11 @@ class SearchHit:
     snippet: str
 
 
+# ルートを表すフォルダの合図（ユーザー要望）。`sanitize_filename` が
+# 先頭のドットを剥ぐので、実在のフォルダ名がこれと衝突することはない
+ROOT_FOLDER = "."
+
+
 @dataclass(frozen=True, slots=True)
 class FolderCount:
     """フォルダ 1 つと、その中（子孫を含む）のノート数（K-2）。"""
@@ -455,21 +460,28 @@ class IndexDb:
     def folder_tree(self) -> list["FolderCount"]:
         """フォルダごとの件数（K-2）。**親は子も数える**（タグと同じ）。
 
-        vault 直下は数えない。「すべて」と同じ意味になり、フォルダとして
-        並べても選ぶ意味がない。
+        **ルート（直下）も常に先頭に並べる**（ユーザー要望）。ただし
+        ルートだけは非再帰で、直下のノートだけを数える。子孫まで含めると
+        「すべて」と同義になり、選ぶ意味が無くなる。
 
         パスの組み立ては SQL でやらず Python 側で数える。ノート数ぶんの
         文字列操作だが、5,000 件でも数 ms（実測）で、SQL に階層を
         組み込むより読める。
         """
         counts: dict[str, int] = {}
+        root_count = 0
         rows = self._connection.execute("SELECT path FROM notes WHERE trashed = 0")
         for row in rows:
             parts = Path(row["path"]).parent.parts
+            if not parts:
+                root_count += 1
+                continue
             for depth in range(1, len(parts) + 1):
                 folder = "/".join(parts[:depth])
                 counts[folder] = counts.get(folder, 0) + 1
-        return [FolderCount(folder=folder, count=counts[folder]) for folder in sorted(counts)]
+        found = [FolderCount(folder=ROOT_FOLDER, count=root_count)]
+        found.extend(FolderCount(folder=folder, count=counts[folder]) for folder in sorted(counts))
+        return found
 
     def notes_in_folder(
         self, folder: str, *, order: "SortOrder" = SortOrder.MODIFIED
@@ -477,7 +489,20 @@ class IndexDb:
         """そのフォルダ（子孫を含む）のノート。
 
         **区切りまで含めて前方一致する。** `仕事` で `仕事場/` を拾わない。
+
+        `ROOT_FOLDER` のときだけ非再帰（直下のノートだけ）。子孫まで
+        含めると「すべて」と同義になる（ユーザー要望）。
         """
+        if folder.strip("/") in ("", ROOT_FOLDER):
+            rows = self._connection.execute(
+                f"""
+                SELECT * FROM notes
+                WHERE trashed = 0 AND instr(path, '/') = 0
+                ORDER BY {_order_by(order)}
+                """
+            )
+            return [_to_row(row) for row in rows]
+
         prefix = f"{folder.strip('/')}/"
         # **LIKE ではなく範囲で引く**（コードレビュー指摘）。既定の LIKE は
         # 大文字小文字を区別せず、BINARY の UNIQUE 索引と噛み合わないため
