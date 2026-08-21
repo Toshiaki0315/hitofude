@@ -294,3 +294,87 @@ class TestCreateFolderMenu:
         )
         assert window.create_folder(self.root_filter()) is None
         assert "同じ名前" in window.notice()
+
+
+class TestDeleteFolderMenu:
+    """フォルダを右クリック → 削除（フォルダが残る仕様の対になる出口）。"""
+
+    def folder_filter(self, name="消す箱"):
+        from hitofude.ui.sidebar import Filter, FilterKind
+
+        return Filter(FilterKind.FOLDER, folder=name)
+
+    def yes(self, monkeypatch) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        from hitofude.ui import note_actions as module
+
+        monkeypatch.setattr(
+            module.QMessageBox,
+            "question",
+            staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes),
+        )
+
+    def test_メニューに項目がある(self, window) -> None:
+        window.vault.create_folder("消す箱")
+        window.refresh()
+        found = [a.text() for a in window.sidebar_menu_for(self.folder_filter()).actions()]
+        assert "フォルダを削除…" in found
+
+    def test_直下には削除を出さない(self, window) -> None:
+        """保管フォルダそのものは消せない。"""
+        from hitofude.storage.index_db import ROOT_FOLDER
+
+        found = [
+            a.text() for a in window.sidebar_menu_for(self.folder_filter(ROOT_FOLDER)).actions()
+        ]
+        assert "フォルダを削除…" not in found
+
+    def test_空なら消える(self, window, monkeypatch) -> None:
+        window.vault.create_folder("消す箱")
+        window.refresh()
+        self.yes(monkeypatch)
+        assert window.delete_folder(self.folder_filter()) is True
+        assert "消す箱" not in window.vault.folders()
+        assert "削除しました" in window.notice()
+
+    def test_ノートが入っていたら知らせて消さない(self, window, monkeypatch) -> None:
+        path = window.vault.root / "使用中" / "メモ.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# メモ\n", encoding="utf-8")
+        window.refresh()
+        self.yes(monkeypatch)
+        assert window.delete_folder(self.folder_filter("使用中")) is False
+        assert path.exists()
+        assert "ノート" in window.notice()
+
+    def test_やめれば残る(self, window, monkeypatch) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        from hitofude.ui import note_actions as module
+
+        window.vault.create_folder("消す箱")
+        window.refresh()
+        monkeypatch.setattr(
+            module.QMessageBox,
+            "question",
+            staticmethod(lambda *a, **k: QMessageBox.StandardButton.No),
+        )
+        assert window.delete_folder(self.folder_filter()) is False
+        assert "消す箱" in window.vault.folders()
+
+    def test_選んでいたフォルダを消したらすべてへ戻る(self, window, monkeypatch) -> None:
+        """サイドバーで選んでいたものが消えたら「すべて」へ退避する。
+
+        実際の経路（サイドバーの選択 → filter_changed）を通す。
+        """
+        from hitofude.ui.sidebar import FilterKind
+
+        window.vault.create_folder("消す箱")
+        window.refresh()
+        window._sidebar.select(self.folder_filter())
+        assert window._filter.kind is FilterKind.FOLDER  # 選べている
+
+        self.yes(monkeypatch)
+        window.delete_folder(self.folder_filter())
+        assert window._filter.kind is FilterKind.ALL

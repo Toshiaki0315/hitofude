@@ -322,6 +322,11 @@ class NoteActions:
             menu = QMenu(self._window)
             apply_menu_font(menu)
             menu.addAction("新しいフォルダ…").triggered.connect(lambda: self.create_folder(target))
+            # **「直下」には出さない。** 保管フォルダそのものは消せない
+            if target.folder != ROOT_FOLDER:
+                menu.addAction("フォルダを削除…").triggered.connect(
+                    lambda: self.delete_folder(target)
+                )
             return menu
         if target.kind is not FilterKind.TRASH:
             return None
@@ -363,6 +368,37 @@ class NoteActions:
         window.notify(f"フォルダ「{shown}」を作りました")
         logger.info("フォルダを作った: %s", shown)
         return created
+
+    def delete_folder(self, target: Filter) -> bool:
+        """空のフォルダを消す（ユーザー要望）。消したら True。
+
+        フォルダは空になっても残る仕様（ADR-0024 追記 2）なので、
+        消す出口をここに用意する。**ノートが入っていたら消さない**
+        （中身ごと消える操作は用意しない）。
+        """
+        window = self._window
+        folder = target.folder or ""
+        answer = QMessageBox.question(
+            window, "フォルダを削除", f"フォルダ「{folder}」を削除しますか？"
+        )
+        if answer is not QMessageBox.StandardButton.Yes:
+            return False
+
+        try:
+            window._vault.delete_folder(folder)
+        except ValueError as error:
+            window.notify(f"削除できませんでした: {error}")
+            return False
+        except OSError as error:
+            logger.warning("フォルダを削除できなかった: %s", error)
+            window.notify(f"削除できませんでした: {error}")
+            return False
+
+        # 選んでいたフォルダが消えたときは、サイドバーが「すべて」へ戻す
+        window.refresh()
+        window.notify(f"フォルダ「{folder}」を削除しました")
+        logger.info("フォルダを削除した: %s", folder)
+        return True
 
     def delete_saved_search(self, target: Filter) -> bool:
         """保存した検索を消す（K-4）。消したら True。

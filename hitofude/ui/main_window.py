@@ -668,6 +668,10 @@ class MainWindow(QMainWindow):
         """選んだフォルダの中に新しいフォルダを作る（サイドバーの右クリック）。"""
         return self._notes.create_folder(target)
 
+    def delete_folder(self, target: Filter) -> bool:
+        """空のフォルダを消す（サイドバーの右クリック）。"""
+        return self._notes.delete_folder(target)
+
     def reload_saved_searches(self) -> None:
         """保存した検索（K-4）を設定から読み直してサイドバーへ。"""
         self._sidebar.set_saved_searches(

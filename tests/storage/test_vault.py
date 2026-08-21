@@ -780,12 +780,17 @@ class TestMoveNote:
         moved = vault.move_note(note.path, " 仕事 / 2026 ")
         assert moved.parent == vault.root / "仕事" / "2026"
 
-    def test_空になった元フォルダは消える(self, vault) -> None:
+    def test_空になった元フォルダは残る(self, vault) -> None:
+        """**フォルダは消さない**（ユーザー決定 / ADR-0024 追記 2）。
+
+        フォルダは作るもの・管理するものになったので、最後のノートを
+        移しただけで消えると「勝手に無くなった」になる。
+        """
         path = vault.root / "古い" / "深い" / "メモ.md"
         path.parent.mkdir(parents=True)
         path.write_text("# メモ\n", encoding="utf-8")
         vault.move_note(path, "")
-        assert not (vault.root / "古い").exists()  # 祖先まで掃除
+        assert (vault.root / "古い" / "深い").is_dir()
 
     def test_中身が残る元フォルダは消えない(self, vault) -> None:
         keep = vault.root / "古い" / "残る.md"
@@ -825,8 +830,7 @@ class TestTrashKeepsFolder:
     def test_元のフォルダが消えていても作り直して戻す(self, vault) -> None:
         path = self.foldered_note(vault, "古い/メモ.md")
         trashed = vault.trash(path)
-        # 捨てた時点で空フォルダは自動で掃除されている（殻を残さない）
-        assert not (vault.root / "古い").exists()
+        (vault.root / "古い").rmdir()  # 手で消した想定（フォルダは自動では消えない）
         restored = vault.restore(trashed)
         assert restored == vault.root / "古い" / "メモ.md"
 
@@ -925,3 +929,62 @@ class TestFolderList:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("# メモ\n", encoding="utf-8")
         assert "仕事" in vault.folders()
+
+
+class TestFoldersSurvive:
+    """フォルダは空になっても残す（ユーザー決定 / ADR-0024 追記 2）。"""
+
+    def test_ノートを捨てても元フォルダは残る(self, vault) -> None:
+        path = vault.root / "日報" / "2026" / "メモ.md"
+        path.parent.mkdir(parents=True)
+        path.write_text("# メモ\n", encoding="utf-8")
+        vault.trash(path)
+        assert (vault.root / "日報" / "2026").is_dir()
+
+    def test_ゴミ箱の中の殻は今まで通り片づける(self, vault) -> None:
+        """こちらは目に見えない裏側なので、空の階層を残さない。"""
+        path = vault.root / "仕事" / "メモ.md"
+        path.parent.mkdir(parents=True)
+        path.write_text("# メモ\n", encoding="utf-8")
+        trashed = vault.trash(path)
+        vault.restore(trashed)
+        assert not (vault.trash_dir / "仕事").exists()
+
+
+class TestDeleteFolder:
+    """フォルダを消す（残る仕様にした分、消す手段を用意する）。"""
+
+    def test_空のフォルダを消せる(self, vault) -> None:
+        vault.create_folder("空っぽ")
+        vault.delete_folder("空っぽ")
+        assert not (vault.root / "空っぽ").exists()
+
+    def test_中が空フォルダだけなら消せる(self, vault) -> None:
+        vault.create_folder("親/子/孫")
+        vault.delete_folder("親")
+        assert not (vault.root / "親").exists()
+
+    def test_ノートが入っていたら消さない(self, vault) -> None:
+        path = vault.root / "仕事" / "メモ.md"
+        path.parent.mkdir(parents=True)
+        path.write_text("# メモ\n", encoding="utf-8")
+        with pytest.raises(ValueError):
+            vault.delete_folder("仕事")
+        assert path.exists()
+
+    def test_DS_Storeは無視して消せる(self, vault) -> None:
+        vault.create_folder("掃除")
+        (vault.root / "掃除" / ".DS_Store").write_bytes(b"x")
+        vault.delete_folder("掃除")
+        assert not (vault.root / "掃除").exists()
+
+    def test_予約フォルダは消せない(self, vault) -> None:
+        vault.ensure_layout()
+        for reserved in (".trash", ".hitofude", "templates", "attachments"):
+            with pytest.raises(ValueError):
+                vault.delete_folder(reserved)
+        assert vault.trash_dir.exists()
+
+    def test_無いフォルダは拒む(self, vault) -> None:
+        with pytest.raises(ValueError):
+            vault.delete_folder("存在しない")

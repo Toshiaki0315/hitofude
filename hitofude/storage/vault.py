@@ -76,6 +76,9 @@ _WHITESPACE_RE = re.compile(r"\s+")
 # 走査から外すフォルダ。**`storage/watcher.py` もこれを使う。**
 # 2 か所に書くと、片方だけ直したときに「一覧には出ないのに索引には入る」
 # という食い違いが出る（E-4 で実際に起きた）
+# macOS が勝手に置くファイル。フォルダが「空か」の判定では無視する
+_IGNORED_FILE = ".DS_Store"
+
 SKIP_DIRS = frozenset({TRASH_DIR, MANAGED_DIR, ATTACHMENTS_DIR, TEMPLATES_DIR})
 
 DEFAULT_ATTACHMENT_SUFFIX = ".png"
@@ -354,6 +357,29 @@ class Vault:
         target.mkdir(parents=True)
         return target
 
+    def delete_folder(self, folder: str) -> Path:
+        """フォルダを消す（ユーザー要望）。消した場所を返す。
+
+        **ノートが 1 つでも入っていたら消さない**（`ValueError`）。
+        フォルダの削除にゴミ箱は無いので、中身ごと消える操作は用意
+        しない。空のフォルダ（中が空フォルダだけ、も含む）だけを消す。
+        macOS が置く `.DS_Store` は空の判定で無視する。
+        """
+        cleaned = self._folder_relative(folder)
+        if not cleaned:
+            raise ValueError("フォルダの名前が空")
+        target = self._writable_folder(self.root / cleaned)
+        if not target.is_dir():
+            raise ValueError(f"フォルダが無い: {folder}")
+
+        leftovers = [
+            entry for entry in target.rglob("*") if entry.is_file() and entry.name != _IGNORED_FILE
+        ]
+        if leftovers:
+            raise ValueError(f"中にノートが残っている: {folder}")
+        shutil.rmtree(target)
+        return target
+
     def folders(self) -> list[str]:
         """vault の中のフォルダ（vault からの相対・名前順）。
 
@@ -416,19 +442,21 @@ class Vault:
         target = unique_path(destination, path.stem, path.suffix)
         if target.parent == path.parent:
             return path  # 同じ場所。動かす意味が無い
-        source_dir = path.parent
         path.rename(target)
-        self._prune_empty_dirs(source_dir)
+        # **空になっても元のフォルダは残す**（ユーザー決定 / ADR-0024 追記 2）。
+        # フォルダは作るもの・管理するものなので、最後のノートを移した
+        # だけで消えると「勝手に無くなった」になる。消すのは
+        # `delete_folder`（サイドバーの右クリック）だけ
         return target
 
-    def _prune_empty_dirs(self, start: Path, *, boundary: Path | None = None) -> None:
-        """空になったフォルダを `boundary` の手前まで遡って消す（ADR-0024 / K-5）。
+    def _prune_empty_dirs(self, start: Path, *, boundary: Path) -> None:
+        """空になったフォルダを `boundary` の手前まで遡って消す（K-5）。
 
-        **完全に空のときだけ。** 何か 1 つでも残っていれば触らない。
-        既定の境界は vault root（予約フォルダは触らない）。ゴミ箱の中の
-        殻を掃除するときは boundary=trash_dir を渡す。
+        **ゴミ箱の中だけで使う。** ユーザーに見えるフォルダは空でも
+        残す（ADR-0024 追記 2）。ゴミ箱の階層は復元のための裏側なので、
+        空の殻を残さない。**完全に空のときだけ**消す。
         """
-        edge = (boundary or self.root).resolve()
+        edge = boundary.resolve()
         probe = start
         while probe.resolve() != edge and self._inside(probe):
             try:
@@ -436,8 +464,6 @@ class Vault:
             except (OSError, ValueError):
                 return
             if not relative.parts:
-                return
-            if boundary is None and relative.parts[0] in SKIP_DIRS:
                 return
             try:
                 next(probe.iterdir())
@@ -511,7 +537,6 @@ class Vault:
             stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             target = target.parent / f"{path.stem}-{stamp}{path.suffix}"
         path.replace(target)
-        self._prune_empty_dirs(path.parent)
         # `purge_trash` の期限は「捨ててから」数える。rename は mtime を
         # 変えないので、ここで刻み直さないと古いノートが即座に消える。
         os.utime(target)
