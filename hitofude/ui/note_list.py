@@ -67,8 +67,13 @@ def folder_label(path: Path) -> str:
     ディレクトリ名が全行に描かれる。
     """
     parent = path.parent
-    if parent == Path() or parent.parts[0].startswith("."):
+    if parent == Path():
         return ""
+    if parent.parts[0].startswith("."):
+        # 隠しフォルダ自体は見せない。ただしゴミ箱（K-5 で階層を保つ）の
+        # 中では**その先＝元の場所**が「戻る先」の案内になるので出す
+        inner = parent.parts[1:]
+        return "/".join(inner) if inner else ""
     return parent.as_posix()
 
 

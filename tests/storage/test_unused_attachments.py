@@ -109,7 +109,9 @@ class TestTrashing:
         orphan = put_attachment(vault, "迷子.png")
         moved = vault.trash_attachments([orphan])
         assert not orphan.exists()
-        assert moved[0].parent == vault.trash_dir
+        # K-5 でゴミ箱は階層を保つ。添付は .trash/attachments/ に入る
+        # （Finder から戻すときも置き場が分かる）
+        assert moved[0].parent == vault.trash_dir / "attachments"
         assert moved[0].read_bytes() == PNG
 
     def test_消さない(self, vault) -> None:
@@ -124,7 +126,7 @@ class TestTrashing:
         second = put_attachment(vault, "図.png")
         moved = vault.trash_attachments([second])
         assert moved[0].is_file()
-        assert len(list(vault.trash_dir.iterdir())) == 2
+        assert len(list(vault.trash_dir.rglob("*.png"))) == 2
 
     def test_添付の外は動かさない(self, vault) -> None:
         """**パスは呼び出し側から来る。** ノートを片づけてしまわない。"""

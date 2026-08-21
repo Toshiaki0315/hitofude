@@ -795,3 +795,75 @@ class TestMoveNote:
         path.write_text("# メモ\n", encoding="utf-8")
         vault.move_note(path, "")
         assert keep.exists() and keep.parent.is_dir()
+
+
+class TestTrashKeepsFolder:
+    """ゴミ箱の中でも階層を保つ（K-5）。
+
+    ゴミ箱は平らだったので、戻すと全部 vault 直下に出ていた。
+    真実をファイル側に置いたまま（R1 の精神）、.trash/ の中に同じ階層を
+    作れば「誰がどこにいたか」をファイル自身が覚えている。
+    """
+
+    def foldered_note(self, vault, relative="仕事/2026/会議メモ.md"):
+        path = vault.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"# {path.stem}\n", encoding="utf-8")
+        return path
+
+    def test_捨てると階層ごと入る(self, vault) -> None:
+        path = self.foldered_note(vault)
+        trashed = vault.trash(path)
+        assert trashed == vault.trash_dir / "仕事" / "2026" / "会議メモ.md"
+
+    def test_戻すと元のフォルダに戻る(self, vault) -> None:
+        path = self.foldered_note(vault)
+        trashed = vault.trash(path)
+        restored = vault.restore(trashed)
+        assert restored == vault.root / "仕事" / "2026" / "会議メモ.md"
+
+    def test_元のフォルダが消えていても作り直して戻す(self, vault) -> None:
+        path = self.foldered_note(vault, "古い/メモ.md")
+        trashed = vault.trash(path)
+        # 捨てた時点で空フォルダは自動で掃除されている（殻を残さない）
+        assert not (vault.root / "古い").exists()
+        restored = vault.restore(trashed)
+        assert restored == vault.root / "古い" / "メモ.md"
+
+    def test_直下のノートは今まで通り(self, vault) -> None:
+        note = vault.create("直下", "# 直下\n")
+        trashed = vault.trash(note.path)
+        assert trashed.parent == vault.trash_dir
+        assert vault.restore(trashed).parent == vault.root
+
+    def test_古い平らなゴミ箱の中身も直下へ戻せる(self, vault) -> None:
+        """K-5 より前に捨てたもの（.trash 直下）の互換。"""
+        vault.ensure_layout()
+        vault.trash_dir.mkdir(parents=True, exist_ok=True)
+        old = vault.trash_dir / "昔の.md"
+        old.write_text("# 昔の\n", encoding="utf-8")
+        assert vault.restore(old).parent == vault.root
+
+    def test_期限切れの掃除は階層の中も見る(self, vault) -> None:
+        import os as _os
+        import time as _time
+
+        path = self.foldered_note(vault)
+        trashed = vault.trash(path)
+        stale = _time.time() - 40 * 24 * 3600
+        _os.utime(trashed, (stale, stale))
+        removed = vault.purge_trash(30)
+        assert trashed in removed
+        assert not (vault.trash_dir / "仕事").exists()  # 空になった殻も残さない
+
+    def test_空にするは階層ごと消す(self, vault) -> None:
+        path = self.foldered_note(vault)
+        vault.trash(path)
+        vault.empty_trash()
+        assert list(vault.trash_dir.iterdir()) == []
+
+    def test_戻したあとのゴミ箱に殻を残さない(self, vault) -> None:
+        path = self.foldered_note(vault)
+        trashed = vault.trash(path)
+        vault.restore(trashed)
+        assert not (vault.trash_dir / "仕事").exists()

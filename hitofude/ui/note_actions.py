@@ -51,7 +51,7 @@ class NoteActions:
         """
         window = self._window
         rows: list[NoteRow] = []
-        for path in sorted(window._vault.trash_dir.glob("*.md")):
+        for path in sorted(window._vault.trash_dir.rglob("*.md")):
             try:
                 note = window._vault.read(path)
             except OSError:

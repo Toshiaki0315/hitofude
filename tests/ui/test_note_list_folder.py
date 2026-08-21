@@ -153,3 +153,24 @@ class TestCreateInFolder:
         note = window.open_daily_note()
         assert note is not None
         assert note.path.parent == window.vault.root
+
+
+class TestTrashRowsWithFolders:
+    """階層化したゴミ箱（K-5）の一覧。"""
+
+    def test_フォルダの中で捨てたノートも一覧に出る(self, window) -> None:
+        path = window.vault.root / "仕事" / "捨てる.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# 捨てる\n", encoding="utf-8")
+        window.vault.trash(path)
+        titles = [row.title for row in window._notes.trash_rows()]
+        assert "捨てる" in titles
+
+    def test_行には元の場所が出る(self) -> None:
+        from pathlib import Path
+
+        from hitofude.ui.note_list import folder_label
+
+        # .trash 自体は隠すが、その中の元の場所（戻る先）は役に立つ
+        assert folder_label(Path(".trash/仕事/2026/メモ.md")) == "仕事/2026"
+        assert folder_label(Path(".trash/メモ.md")) == ""

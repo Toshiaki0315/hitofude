@@ -364,18 +364,23 @@ class Vault:
         self._prune_empty_dirs(source_dir)
         return target
 
-    def _prune_empty_dirs(self, start: Path) -> None:
-        """空になったフォルダを root の手前まで遡って消す（ADR-0024）。
+    def _prune_empty_dirs(self, start: Path, *, boundary: Path | None = None) -> None:
+        """空になったフォルダを `boundary` の手前まで遡って消す（ADR-0024 / K-5）。
 
         **完全に空のときだけ。** 何か 1 つでも残っていれば触らない。
+        既定の境界は vault root（予約フォルダは触らない）。ゴミ箱の中の
+        殻を掃除するときは boundary=trash_dir を渡す。
         """
+        edge = (boundary or self.root).resolve()
         probe = start
-        while probe != self.root and self._inside(probe):
+        while probe.resolve() != edge and self._inside(probe):
             try:
-                relative = probe.resolve().relative_to(self.root.resolve())
+                relative = probe.resolve().relative_to(edge)
             except (OSError, ValueError):
                 return
-            if not relative.parts or relative.parts[0] in SKIP_DIRS:
+            if not relative.parts:
+                return
+            if boundary is None and relative.parts[0] in SKIP_DIRS:
                 return
             try:
                 next(probe.iterdir())
@@ -432,22 +437,46 @@ class Vault:
         return resolved
 
     def trash(self, path: Path) -> Path:
-        """`.trash` へ移す（spec §7.6）。同名があればタイムスタンプを付ける。"""
-        self.trash_dir.mkdir(parents=True, exist_ok=True)
-        target = self.trash_dir / path.name
+        """`.trash` へ移す（spec §7.6）。同名があればタイムスタンプを付ける。
+
+        **階層を保って入れる**（K-5）。ゴミ箱を平らにすると「どこに
+        いたか」を誰も覚えておらず、戻すと全部 vault 直下に出ていた。
+        .trash/ の中に同じ階層を作れば、ファイル自身が場所を覚えている
+        （真実をファイル側に置く。R1 の精神）。
+        """
+        try:
+            relative = path.resolve().relative_to(self.root.resolve())
+        except (OSError, ValueError):
+            relative = Path(path.name)
+        target = self.trash_dir / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
             stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            target = self.trash_dir / f"{path.stem}-{stamp}{path.suffix}"
+            target = target.parent / f"{path.stem}-{stamp}{path.suffix}"
         path.replace(target)
+        self._prune_empty_dirs(path.parent)
         # `purge_trash` の期限は「捨ててから」数える。rename は mtime を
         # 変えないので、ここで刻み直さないと古いノートが即座に消える。
         os.utime(target)
         return target
 
     def restore(self, path: Path) -> Path:
-        """ゴミ箱から vault 直下へ戻す。"""
-        target = unique_path(self.root, path.stem, path.suffix)
+        """ゴミ箱から**元のフォルダへ**戻す（K-5）。
+
+        .trash/ の中の位置がそのまま元の位置。フォルダが消えていたら
+        作り直す（捨てる前には在ったのだから、戻すのに要る）。
+        K-5 より前の平らなゴミ箱（.trash 直下）は今まで通り直下へ。
+        """
+        try:
+            relative = path.resolve().relative_to(self.trash_dir.resolve())
+        except (OSError, ValueError):
+            relative = Path(path.name)
+        destination = self.root / relative.parent
+        destination.mkdir(parents=True, exist_ok=True)
+        target = unique_path(destination, path.stem, path.suffix)
         path.replace(target)
+        # ゴミ箱の中に空の殻を残さない
+        self._prune_empty_dirs(path.parent, boundary=self.trash_dir)
         return target
 
     # --------------------------------------------------------------- 片づけ
@@ -781,12 +810,13 @@ class Vault:
 
         deadline = time.time() - days * 24 * 3600
         removed: list[Path] = []
-        for entry in sorted(self.trash_dir.iterdir()):
+        for entry in sorted(self.trash_dir.rglob("*")):
             if not entry.is_file():
                 continue
             if entry.stat().st_mtime < deadline:
                 entry.unlink()
                 removed.append(entry)
+                self._prune_empty_dirs(entry.parent, boundary=self.trash_dir)
         return removed
 
 
