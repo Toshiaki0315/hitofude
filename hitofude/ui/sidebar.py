@@ -14,10 +14,18 @@ from PySide6.QtGui import (
     QBrush,
     QColor,
     QFontMetrics,
+    QPainter,
     QStandardItem,
     QStandardItemModel,
 )
-from PySide6.QtWidgets import QTreeView, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+    QTreeView,
+    QWidget,
+)
 
 from hitofude.config import LineSpacing
 from hitofude.core import tags as tag_utils
@@ -55,6 +63,16 @@ SEARCHES_LABEL = "検索"
 ROOT_FOLDER_LABEL = "直下"
 
 _FILTER_ROLE = int(Qt.ItemDataRole.UserRole) + 1
+
+COUNT_ROLE = _FILTER_ROLE + 1
+"""その行の件数。**名前とは別に持つ**（ユーザー要望 2026-08-22）。
+
+`テスト２  2` のように名前へ混ぜ込むと、名前が数字で終わったときに
+見分けが付かないうえ、描く側でも切り分けられない。
+"""
+
+# 名前と件数のあいだ。詰めると 1 つの語に見える
+COUNT_GAP = 10
 
 
 class FilterKind(Enum):
@@ -166,6 +184,62 @@ def build_tag_tree(counts: list[TagCount]) -> list[TagNode]:
     return [build(tag) for tag in roots]
 
 
+class SidebarItemDelegate(QStyledItemDelegate):
+    """件数を右端に薄く描く（ユーザー要望 2026-08-22）。
+
+    **位置で分ける。** 括弧で囲む手もあるが、同じ色・同じ並びのままなので
+    `日報 (2)` のような名前には効かない。Finder や Mail と同じく、名前は
+    左・件数は右端に置く。狭いときに削るのは**名前のほう**（件数が消えると
+    数える手段が無くなる）。
+    """
+
+    def __init__(self, theme: ThemeColors = LIGHT, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._theme = theme
+
+    def set_theme(self, theme: ThemeColors) -> None:
+        self._theme = theme
+
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index) -> None:
+        count = index.data(COUNT_ROLE)
+        if count is None:
+            super().paint(painter, option, index)
+            return
+
+        text = str(count)
+        reserved = QFontMetrics(option.font).horizontalAdvance(text) + COUNT_GAP
+
+        # 名前は右端の手前で止める。**背景と選択の色は元の幅のまま**
+        # （幅を削って渡すと、右端に塗り残しの帯ができる）
+        # **背景と選択の色は元の幅で塗る**（狭めた幅で塗ると右端に帯が残る）。
+        # ここで `super().paint()` は使えない。あちらは中で
+        # `initStyleOption()` をやり直すので、消したはずの名前が元の幅で
+        # 描き直され、下に残ってしまう（数字に重なって見えていた）
+        style = option.widget.style() if option.widget is not None else QApplication.style()
+        background = QStyleOptionViewItem(option)
+        self.initStyleOption(background, index)
+        style.drawPrimitive(
+            QStyle.PrimitiveElement.PE_PanelItemViewItem, background, painter, option.widget
+        )
+
+        # 名前は数字のぶんだけ狭い幅で描かせる。**幅を渡して Qt に省略させる**
+        # （自分で `elidedText` すると、字下げ・アイコン・字間の余白を数え
+        # 落として数字に乗る。実際に長いタグ名で重なった）
+        trimmed = QStyleOptionViewItem(option)
+        trimmed.rect = option.rect.adjusted(0, 0, -reserved, 0)
+        super().paint(painter, trimmed, index)
+
+        painter.save()
+        painter.setFont(option.font)
+        painter.setPen(QColor(self._theme.muted_foreground))
+        painter.drawText(
+            option.rect.adjusted(0, 0, -COUNT_GAP // 2, 0),
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            text,
+        )
+        painter.restore()
+
+
 class Sidebar(QTreeView):
     filter_changed = Signal(object)
 
@@ -186,6 +260,8 @@ class Sidebar(QTreeView):
         self._row_padding = ROW_PADDING
         self._model = QStandardItemModel(self)
         self.setModel(self._model)
+        self._delegate = SidebarItemDelegate(theme, self)
+        self.setItemDelegate(self._delegate)
         self.setHeaderHidden(True)
         self.setIndentation(14)
         self.setFrameShape(QTreeView.Shape.NoFrame)
@@ -215,6 +291,7 @@ class Sidebar(QTreeView):
         組み直すのが単純で、サイドバーの規模なら問題にならない。
         """
         self._theme = theme
+        self._delegate.set_theme(theme)
         self._apply()
 
     def set_folders(self, counts: list["FolderCount"]) -> None:
@@ -295,8 +372,11 @@ class Sidebar(QTreeView):
             # 同じく 1 段だけ下がって見える
             children = [count for count in self._folders if count.folder != ROOT_FOLDER]
             here = next((count for count in self._folders if count.folder == ROOT_FOLDER), None)
-            label = FOLDERS_LABEL if here is None else f"{FOLDERS_LABEL}  {here.count}"
-            folders = _make_item(label, Filter(FilterKind.FOLDER, folder=ROOT_FOLDER), color)
+            folders = _make_item(
+                FOLDERS_LABEL, Filter(FilterKind.FOLDER, folder=ROOT_FOLDER), color
+            )
+            if here is not None:
+                folders.setData(here.count, COUNT_ROLE)
             root.appendRow(_sized(folders, height))
             for item in _folder_items(children, color, height):
                 folders.appendRow(item)
@@ -541,14 +621,9 @@ def _folder_items(counts: list["FolderCount"], color: str, height: int) -> list[
     roots: list[QStandardItem] = []
     # folder_tree() が名前順で返す（親が先）。並びの契約はあちらが持つ
     for count in counts:
-        item = _sized(
-            _make_item(
-                f"{count.label}  {count.count}",
-                Filter(FilterKind.FOLDER, folder=count.folder),
-                color,
-            ),
-            height,
-        )
+        item = _make_item(count.label, Filter(FilterKind.FOLDER, folder=count.folder), color)
+        item.setData(count.count, COUNT_ROLE)
+        item = _sized(item, height)
         items[count.folder] = item
 
         parent = items.get(count.folder.rsplit("/", 1)[0]) if "/" in count.folder else None
@@ -560,7 +635,8 @@ def _folder_items(counts: list["FolderCount"], color: str, height: int) -> list[
 
 
 def _make_tag_item(node: TagNode, color: str) -> QStandardItem:
-    item = _make_item(f"{node.label}  {node.count}", Filter(FilterKind.TAG, node.tag), color)
+    item = _make_item(node.label, Filter(FilterKind.TAG, node.tag), color)
+    item.setData(node.count, COUNT_ROLE)
     for child in node.children:
         item.appendRow(_make_tag_item(child, color))
     return item

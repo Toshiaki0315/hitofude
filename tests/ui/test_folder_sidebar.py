@@ -12,7 +12,7 @@ import pytest
 
 from hitofude.storage.index_db import ROOT_FOLDER, FolderCount
 from hitofude.ui.main_window import MainWindow
-from hitofude.ui.sidebar import Filter, FilterKind, Sidebar
+from hitofude.ui.sidebar import COUNT_ROLE, FOLDERS_LABEL, Filter, FilterKind, Sidebar
 
 pytestmark = pytest.mark.gui
 
@@ -38,12 +38,12 @@ def labels(sidebar: Sidebar) -> list[str]:
 class TestTree:
     def test_フォルダの見出しが出る(self, sidebar) -> None:
         sidebar.set_folders(FOLDERS)
-        assert any(label.startswith("フォルダ") for label in labels(sidebar))
+        assert FOLDERS_LABEL in labels(sidebar)
 
     def test_フォルダが無ければ見出しも出さない(self, sidebar) -> None:
         """タグと同じ作法。空の見出しは場所を取るだけ。"""
         sidebar.set_folders([])
-        assert not any(label.startswith("フォルダ") for label in labels(sidebar))
+        assert FOLDERS_LABEL not in labels(sidebar)
 
     def test_階層は入れ子で出す(self, sidebar) -> None:
         sidebar.set_folders(FOLDERS)
@@ -51,7 +51,7 @@ class TestTree:
         header = next(
             model.item(row)
             for row in range(model.rowCount())
-            if model.item(row).text().startswith("フォルダ")
+            if model.item(row).text() == FOLDERS_LABEL
         )
         top = [header.child(row).text() for row in range(header.rowCount())]
         assert any("仕事" in text for text in top)
@@ -69,9 +69,9 @@ class TestTree:
         header = next(
             model.item(row)
             for row in range(model.rowCount())
-            if model.item(row).text().startswith("フォルダ")
+            if model.item(row).text() == FOLDERS_LABEL
         )
-        assert "2" in header.child(0).text()
+        assert header.child(0).data(COUNT_ROLE) == 2
 
     def test_タグより上に出す(self, sidebar) -> None:
         """**入れ物が先、ラベルが後。** 場所を探すほうが先に目に入る。"""
@@ -80,7 +80,7 @@ class TestTree:
         sidebar.set_folders(FOLDERS)
         sidebar.set_tags([TagCount(tag="仕事", count=1)])
         found = labels(sidebar)
-        folders = next(row for row, label in enumerate(found) if label.startswith("フォルダ"))
+        folders = found.index(FOLDERS_LABEL)
         assert folders < found.index("タグ")
 
 
@@ -112,7 +112,7 @@ class TestInWindow:
 
     def test_フォルダが出る(self, window) -> None:
         self.put(window, "仕事", "会議")
-        assert any(label.startswith("フォルダ") for label in labels(window.sidebar))
+        assert FOLDERS_LABEL in labels(window.sidebar)
 
     def test_選ぶとその中だけ出る(self, window) -> None:
         self.put(window, "仕事", "会議")
@@ -202,7 +202,7 @@ class TestRootEntry:
         return next(
             model.item(row)
             for row in range(model.rowCount())
-            if model.item(row).text().startswith("フォルダ")
+            if model.item(row).text() == FOLDERS_LABEL
         )
 
     def all_labels(self, sidebar: Sidebar) -> list[str]:
@@ -240,12 +240,12 @@ class TestRootEntry:
     def test_件数は見出しに出す(self, sidebar) -> None:
         """選ぶと何件出るかは、ほかのフォルダと同じ読み方で分かるように。"""
         sidebar.set_folders(NESTED)
-        assert "9" in self.header(sidebar).text()
+        assert self.header(sidebar).data(COUNT_ROLE) == 9
 
     def test_フォルダは見出しの子として並ぶ(self, sidebar) -> None:
         sidebar.set_folders(NESTED)
         header = self.header(sidebar)
-        assert [header.child(row).text().split()[0] for row in range(header.rowCount())] == [
+        assert [header.child(row).text() for row in range(header.rowCount())] == [
             "仕事",
             "嗚呼あ",
         ]
@@ -258,7 +258,7 @@ class TestRootEntry:
             for row in range(header.rowCount())
             if "嗚呼あ" in header.child(row).text()
         )
-        assert [deep.child(row).text().split()[0] for row in range(deep.rowCount())] == ["テスト２"]
+        assert [deep.child(row).text() for row in range(deep.rowCount())] == ["テスト２"]
 
     def test_直下が空のときの案内(self, window) -> None:
         """記号（`.`）を見せない。案内は文章なので「直下」と読ませる。"""

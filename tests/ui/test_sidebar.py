@@ -75,10 +75,13 @@ class TestSidebar:
         assert "work" in header.child(0).text()
 
     def test_件数を表示する(self, sidebar) -> None:
+        """件数は**名前とは別に持つ**（描く側が右端に置くため）。"""
+        from hitofude.ui.sidebar import COUNT_ROLE
+
         sidebar.set_tags(counts(("work", 7)))
         model = sidebar.model()
         header = model.item(model.rowCount() - 1)
-        assert "7" in header.child(0).text()
+        assert header.child(0).data(COUNT_ROLE) == 7
 
     def test_タグが無ければ見出しも出さない(self, sidebar) -> None:
         sidebar.set_tags([])
