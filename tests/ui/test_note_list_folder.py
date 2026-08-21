@@ -111,3 +111,45 @@ class TestHiddenFolders:
         from hitofude.ui.note_list import folder_label
 
         assert folder_label(Path("仕事/2026/メモ.md")) == "仕事/2026"
+
+
+class TestCreateInFolder:
+    """フォルダで絞っている間の新規作成はそのフォルダの中へ（ユーザー要望）。
+
+    直下に作ると、絞り込み中の一覧に現れもせず「押したのに何も起きない」
+    ように見える。日報フォルダに毎日書いていく、が素直にできるように。
+    """
+
+    def select_folder(self, window, name="日報"):
+        from hitofude.core.document import Note
+        from hitofude.ui.sidebar import Filter, FilterKind
+
+        path = window.vault.root / name / "既存.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# 既存\n", encoding="utf-8")
+        window.vault_index.upsert_note(Note.read(path), window.vault.root)
+        window.set_filter(Filter(FilterKind.FOLDER, folder=name))
+
+    def test_新規ノートはフォルダの中にできる(self, window) -> None:
+        self.select_folder(window)
+        window.new_note()
+        assert window.current_note is not None
+        assert window.current_note.path.parent == window.vault.root / "日報"
+
+    def test_絞っていなければ直下(self, window) -> None:
+        window.new_note()
+        assert window.current_note.path.parent == window.vault.root
+
+    def test_テンプレートから新規もフォルダの中(self, window) -> None:
+        self.select_folder(window)
+        template = window.vault.templates()[0]
+        created = window.create_from_template(template)
+        assert created is not None
+        assert created.path.parent == window.vault.root / "日報"
+
+    def test_今日のノートは今まで通り直下(self, window) -> None:
+        """日次は「同じ日 = 同じノート」が軸で、置き場は §7.1 どおり直下。"""
+        self.select_folder(window)
+        note = window.open_daily_note()
+        assert note is not None
+        assert note.path.parent == window.vault.root

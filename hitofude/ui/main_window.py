@@ -771,7 +771,18 @@ class MainWindow(QMainWindow):
 
     def new_note(self) -> None:
         self.flush()
-        self._open_created(self._vault.create(NEW_NOTE_TITLE))
+        self._open_created(self._vault.create(NEW_NOTE_TITLE, folder=self.creation_folder()))
+
+    def creation_folder(self) -> Path | None:
+        """新規作成の置き場。フォルダで絞っている間はそのフォルダの中。
+
+        直下に作ると、絞り込み中の一覧に現れもせず「押したのに何も
+        起きない」ように見える（ユーザー要望）。日報フォルダに毎日
+        書いていく、が素直にできる。
+        """
+        if self._filter.kind is FilterKind.FOLDER and self._filter.folder:
+            return self._vault.root / self._filter.folder
+        return None
 
     def _open_created(self, note: Note, cursor: int | None = None) -> None:
         """作った / 取り込んだノートを索引へ入れ、一覧を更新して開く。

@@ -579,7 +579,7 @@ class NoteActions:
         window = self._window
         window.flush()
         try:
-            created = window._vault.create_from_template(path)
+            created = window._vault.create_from_template(path, folder=window.creation_folder())
         except (ValueError, OSError):
             logger.warning("雛形から作れなかった: %s", path)
             return None

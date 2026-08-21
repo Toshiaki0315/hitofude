@@ -564,7 +564,12 @@ class Vault:
         path.unlink(missing_ok=True)
 
     def create_from_template(
-        self, path: Path, *, title: str | None = None, now: datetime | None = None
+        self,
+        path: Path,
+        *,
+        title: str | None = None,
+        now: datetime | None = None,
+        folder: Path | None = None,
     ) -> NewNote:
         """雛形から新しいノートを作る（E-4）。
 
@@ -582,7 +587,7 @@ class Vault:
         body = frontmatter.split(path.read_text(encoding="utf-8")).body
         filled = expand(body, now=now or datetime.now(), title=name)
         filled = _with_aligned_tables(filled)
-        note = self.create(name, filled.text)
+        note = self.create(name, filled.text, folder=folder)
         return NewNote(note, self._cursor_in(note, filled))
 
     def daily_note(self, day: datetime | None = None, *, template: str = DAILY_TEMPLATE) -> NewNote:
