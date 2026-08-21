@@ -54,6 +54,7 @@ from hitofude.storage.index_db import (
     note_key,
 )
 from hitofude.storage.vault import (
+    TRASH_DIR,
     Vault,
     unique_path,
 )
@@ -78,7 +79,7 @@ from hitofude.ui.preferences import PreferencesDialog
 from hitofude.ui.save_controller import SaveController
 from hitofude.ui.search_actions import SearchActions
 from hitofude.ui.shortcut_sheet import ShortcutSheet
-from hitofude.ui.sidebar import ALL, Filter, FilterKind, Sidebar
+from hitofude.ui.sidebar import ALL, TRASH, Filter, FilterKind, Sidebar
 from hitofude.ui.status_bar import (  # noqa: F401  ASYNC_STATS_CHARS 等はテストが再輸出先として参照する
     ASYNC_STATS_CHARS,
     STATUS_RIGHT_MARGIN,
@@ -587,6 +588,11 @@ class MainWindow(QMainWindow):
         self._list_pane.set_sort_order(order)
         self.refresh()
 
+    @property
+    def filter(self) -> Filter:
+        """今の絞り込み。"""
+        return self._filter
+
     def set_filter(self, target: Filter) -> None:
         self._filter = target
         self._list_pane.set_empty_notice(_empty_notice(target))
@@ -778,7 +784,30 @@ class MainWindow(QMainWindow):
         `open_note()` を直に呼ばない**こと。呼ぶと select 漏れになる。
         """
         self.open_note(path)
-        self._note_list.select_path(path.relative_to(self._vault.root))
+        relative = path.relative_to(self._vault.root)
+        # **見えないなら絞り込みのほうを動かす**（ユーザー報告 2026-08-22）。
+        # フォルダで絞っている間に `[[…]]` で外のノートへ飛ぶと、一覧に行が
+        # 無いので選択も付かず、左の選択も前のままだった
+        if not self._note_list.has_path(relative):
+            self._show_where(relative)
+        self._note_list.select_path(relative)
+
+    def _show_where(self, relative: Path) -> None:
+        """そのノートが見える絞り込みへ移る。**左の選択も動かす。**
+
+        一覧だけ変わると、今どれで絞っているか分からなくなる
+        （`activate_tag` と同じ考え方）。
+        """
+        if relative.is_relative_to(TRASH_DIR):
+            target = TRASH
+        else:
+            folder = relative.parent
+            target = Filter(
+                FilterKind.FOLDER,
+                folder=ROOT_FOLDER if folder == Path() else folder.as_posix(),
+            )
+        self._sidebar.select(target)
+        self.set_filter(target)
 
     def _open_note(self, path: Path) -> None:
         self.flush()
@@ -840,8 +869,9 @@ class MainWindow(QMainWindow):
         """
         self._db.upsert_note(note, self._vault.root)
         self.refresh()
-        self.open_note(note.path)
-        self._note_list.select_path(note.path.relative_to(self._vault.root))
+        # 絞り込みの外にできることがある（`[[…]]` から作った先は直下）。
+        # `open_and_select` が「見えないなら絞り込みを動かす」まで面倒を見る
+        self.open_and_select(note.path)
         if cursor is not None:
             self._place_cursor(cursor)
 
@@ -1072,8 +1102,7 @@ class MainWindow(QMainWindow):
         if found is not None:
             row = next(row for row in rows if row.title == found)
             path = self._vault.root / row.path
-            self.open_note(path)
-            self._note_list.select_path(row.path)
+            self.open_and_select(path)
             return path
 
         self.flush()

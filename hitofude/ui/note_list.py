@@ -477,6 +477,10 @@ class NoteListView(QListView):
         self._delegate.set_theme(theme)
         self.viewport().update()
 
+    def has_path(self, path: Path) -> bool:
+        """その行が今の一覧にあるか。**絞り込みで見えているか**の判定に使う。"""
+        return self._model.index_of(path).isValid()
+
     def current_path(self) -> Path | None:
         row = self._model.note_at(self.currentIndex())
         return row.path if row is not None else None
