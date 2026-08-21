@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QMimeData, QPoint, Qt
-from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
+from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent
 
 from hitofude.storage.index_db import ROOT_FOLDER
 from hitofude.ui.main_window import MainWindow
@@ -184,3 +184,91 @@ class TestDropMoves:
         )
         window._sidebar.dropEvent(event)
         assert path.exists()
+
+
+class TestDropHighlight:
+    """落とす先が見えるようにする（ユーザー要望 2026-08-21）。
+
+    受けるか受けないかは矢印の形でしか分からず、**どのフォルダに入るかは
+    落とすまで分からなかった**。行が数ピクセルしか離れていないので、
+    ひとつ上のフォルダへ入ってしまう。Finder と同じく、**入る先の行を
+    塗る**。
+    """
+
+    def prepared(self, window: MainWindow) -> QPoint:
+        window.vault.create_folder("日報")
+        window.vault.create_folder("仕事")
+        note = window.vault.create("動かす", "# 動かす\n\n本文\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        window._sidebar.expandAll()
+        return self.point_of(window, Filter(FilterKind.FOLDER, folder="日報"))
+
+    def point_of(self, window, target: Filter) -> QPoint:
+        index = window._sidebar._find(target)
+        assert index is not None, f"{target} が見つからない"
+        return window._sidebar.visualRect(index).center()
+
+    def move_over(self, window, point: QPoint, mime: QMimeData) -> None:
+        event = QDragMoveEvent(
+            point,
+            Qt.DropAction.MoveAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        window._sidebar.dragMoveEvent(event)
+
+    def test_乗せた行が分かる(self, window) -> None:
+        point = self.prepared(window)
+        mime = note_mime("動かす.md")
+        self.move_over(window, point, mime)
+        assert window._sidebar.drop_target() == Filter(FilterKind.FOLDER, folder="日報")
+
+    def test_行が塗られる(self, window) -> None:
+        """`drop_target()` を覚えただけでは見えない。**目に見えるのが要件**。"""
+        point = self.prepared(window)
+        mime = note_mime("動かす.md")
+        self.move_over(window, point, mime)
+        index = window._sidebar._find(Filter(FilterKind.FOLDER, folder="日報"))
+        item = window._sidebar.model().itemFromIndex(index)
+        assert item.background().style() != Qt.BrushStyle.NoBrush
+
+    def test_隣へ動かすと前の行は戻る(self, window) -> None:
+        point = self.prepared(window)
+        mime = note_mime("動かす.md")
+        self.move_over(window, point, mime)
+        self.move_over(
+            window, self.point_of(window, Filter(FilterKind.FOLDER, folder="仕事")), mime
+        )
+
+        assert window._sidebar.drop_target() == Filter(FilterKind.FOLDER, folder="仕事")
+        previous = window._sidebar.model().itemFromIndex(
+            window._sidebar._find(Filter(FilterKind.FOLDER, folder="日報"))
+        )
+        assert previous.background().style() == Qt.BrushStyle.NoBrush
+
+    def test_受けない行の上では塗らない(self, window) -> None:
+        self.prepared(window)
+        note = window.vault.create("タグ付き", "# タグ付き\n\n#仕事\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        window._sidebar.expandAll()
+        mime = note_mime("動かす.md")
+        self.move_over(window, self.point_of(window, Filter(FilterKind.TAG, tag="仕事")), mime)
+        assert window._sidebar.drop_target() is None
+
+    def test_離れると消える(self, window) -> None:
+        """**落とさずに戻したときに塗りが残らない。** 残ると、次に開いた
+        ときまで「そこへ入る」と言い続ける。"""
+        point = self.prepared(window)
+        mime = note_mime("動かす.md")
+        self.move_over(window, point, mime)
+        window._sidebar.dragLeaveEvent(QDragLeaveEvent())
+        assert window._sidebar.drop_target() is None
+
+    def test_落としたら消える(self, window) -> None:
+        point = self.prepared(window)
+        event, _mime = drop_at(window._sidebar, note_mime("動かす.md"), point)
+        window._sidebar.dropEvent(event)
+        assert window._sidebar.drop_target() is None

@@ -9,8 +9,14 @@
 from dataclasses import dataclass, field
 from enum import Enum, auto
 
-from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QFontMetrics, QStandardItem, QStandardItemModel
+from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QSize, Qt, Signal
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QFontMetrics,
+    QStandardItem,
+    QStandardItemModel,
+)
 from PySide6.QtWidgets import QTreeView, QWidget
 
 from hitofude.config import LineSpacing
@@ -175,6 +181,7 @@ class Sidebar(QTreeView):
         self._theme = theme
         self._counts: list[TagCount] = []
         self._folders: list[FolderCount] = []
+        self._drop_index: QPersistentModelIndex | None = None
         self._saved_searches: list[tuple[str, str]] = []
         self._row_padding = ROW_PADDING
         self._model = QStandardItemModel(self)
@@ -271,6 +278,7 @@ class Sidebar(QTreeView):
 
     def _rebuild(self, counts: list[TagCount]) -> None:
         collapsed = self._collapsed_filters()
+        self._drop_index = None  # 行ごと作り直すので、塗る相手も持ち越さない
         self._model.clear()
         root = self._model.invisibleRootItem()
 
@@ -394,21 +402,66 @@ class Sidebar(QTreeView):
             return False
         return self._drop_folder(event.position().toPoint()) is not None
 
+    def drop_target(self) -> Filter | None:
+        """今ドラッグが乗っているフォルダ。乗っていなければ None。"""
+        if self._drop_index is None or not self._drop_index.isValid():
+            return None
+        return self._model.itemFromIndex(QModelIndex(self._drop_index)).data(_FILTER_ROLE)
+
+    def _mark_drop(self, position) -> None:
+        """落とす先の行を塗る（ユーザー要望）。
+
+        **受けるかどうかは矢印の形でしか分からなかった。** 行の高さは
+        26px ほどしかないので、どのフォルダに入るかは落とすまで分からず、
+        ひとつ上のフォルダへ入ってしまう。Finder と同じく入る先を塗る。
+        """
+        index = self.indexAt(position) if position is not None else None
+        if index is not None and not self._acceptable_index(index):
+            index = None
+        if index is not None and self._drop_index is not None and index == self._drop_index:
+            return
+
+        self._paint_drop(self._drop_index, marked=False)
+        self._drop_index = QPersistentModelIndex(index) if index is not None else None
+        self._paint_drop(self._drop_index, marked=True)
+
+    def _acceptable_index(self, index) -> bool:
+        target = index.data(_FILTER_ROLE) if index.isValid() else None
+        return target is not None and target.kind is FilterKind.FOLDER
+
+    def _paint_drop(self, index, *, marked: bool) -> None:
+        # 組み直し（refresh）を挟むと行そのものが消えている
+        if index is None or not index.isValid():
+            return
+        item = self._model.itemFromIndex(QModelIndex(index))
+        if item is None:
+            return
+        item.setBackground(QBrush(QColor(self._theme.selection_background)) if marked else QBrush())
+
     def dragEnterEvent(self, event) -> None:
         if self._acceptable(event):
+            self._mark_drop(event.position().toPoint())
             event.acceptProposedAction()
             return
         event.ignore()
 
     def dragMoveEvent(self, event) -> None:
         if self._acceptable(event):
+            self._mark_drop(event.position().toPoint())
             event.acceptProposedAction()
             return
+        self._mark_drop(None)  # 受けない行へ滑らせたら塗りも消す
         event.ignore()
+
+    def dragLeaveEvent(self, event) -> None:
+        """**落とさずに戻したときに塗りを残さない。**"""
+        self._mark_drop(None)
+        super().dragLeaveEvent(event)
 
     def dropEvent(self, event) -> None:
         relative = dropped_note(event.mimeData())
         folder = self._drop_folder(event.position().toPoint())
+        self._mark_drop(None)
         if relative is None or folder is None:
             event.ignore()
             return
