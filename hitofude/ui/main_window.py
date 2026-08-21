@@ -38,6 +38,7 @@ from hitofude.config import (
     Config,
 )
 from hitofude.core import frontmatter, searchquery, textpos
+from hitofude.core import llm as llm_module
 from hitofude.core.activation import ALLOWED_SCHEMES
 from hitofude.core.document import Note
 from hitofude.core.outline import headings
@@ -60,12 +61,18 @@ from hitofude.storage.vault import (
 )
 from hitofude.storage.watcher import ChangeKind, VaultWatcher
 from hitofude.theme import ThemeColors, ThemeMode
+from hitofude.ui.assistant_pane import AssistantPane
 from hitofude.ui.backlink_bar import Backlink
 from hitofude.ui.editor_pane import EditorPane
 from hitofude.ui.export_actions import ExportActions
 from hitofude.ui.history_dialog import HistoryDialog
 from hitofude.ui.icons import Glyph, glyph_icon
-from hitofude.ui.index_sync import IndexSyncTask, SyncReporter
+from hitofude.ui.index_sync import (
+    AssistantReporter,
+    AssistantTask,
+    IndexSyncTask,
+    SyncReporter,
+)
 from hitofude.ui.menus import build_gear_menu, build_menus
 from hitofude.ui.note_actions import NoteActions
 from hitofude.ui.note_list import NoteListView
@@ -230,11 +237,21 @@ class MainWindow(QMainWindow):
         self._outline.heading_activated.connect(self.jump_to_line)
         self._outline.hide()
 
+        # 手元の LLM の答え（L-1 / ADR-0025）。**本文の右**。アウトラインと
+        # 同じ理由で、左に寄せると本文が押し出される
+        self._assistant = AssistantPane(theme=theme)
+        self._assistant.hide()
+        self._assistant.requested.connect(self.ask_assistant)
+        self._assistant.stopped.connect(self.stop_assistant)
+        self._llm = llm_module.LocalLLM()
+        self._assistant_stop = False
+
         self._splitter = PaneSplitter(theme.rule)
         self._splitter.addWidget(self._sidebar)
         self._splitter.addWidget(self._list_pane)
         self._splitter.addWidget(self._pane)
         self._splitter.addWidget(self._outline)
+        self._splitter.addWidget(self._assistant)
         self._splitter.setStretchFactor(2, 1)
         self._splitter.setChildrenCollapsible(False)
 
@@ -368,6 +385,11 @@ class MainWindow(QMainWindow):
         self._splitter.set_pane_visible(
             self._splitter.indexOf(self._outline), self._config.outline_visible
         )
+        self._splitter.set_pane_visible(
+            self._splitter.indexOf(self._assistant), self._config.assistant_visible
+        )
+        if self._config.assistant_visible:
+            self._assistant.set_available(self._llm.available())
         self._pane.toolbar.set_outline_checked(self._config.outline_visible)
         self._list_pane.setVisible(self._config.note_list_visible)
         self._pane.set_toolbar_visible(self._config.toolbar_visible)
@@ -1164,6 +1186,61 @@ class MainWindow(QMainWindow):
         if showing:
             self._update_outline()
 
+    # ----------------------------------------------------- 手元の LLM（L-1）
+
+    @property
+    def assistant_pane(self) -> AssistantPane:
+        return self._assistant
+
+    def set_llm(self, client) -> None:
+        """読ませる相手を差し替える（テストと、将来の設定用）。"""
+        self._llm = client
+
+    def toggle_assistant(self) -> None:
+        """`Cmd+6`。手元の LLM の欄を開閉する（L-1 / ADR-0025）。"""
+        self.show_assistant(self._assistant.isHidden())
+
+    def show_assistant(self, showing: bool) -> None:
+        # スプリッタ経由で出し入れする（幅の退避・復元込み。アウトラインと同じ）
+        self._splitter.set_pane_visible(self._splitter.indexOf(self._assistant), showing)
+        self._config.assistant_visible = showing
+        if showing:
+            # **押してから断らない。** 開いた時点で動いているか見る
+            self._assistant.set_available(self._llm.available())
+
+    def ask_assistant(self, task: llm_module.Task) -> None:
+        """今開いているノートを読ませる（L-1）。
+
+        **渡すのは今のノートの本文だけ。** 本文は書き換えない（R1）ので、
+        答えはペインにしか出ない。生成は別スレッド（§6.6）。
+        """
+        if self._note is None or self._assistant.is_running():
+            return
+        prompt = llm_module.build_prompt(task, self._editor.toPlainText())
+        if prompt is None:
+            self._assistant.fail("本文が空です。")
+            return
+
+        self._assistant_stop = False
+        self._assistant.begin()
+        reporter = AssistantReporter(self)
+        reporter.chunk.connect(self._assistant.append)
+        reporter.finished.connect(self._assistant.finish)
+        reporter.failed.connect(self._on_assistant_failed)
+        QThreadPool.globalInstance().start(
+            AssistantTask(self._llm, prompt, reporter, lambda: self._assistant_stop)
+        )
+
+    def stop_assistant(self) -> None:
+        """待つのをやめる。**書きかけは残す**（そこまでは読める）。"""
+        self._assistant_stop = True
+        self._assistant.cancel()
+
+    def _on_assistant_failed(self, reason: str) -> None:
+        del reason  # 生の英語（Connection refused など）は画面に出さない
+        self._assistant.fail("Ollama に繋がりませんでした。動いているか確かめてください。")
+        self._assistant.set_available(self._llm.available())
+
     def history_root(self) -> Path:
         """版の置き場（ADR-0023）。`.hitofude` の中で、一覧にも検索にも出ない。"""
         return self._vault.managed_dir / "history"
@@ -1523,6 +1600,9 @@ class MainWindow(QMainWindow):
         self._pane.set_theme(colors)
         self._list_pane.set_theme(colors)
         self._sidebar.set_theme(colors)
+        # 右の 2 ペインが追従していなかった（ダークで白いままだった）
+        self._outline.set_theme(colors)
+        self._assistant.set_theme(colors)
         self._splitter.set_rule_color(colors.rule)
 
     # ------------------------------------------------------------------ 終了

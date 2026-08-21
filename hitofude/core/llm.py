@@ -1,0 +1,183 @@
+"""手元の LLM に読ませる（L-1 / [ADR-0025](../../docs/adr/0025-local-llm.md)）。
+
+Ollama（別プロセス）へ HTTP で頼む。**ここは Qt を知らない**（R3）し、
+ネイティブ拡張も持たない。通信の口は差し替えられるので、テストで
+モデルを動かさずに振る舞いを固定できる。
+
+**送り先は `127.0.0.1` に固定する。** 外へ出さないことがこの機能の前提で、
+設定でも変えられないようにしてある（ADR-0025 の 3）。
+"""
+
+import json
+import logging
+import urllib.error
+import urllib.request
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
+from enum import Enum
+
+from hitofude.core import frontmatter
+
+logger = logging.getLogger(__name__)
+
+HOST = "http://127.0.0.1:11434"
+"""**変えられない。** 設定に出すと「うっかり外に出す」道ができる。"""
+
+DEFAULT_MODEL = "gemma3:4b"
+"""実測で要約 1 本 12.8 秒（M4 / 32GB）。1b は日本語が壊れる（docs/ollama.md）。"""
+
+CONTEXT_TOKENS = 8192
+"""既定（多くのモデルで 4k）だと**長いノートが黙って切り捨てられる**。"""
+
+TIMEOUT_SECONDS = 120.0
+"""12b 級に長いノートを読ませても届く長さ。"""
+
+CHAR_LIMIT = 12000
+"""本文をここまでにする。日本語 4,000 字 ≈ 2,000 トークンの実測から、
+8k の文脈に指示と答えのぶんを残して収まる量（ADR-0025）。"""
+
+TRUNCATED = "\n\n（ここから先は長いので渡していません）"
+
+
+class Task(Enum):
+    SUMMARY = "summary"
+    REVIEW = "review"
+
+
+class NotRunning(RuntimeError):
+    """Ollama が動いていない。**押してから断らない**ための合図でもある。"""
+
+
+# **渡したものだけを見させる。** 知らないことを足されると、どこまでが
+# ノートに書いてあった話か分からなくなる（NotebookLM 的な使い方の肝）
+_COMMON = (
+    "あなたは日本語で答える編集者です。**渡されたノート以外の知識を使わず**、"
+    "書かれていないことは「ノートには書かれていません」と答えてください。"
+)
+
+_INSTRUCTIONS = {
+    Task.SUMMARY: "次のノートの要点を、日本語の箇条書き 3〜5 行にまとめてください。",
+    Task.REVIEW: (
+        "次のノートを読んで、直すとよい点を日本語で挙げてください。"
+        "曖昧な表現・矛盾・抜けている前提を中心に、**どの部分についてかが"
+        "分かるように**箇条書きで書いてください。"
+        "**本文は書き換えず、指摘だけ**を返してください。"
+    ),
+}
+
+
+def build_prompt(task: Task, text: str) -> str | None:
+    """ノートの本文から頼み事を組み立てる。空なら `None`。
+
+    **front matter は渡さない。** 書く人の画面に見えていないものを
+    渡すと、答えに `id:` の話が混ざる（ADR-0013 と同じ理由）。
+    """
+    body = frontmatter.split(text).body.strip()
+    if not body:
+        return None
+    return f"{_COMMON}\n\n{_INSTRUCTIONS[task]}\n\n---\n{fit(body)}\n---"
+
+
+def fit(body: str, *, limit: int = CHAR_LIMIT) -> str:
+    """長すぎる本文を切る。**切ったことを伝える。**
+
+    先頭を残す（見出しと書き出しに要点が寄る）。黙って切ると、答えが
+    尻切れになった理由が読む側から分からない。
+    """
+    if len(body) <= limit:
+        return body
+    return body[:limit] + TRUNCATED
+
+
+Transport = Callable[[str, dict | None, float], Iterable[bytes]]
+"""`(url, payload, timeout)` → 行の並び。`payload` が `None` なら GET。"""
+
+
+def _urlopen(url: str, payload: dict | None, timeout: float) -> Iterable[bytes]:
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        yield from response
+
+
+@dataclass(slots=True)
+class LocalLLM:
+    """Ollama への口。**中身の判断はしない**（プロンプトは `build_prompt`）。"""
+
+    model: str = DEFAULT_MODEL
+    transport: Transport = field(default=_urlopen)
+
+    def available(self) -> bool:
+        """使える状態か。**押す前に分かる**ようにするための口（G-3 と同じ作法）。"""
+        try:
+            self._tags()
+        except NotRunning:
+            return False
+        return True
+
+    def models(self) -> list[str]:
+        """入っているモデルの名前。動いていなければ空。"""
+        try:
+            found = self._tags()
+        except NotRunning:
+            return []
+        return [str(entry.get("name", "")) for entry in found.get("models", [])]
+
+    def generate(
+        self,
+        prompt: str,
+        *,
+        on_chunk: Callable[[str], None] | None = None,
+        should_stop: Callable[[], bool] | None = None,
+    ) -> str:
+        """答えを受け取る。**届いたぶんから知らせる。**
+
+        最初の 1 文字まで数秒かかる（読み込みだけで実測 3.6 秒）ので、
+        書き終わるのを待ってから出すと固まったように見える。
+        """
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": True,
+            "options": {"num_ctx": CONTEXT_TOKENS},
+        }
+        parts: list[str] = []
+        for line in self._request("/api/generate", payload):
+            if should_stop is not None and should_stop():
+                break
+            found = _parse(line)
+            if found is None:
+                continue
+            chunk = str(found.get("response", ""))
+            if chunk:
+                parts.append(chunk)
+                if on_chunk is not None:
+                    on_chunk(chunk)
+            if found.get("done"):
+                break
+        return "".join(parts)
+
+    # ------------------------------------------------------------------ 内部
+
+    def _tags(self) -> dict:
+        for line in self._request("/api/tags", None):
+            found = _parse(line)
+            if found is not None:
+                return found
+        return {}
+
+    def _request(self, path: str, payload: dict | None) -> Iterable[bytes]:
+        try:
+            return self.transport(f"{HOST}{path}", payload, TIMEOUT_SECONDS)
+        except (OSError, urllib.error.URLError) as error:
+            logger.info("Ollama に繋がらない: %s", error)
+            raise NotRunning(str(error)) from error
+
+
+def _parse(line: bytes | str) -> dict | None:
+    """1 行の JSON。**壊れた行で止めない**（残りが読めるなら読む）。"""
+    try:
+        found = json.loads(line)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    return found if isinstance(found, dict) else None

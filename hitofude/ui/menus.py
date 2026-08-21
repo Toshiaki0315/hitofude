@@ -128,6 +128,7 @@ def build_menus(window) -> None:
         ("書式ツールバー", "Ctrl+3", window.toggle_toolbar),
         ("バックリンク", "Ctrl+4", window.toggle_backlinks),
         ("アウトライン", "Ctrl+5", window.toggle_outline),
+        ("アシスタント", "Ctrl+6", window.toggle_assistant),
     ):
         add(view_menu, label, key, slot).setCheckable(True)
     view_menu.addSeparator()
@@ -165,6 +166,7 @@ def sync_view_checks(window) -> None:
         "書式ツールバー": window._pane.toolbar_visible(),
         "バックリンク": window._pane.backlinks.expanded(),
         "アウトライン": not window.outline_pane.isHidden(),
+        "アシスタント": not window.assistant_pane.isHidden(),
         "ソースモード（Raw）": window._editor.source_mode,
         "フォーカスモード": window._editor.focus_mode,
         "タイプライタモード": window._editor.typewriter_mode,
@@ -183,7 +185,14 @@ def build_gear_menu(window) -> QMenu:
     menu.aboutToShow.connect(lambda: sync_view_checks(window))
     groups = (
         ("環境設定…",),
-        ("サイドバー", "ノートリスト", "書式ツールバー", "バックリンク", "アウトライン"),
+        (
+            "サイドバー",
+            "ノートリスト",
+            "書式ツールバー",
+            "バックリンク",
+            "アウトライン",
+            "アシスタント",
+        ),
         ("ソースモード（Raw）", "フォーカスモード", "タイプライタモード"),
         ("ショートカット一覧", f"{APP_NAME} について"),
     )

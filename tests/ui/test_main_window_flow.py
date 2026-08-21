@@ -26,13 +26,15 @@ def window(window):
 
 class TestLayout:
     def test_既定は3ペインに見える(self, window) -> None:
-        """アウトライン（ADR-0022）を足したので中身は 4 つ。**既定では
-        隠れている**ので、見た目は spec §5.1 の 3 ペインのまま。"""
+        """アウトライン（ADR-0022）とアシスタント（ADR-0025）を足したので
+        中身は 5 つ。**どちらも既定では隠れている**ので、見た目は
+        spec §5.1 の 3 ペインのまま。"""
         splitter = window.centralWidget()
         assert isinstance(splitter, QSplitter)
-        assert splitter.count() == 4
+        assert splitter.count() == 5
         assert splitter.widget(3).isHidden() is True
-        assert sum(not splitter.widget(i).isHidden() for i in range(4)) == 3
+        assert splitter.widget(4).isHidden() is True
+        assert sum(not splitter.widget(i).isHidden() for i in range(5)) == 3
 
     def test_並びはサイドバーリストエディタ(self, window) -> None:
         splitter = window.centralWidget()

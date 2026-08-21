@@ -84,3 +84,43 @@ class StatsTask(QRunnable):
             logger.exception("文字数を数えられなかった")
             return
         self._reporter.counted.emit(self._token, result)
+
+
+class AssistantReporter(QObject):
+    """生成の途中経過を Qt スレッドへ渡す口（L-1 / ADR-0025）。"""
+
+    chunk = Signal(str)
+    finished = Signal()
+    failed = Signal(str)
+
+
+class AssistantTask(QRunnable):
+    """手元の LLM に読ませる（L-1 / ADR-0025）。
+
+    **打鍵の経路に入れない**（§6.6）。最初の 1 文字まで実測 5.4 秒、
+    答え 1 本で 11 秒かかる（M4 / gemma3:4b）ので、Qt スレッドで待つと
+    その間ずっと固まる。
+
+    **ここへ来るのはただの文字列。** ワーカーからウィジェットには触らない
+    （`StatsTask` と同じ約束）。
+    """
+
+    def __init__(self, client, prompt: str, reporter: AssistantReporter, should_stop) -> None:
+        super().__init__()
+        self._client = client
+        self._prompt = prompt
+        self._reporter = reporter
+        self._should_stop = should_stop
+
+    def run(self) -> None:
+        try:
+            self._client.generate(
+                self._prompt,
+                on_chunk=self._reporter.chunk.emit,
+                should_stop=self._should_stop,
+            )
+        except Exception as error:  # NotRunning も、途中で落ちた場合も
+            logger.info("手元の LLM に読ませられなかった: %s", error)
+            self._reporter.failed.emit(str(error))
+            return
+        self._reporter.finished.emit()

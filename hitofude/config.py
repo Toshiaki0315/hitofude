@@ -90,6 +90,7 @@ _NOTE_LIST = "layout/note_list_visible"
 _TOOLBAR = "layout/toolbar_visible"
 _BACKLINKS = "layout/backlinks_expanded"
 _OUTLINE = "layout/outline_visible"
+_ASSISTANT = "layout/assistant_visible"
 _TAB_WIDTH = "editor/tab_width"
 _SORT_ORDER = "list/sort_order"
 _GEOMETRY = "layout/geometry"
@@ -293,6 +294,18 @@ class Config:
     @outline_visible.setter
     def outline_visible(self, value: bool) -> None:
         self.settings.setValue(_OUTLINE, bool(value))
+
+    @property
+    def assistant_visible(self) -> bool:
+        """手元の LLM の欄を出すか（L-1）。**既定は出さない。**
+
+        画面を勝手に狭くしない。要る人が `Cmd+6` で開く（アウトラインと同じ）。
+        """
+        return self.settings.value(_ASSISTANT, False, type=bool)
+
+    @assistant_visible.setter
+    def assistant_visible(self, value: bool) -> None:
+        self.settings.setValue(_ASSISTANT, bool(value))
 
     @property
     def toolbar_visible(self) -> bool:
