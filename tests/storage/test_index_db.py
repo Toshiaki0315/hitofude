@@ -826,3 +826,33 @@ class TestFolderRangeQuery:
             ("仕事/", "仕事0"),
         ).fetchall()
         assert any("SEARCH" in row["detail"] for row in plan)
+
+
+class TestNotesMatching:
+    """保存した検索の中身を一覧の行として引く（K-4）。"""
+
+    def seed(self, db, vault):
+        for title, body in (
+            ("仕事の予算", "来期の予算を決める\n\n#仕事"),
+            ("私用の予算", "旅行の予算\n\n#私用"),
+            ("仕事の雑務", "備品の発注\n\n#仕事"),
+        ):
+            note = vault.create(title, f"# {title}\n\n{body}\n")
+            db.upsert_note(note, vault.root)
+
+    def test_タグと言葉で絞れる(self, db, vault) -> None:
+        self.seed(db, vault)
+        rows = db.notes_matching(text="予算", tags=("仕事",))
+        assert [row.title for row in rows] == ["仕事の予算"]
+
+    def test_絞り込みだけでも引ける(self, db, vault) -> None:
+        self.seed(db, vault)
+        rows = db.notes_matching(text="", tags=("仕事",))
+        assert {row.title for row in rows} == {"仕事の予算", "仕事の雑務"}
+
+    def test_ピン留めが先頭に来る(self, db, vault) -> None:
+        self.seed(db, vault)
+        pinned = vault.set_pinned(vault.root / "仕事の雑務.md", True)
+        db.upsert_note(pinned, vault.root)
+        rows = db.notes_matching(text="", tags=("仕事",))
+        assert rows[0].title == "仕事の雑務"

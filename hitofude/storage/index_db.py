@@ -117,6 +117,11 @@ class NoteRow:
     pinned: bool
 
 
+# 保存した検索が一覧に出す最大件数。SQLite の IN 句の既定上限
+# （999 変数）より十分下に置く
+_MATCH_LIMIT = 500
+
+
 @dataclass(frozen=True, slots=True)
 class SearchHit:
     id: str
@@ -488,6 +493,49 @@ class IndexDb:
             ORDER BY {_order_by(order)}
             """,
             (prefix, upper),
+        )
+        return [_to_row(row) for row in rows]
+
+    def notes_matching(
+        self,
+        *,
+        text: str,
+        tags: Sequence[str] = (),
+        after: "date | None" = None,
+        before: "date | None" = None,
+        order: "SortOrder" = SortOrder.MODIFIED,
+    ) -> list[NoteRow]:
+        """検索式に合うノートを一覧の行として返す（K-4 / 保存した検索）。
+
+        当たりの判定は全文検索（`search`）と同じ。並びは一覧と同じ
+        （ピン留めが先頭）。**件数の上限は設けない**（一覧なので、
+        パレットの 50 件とは役目が違う）。
+        """
+        if not text:
+            clause, tag_params = self._tag_clause(tags)
+            date_clause, date_params = self._date_clause(after, before)
+            rows = self._connection.execute(
+                f"""
+                SELECT * FROM notes
+                WHERE trashed = 0{clause}{date_clause}
+                ORDER BY {_order_by(order)}
+                """,
+                (*tag_params, *date_params),
+            )
+            return [_to_row(row) for row in rows]
+
+        hits = self.search(text, tags=tags, after=after, before=before, limit=_MATCH_LIMIT)
+        if not hits:
+            return []
+        ids = [hit.id for hit in hits]
+        marks = ", ".join("?" for _ in ids)
+        rows = self._connection.execute(
+            f"""
+            SELECT * FROM notes
+            WHERE trashed = 0 AND id IN ({marks})
+            ORDER BY {_order_by(order)}
+            """,
+            ids,
         )
         return [_to_row(row) for row in rows]
 

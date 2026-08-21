@@ -242,3 +242,21 @@ class TestContentWidth:
         assert CONTENT_WIDTH_PIXELS[ContentWidth.STANDARD] == 720
         assert CONTENT_WIDTH_PIXELS[ContentWidth.WIDE] == 880
         assert CONTENT_WIDTH_PIXELS[ContentWidth.FULL] == 0  # 0 = 窓幅いっぱい
+
+
+class TestSavedSearches:
+    """保存した検索（K-4）。QSettings に JSON で持つ（R9 に触れない）。"""
+
+    def test_既定は空(self, config) -> None:
+        assert config.saved_searches == []
+
+    def test_保存して読み戻せる(self, config) -> None:
+        from hitofude.config import SavedSearch
+
+        config.saved_searches = [SavedSearch(name="今月の仕事", query="#仕事 after:2026-08-01")]
+        found = config.saved_searches
+        assert found == [SavedSearch(name="今月の仕事", query="#仕事 after:2026-08-01")]
+
+    def test_壊れた値は空に戻す(self, config) -> None:
+        config.settings.setValue("sidebar/saved_searches", "{壊れたJSON")
+        assert config.saved_searches == []

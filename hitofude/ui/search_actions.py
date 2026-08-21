@@ -8,6 +8,8 @@
 
 from pathlib import Path
 
+from PySide6.QtWidgets import QInputDialog
+
 from hitofude.core import searchquery
 from hitofude.core.outline import headings
 from hitofude.core.search import matching_line
@@ -41,6 +43,36 @@ class SearchActions:
         palette = self._make_palette("ノートを開く…")
         palette.set_provider(self._quick_open_items)
         palette.open_with()
+
+    def save_search(self) -> bool:
+        """検索式に名前を付けてサイドバーへ置く（K-4）。保存したら True。
+
+        式 → 名前の順で聞く。名前の既定は式そのもの（短い式なら
+        そのまま通せる）。同じ名前は上書き（検索式の更新に使う）。
+        """
+        window = self._window
+        query, accepted = QInputDialog.getText(
+            window,
+            "検索を保存",
+            "検索式（#タグ / after: / before: と言葉）",
+            text=self._search_query,
+        )
+        if not accepted or not query.strip():
+            return False
+        name, accepted = QInputDialog.getText(
+            window, "検索を保存", "サイドバーに出す名前", text=query.strip()
+        )
+        if not accepted or not name.strip():
+            return False
+
+        from hitofude.config import SavedSearch
+
+        entry = SavedSearch(name=name.strip(), query=query.strip())
+        kept = [found for found in window._config.saved_searches if found.name != entry.name]
+        window._config.saved_searches = [*kept, entry]
+        window.reload_saved_searches()
+        window.notify(f"検索「{entry.name}」を保存しました")
+        return True
 
     def full_text_search(self) -> None:
         """`Cmd+Shift+F`。本文を検索する（spec §5.4）。

@@ -44,6 +44,7 @@ def padding_for(spacing: LineSpacing) -> int:
 
 TAGS_LABEL = "タグ"
 FOLDERS_LABEL = "フォルダ"
+SEARCHES_LABEL = "検索"
 
 _FILTER_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 
@@ -54,7 +55,10 @@ class FilterKind(Enum):
     TRASH = auto()
     TAG = auto()
     FOLDER = auto()
-    """手で作ったサブフォルダ（K-2）。**見せるだけ**で、作る・動かすはしない。"""
+    """手で作ったサブフォルダ（K-2）。"""
+
+    SEARCH = auto()
+    """保存した検索（K-4）。名前を付けた検索式で束ねる。"""
 
 
 _GLYPHS = {
@@ -63,6 +67,7 @@ _GLYPHS = {
     FilterKind.TRASH: Glyph.TRASH,
     FilterKind.TAG: Glyph.TAG,
     FilterKind.FOLDER: Glyph.FOLDER,
+    FilterKind.SEARCH: Glyph.SEARCH,
 }
 
 
@@ -73,6 +78,12 @@ class Filter:
     folder: str | None = None
     """`FilterKind.FOLDER` のときの相対パス（`仕事/2026`）。"""
 
+    name: str | None = None
+    """`FilterKind.SEARCH` のときの表示名（K-4）。"""
+
+    query: str | None = None
+    """`FilterKind.SEARCH` のときの検索式（`#仕事 after:2026-08-01`）。"""
+
     def __post_init__(self) -> None:
         # 中身の無い FOLDER/TAG は、ラベルが「None/」になり一覧が黙って
         # 空になる（コードレビュー指摘）。作る時点で大声で失敗させる
@@ -80,6 +91,8 @@ class Filter:
             raise ValueError("FOLDER のフィルタには folder が要る")
         if self.kind is FilterKind.TAG and not self.tag:
             raise ValueError("TAG のフィルタには tag が要る")
+        if self.kind is FilterKind.SEARCH and (not self.name or self.query is None):
+            raise ValueError("SEARCH のフィルタには name と query が要る")
 
     @property
     def label(self) -> str:
@@ -92,6 +105,8 @@ class Filter:
                 return TRASH_LABEL
             case FilterKind.TAG:
                 return f"#{self.tag}"
+            case FilterKind.SEARCH:
+                return self.name or ""
             case FilterKind.FOLDER:
                 return f"{self.folder}/"
 
@@ -149,6 +164,7 @@ class Sidebar(QTreeView):
         self._theme = theme
         self._counts: list[TagCount] = []
         self._folders: list[FolderCount] = []
+        self._saved_searches: list[tuple[str, str]] = []
         self._row_padding = ROW_PADDING
         self._model = QStandardItemModel(self)
         self.setModel(self._model)
@@ -188,6 +204,13 @@ class Sidebar(QTreeView):
         if counts == self._folders:
             return
         self._folders = counts
+        self._apply()
+
+    def set_saved_searches(self, entries: list[tuple[str, str]]) -> None:
+        """保存した検索（K-4）。(名前, 検索式) の並び。同じなら何もしない。"""
+        if entries == self._saved_searches:
+            return
+        self._saved_searches = list(entries)
         self._apply()
 
     def set_tags(self, counts: list[TagCount]) -> None:
@@ -249,6 +272,19 @@ class Sidebar(QTreeView):
             root.appendRow(_sized(folders, height))
             for item in _folder_items(self._folders, color, height):
                 folders.appendRow(item)
+
+        if self._saved_searches:
+            searches = QStandardItem(glyph_icon(Glyph.SEARCH, color), SEARCHES_LABEL)
+            searches.setSelectable(False)
+            searches.setEditable(False)
+            root.appendRow(_sized(searches, height))
+            for name, query in self._saved_searches:
+                searches.appendRow(
+                    _sized(
+                        _make_item(name, Filter(FilterKind.SEARCH, name=name, query=query), color),
+                        height,
+                    )
+                )
 
         if counts:
             header = QStandardItem(glyph_icon(Glyph.TAG, color), TAGS_LABEL)

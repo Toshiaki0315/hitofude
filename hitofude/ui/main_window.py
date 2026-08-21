@@ -37,7 +37,7 @@ from hitofude.config import (
     MIN_POINT_SIZE,
     Config,
 )
-from hitofude.core import frontmatter, textpos
+from hitofude.core import frontmatter, searchquery, textpos
 from hitofude.core.activation import ALLOWED_SCHEMES
 from hitofude.core.document import Note
 from hitofude.core.outline import headings
@@ -273,6 +273,7 @@ class MainWindow(QMainWindow):
         self._sidebar.set_line_spacing(self._config.line_spacing)
         self._note_list.set_line_spacing(self._config.line_spacing)
         self._editor.set_content_width(CONTENT_WIDTH_PIXELS[self._config.content_width])
+        self.reload_saved_searches()
         self._sidebar.filter_changed.connect(self._on_filter_changed)
         self._sidebar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._sidebar.customContextMenuRequested.connect(self._show_sidebar_menu)
@@ -557,6 +558,16 @@ class MainWindow(QMainWindow):
                 return self._db.notes_with_tag(target.tag or "", order=order)
             case FilterKind.FOLDER:
                 return self._db.notes_in_folder(target.folder or "", order=order)
+            case FilterKind.SEARCH:
+                # 保存した検索（K-4）。当たりの判定は全文検索と同じ
+                parsed = searchquery.parse(target.query or "")
+                return self._db.notes_matching(
+                    text=parsed.text,
+                    tags=parsed.tags,
+                    after=parsed.after,
+                    before=parsed.before,
+                    order=order,
+                )
         return []
 
     def set_sort_order(self, order: SortOrder) -> None:
@@ -644,6 +655,16 @@ class MainWindow(QMainWindow):
     def move_note_to_folder(self, path: Path) -> Path | None:
         """ノートをフォルダへ移す（一覧の右クリック / K-3）。"""
         return self._notes.move_note_to_folder(path)
+
+    def reload_saved_searches(self) -> None:
+        """保存した検索（K-4）を設定から読み直してサイドバーへ。"""
+        self._sidebar.set_saved_searches(
+            [(entry.name, entry.query) for entry in self._config.saved_searches]
+        )
+
+    def save_search(self) -> bool:
+        """検索を保存する（K-4 / 検索メニュー）。"""
+        return self._search.save_search()
 
     def copy_note_link(self, path: Path) -> str:
         """`[[名前]]` をクリップボードへ入れる（一覧の右クリック）。"""

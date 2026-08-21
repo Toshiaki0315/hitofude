@@ -311,6 +311,13 @@ class NoteActions:
         「すべて」や「お気に入り」に出せる操作が無いのに空のメニューを
         出すと、押せる何かがあると誤解させる。
         """
+        if target.kind is FilterKind.SEARCH:
+            menu = QMenu(self._window)
+            apply_menu_font(menu)
+            menu.addAction("この検索を削除…").triggered.connect(
+                lambda: self.delete_saved_search(target)
+            )
+            return menu
         if target.kind is not FilterKind.TRASH:
             return None
         menu = QMenu(self._window)
@@ -321,6 +328,24 @@ class NoteActions:
         # 見せる（一覧の「ゴミ箱へ移動」がピン留め時にそうなっているのと同じ）
         action.setEnabled(bool(self.trash_entries()))
         return menu
+
+    def delete_saved_search(self, target: Filter) -> bool:
+        """保存した検索を消す（K-4）。消したら True。
+
+        検索式は作り直せるがゴミ箱を経由しないので、確認だけ挟む。
+        """
+        window = self._window
+        answer = QMessageBox.question(
+            window, "検索を削除", f"保存した検索「{target.name}」を削除しますか？"
+        )
+        if answer is not QMessageBox.StandardButton.Yes:
+            return False
+        window._config.saved_searches = [
+            found for found in window._config.saved_searches if found.name != target.name
+        ]
+        window.reload_saved_searches()
+        window.notify(f"検索「{target.name}」を削除しました")
+        return True
 
     def reveal_note(self, path: Path) -> None:
         """Finder でそのノートを選んだ状態にする（ユーザー要望）。

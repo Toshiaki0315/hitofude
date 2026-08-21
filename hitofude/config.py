@@ -8,6 +8,8 @@
 読み出しは必ず既定値へフォールバックする。
 """
 
+import json
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
@@ -16,6 +18,14 @@ from PySide6.QtCore import QByteArray, QSettings
 from hitofude.core.paths import relative_inside
 from hitofude.storage.index_db import SortOrder
 from hitofude.theme import ThemeMode
+
+
+@dataclass(frozen=True, slots=True)
+class SavedSearch:
+    """保存した検索（K-4）。名前を付けた検索式をサイドバーに置く。"""
+
+    name: str
+    query: str
 
 
 class LineSpacing(Enum):
@@ -86,6 +96,7 @@ _GEOMETRY = "layout/geometry"
 _LAST_NOTE = "session/last_note"
 _LINE_SPACING = "layout/line_spacing"
 _CONTENT_WIDTH = "editor/content_width"
+_SAVED_SEARCHES = "sidebar/saved_searches"
 
 
 class Config:
@@ -168,6 +179,25 @@ class Config:
     @content_width.setter
     def content_width(self, value: ContentWidth) -> None:
         self.settings.setValue(_CONTENT_WIDTH, value.value)
+
+    @property
+    def saved_searches(self) -> list[SavedSearch]:
+        """保存した検索（K-4）。壊れた値は空へ戻す。"""
+        raw = self.settings.value(_SAVED_SEARCHES, "[]", type=str)
+        try:
+            entries = json.loads(raw)
+            return [
+                SavedSearch(name=str(entry["name"]), query=str(entry["query"]))
+                for entry in entries
+                if isinstance(entry, dict) and entry.get("name") and "query" in entry
+            ]
+        except (ValueError, TypeError, KeyError):
+            return []
+
+    @saved_searches.setter
+    def saved_searches(self, value: list[SavedSearch]) -> None:
+        payload = [{"name": entry.name, "query": entry.query} for entry in value]
+        self.settings.setValue(_SAVED_SEARCHES, json.dumps(payload, ensure_ascii=False))
 
     @property
     def mono_family(self) -> str:

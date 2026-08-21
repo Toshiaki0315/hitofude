@@ -51,6 +51,9 @@ class Glyph(Enum):
     FOLDER = auto()
     """サブフォルダ（K-2）。**タグと見分けが付く形**にする。"""
 
+    SEARCH = auto()
+    """保存した検索（K-4）。虫めがね。"""
+
     # ------------------------------------------------- 一覧の上のボタン
 
     SORT = auto()
@@ -339,6 +342,12 @@ def _draw_quote(painter: QPainter) -> None:
     _rows(painter, rows=(20.0, 32.0, 44.0))
 
 
+def _draw_search(painter: QPainter) -> None:
+    """保存した検索。虫めがね（輪 + 柄）。"""
+    painter.drawEllipse(QRectF(16, 16, 22, 22))
+    painter.drawLine(QPointF(35, 35), QPointF(48, 48))
+
+
 def _draw_sort(painter: QPainter) -> None:
     """並び順。**上向きと下向きの矢印を並べる。**
 
@@ -381,6 +390,7 @@ def _draw_gear(painter: QPainter) -> None:
 
 _DRAW = {
     Glyph.SORT: _draw_sort,
+    Glyph.SEARCH: _draw_search,
     Glyph.NEW_NOTE: _draw_new_note,
     Glyph.OUTLINE: _draw_outline,
     Glyph.GEAR: _draw_gear,
