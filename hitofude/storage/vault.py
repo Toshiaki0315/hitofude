@@ -334,6 +334,68 @@ class Vault:
 
     # ----------------------------------------------------------------- 移動
 
+    def create_folder(self, folder: str) -> Path:
+        """フォルダを作る（ユーザー要望）。作った場所を返す。
+
+        `folder` は vault からの相対（`日報/2026`）。ADR-0024 では
+        「移動の副産物としてのみ作る」としていたが、空フォルダも
+        サイドバーに出すようにしたので、先に作って後で入れる順序も
+        通るようになった。
+
+        既にあるときは `FileExistsError`。黙って受けると「作った」の
+        知らせが嘘になる（別の場所を作ったと誤解させる）。
+        """
+        cleaned = self._folder_relative(folder)
+        if not cleaned:
+            raise ValueError("フォルダの名前が空")
+        target = self._writable_folder(self.root / cleaned)
+        if target.exists():
+            raise FileExistsError(target)
+        target.mkdir(parents=True)
+        return target
+
+    def folders(self) -> list[str]:
+        """vault の中のフォルダ（vault からの相対・名前順）。
+
+        **ディスクから引く。** 索引（ノートのパス）から作ると空フォルダが
+        見えず、「作ったのに出てこない」になる。除くものは `scan()` と
+        同じ（予約フォルダ・隠しフォルダ・外へ出るリンク）。
+        """
+        if not self.root.is_dir():
+            return []
+        found: list[str] = []
+        self._walk_folders(self.root, frozenset({self.root.resolve()}), found)
+        return sorted(found)
+
+    def _walk_folders(self, directory: Path, ancestors: frozenset[Path], found: list[str]) -> None:
+        try:
+            entries = sorted(directory.iterdir())
+        except OSError:
+            return
+        for entry in entries:
+            if not entry.is_dir():
+                continue
+            if entry.name in SKIP_DIRS or entry.name.startswith("."):
+                continue
+            if entry.is_symlink() and not self._inside(entry):
+                continue
+            real = entry.resolve()
+            if real in ancestors:
+                continue  # 祖先へ戻るリンク（`scan` と同じ理由）
+            found.append(entry.relative_to(self.root).as_posix())
+            self._walk_folders(entry, ancestors | {real}, found)
+
+    def _folder_relative(self, folder: str) -> str:
+        """受け取ったフォルダ名を vault からの相対へ整える。
+
+        **生の名前で先に弾く。** `sanitize_filename` は先頭のドットを
+        剥ぐので、後で調べると `.trash` が `trash` に化けてすり抜ける。
+        """
+        raw_parts = [part.strip() for part in folder.split("/") if part.strip()]
+        if raw_parts and (raw_parts[0] in SKIP_DIRS or raw_parts[0].startswith(".")):
+            raise ValueError(f"予約フォルダは使えない: {folder}")
+        return "/".join(sanitize_filename(part) for part in raw_parts)
+
     def move_note(self, path: Path, folder: str) -> Path:
         """ノートをフォルダへ移す（K-3 / ADR-0024）。移した先を返す。
 
@@ -347,12 +409,7 @@ class Vault:
         """
         if not self._inside(path):
             raise ValueError(f"保管フォルダの外: {path}")
-        raw_parts = [part.strip() for part in folder.split("/") if part.strip()]
-        # **生の名前で先に弾く。** sanitize は先頭のドットを剥ぐので、
-        # 後で調べると `.trash` が `trash` に化けてすり抜ける
-        if raw_parts and (raw_parts[0] in SKIP_DIRS or raw_parts[0].startswith(".")):
-            raise ValueError(f"予約フォルダには移せない: {folder}")
-        cleaned = "/".join(sanitize_filename(part) for part in raw_parts)
+        cleaned = self._folder_relative(folder)
         destination = self._writable_folder(self.root / cleaned if cleaned else self.root)
         destination.mkdir(parents=True, exist_ok=True)
 

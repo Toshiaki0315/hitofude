@@ -318,6 +318,11 @@ class NoteActions:
                 lambda: self.delete_saved_search(target)
             )
             return menu
+        if target.kind is FilterKind.FOLDER:
+            menu = QMenu(self._window)
+            apply_menu_font(menu)
+            menu.addAction("新しいフォルダ…").triggered.connect(lambda: self.create_folder(target))
+            return menu
         if target.kind is not FilterKind.TRASH:
             return None
         menu = QMenu(self._window)
@@ -328,6 +333,36 @@ class NoteActions:
         # 見せる（一覧の「ゴミ箱へ移動」がピン留め時にそうなっているのと同じ）
         action.setEnabled(bool(self.trash_entries()))
         return menu
+
+    def create_folder(self, target: Filter) -> Path | None:
+        """選んだフォルダの中に新しいフォルダを作る（ユーザー要望）。
+
+        「直下」を選んでいるときは vault 直下に作る。作ったフォルダは
+        空でもサイドバーに出る（`Vault.folders` がディスクから引く）。
+        """
+        window = self._window
+        parent = "" if target.folder in (None, ROOT_FOLDER) else target.folder
+        where = parent or "保管フォルダ直下"
+        name, accepted = QInputDialog.getText(window, "新しいフォルダ", f"{where} の中に作る名前")
+        if not accepted or not name.strip():
+            return None
+
+        relative = f"{parent}/{name.strip()}" if parent else name.strip()
+        try:
+            created = window._vault.create_folder(relative)
+        except FileExistsError:
+            window.notify(f"同じ名前のフォルダがあります: {name.strip()}")
+            return None
+        except (ValueError, OSError) as error:
+            logger.warning("フォルダを作れなかった: %s", error)
+            window.notify(f"フォルダを作れませんでした: {error}")
+            return None
+
+        window.refresh()
+        shown = created.relative_to(window._vault.root).as_posix()
+        window.notify(f"フォルダ「{shown}」を作りました")
+        logger.info("フォルダを作った: %s", shown)
+        return created
 
     def delete_saved_search(self, target: Filter) -> bool:
         """保存した検索を消す（K-4）。消したら True。

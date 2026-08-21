@@ -45,7 +45,14 @@ from hitofude.core.stats import is_huge
 from hitofude.core.wikilink import context_line, normalize, resolve
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.storage import autosave, history
-from hitofude.storage.index_db import ROOT_FOLDER, IndexDb, NoteRow, SortOrder, note_key
+from hitofude.storage.index_db import (
+    ROOT_FOLDER,
+    IndexDb,
+    NoteRow,
+    SortOrder,
+    merge_folders,
+    note_key,
+)
 from hitofude.storage.vault import (
     Vault,
     unique_path,
@@ -542,7 +549,8 @@ class MainWindow(QMainWindow):
     def refresh(self) -> None:
         """索引から一覧・フォルダ・タグツリーを引き直す。"""
         self._note_list.set_rows(self._rows_for(self._filter))
-        self._sidebar.set_folders(self._db.folder_tree())
+        # 件数は索引、存在はディスク（空フォルダも見せる。ユーザー要望）
+        self._sidebar.set_folders(merge_folders(self._db.folder_tree(), self._vault.folders()))
         self._sidebar.set_tags(self._db.tag_tree())
 
     def _rows_for(self, target: Filter) -> list[NoteRow]:
@@ -655,6 +663,10 @@ class MainWindow(QMainWindow):
     def move_note_to_folder(self, path: Path) -> Path | None:
         """ノートをフォルダへ移す（一覧の右クリック / K-3）。"""
         return self._notes.move_note_to_folder(path)
+
+    def create_folder(self, target: Filter) -> Path | None:
+        """選んだフォルダの中に新しいフォルダを作る（サイドバーの右クリック）。"""
+        return self._notes.create_folder(target)
 
     def reload_saved_searches(self) -> None:
         """保存した検索（K-4）を設定から読み直してサイドバーへ。"""

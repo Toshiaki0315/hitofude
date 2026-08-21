@@ -211,3 +211,86 @@ class TestRootEntry:
 
         target = Filter(FilterKind.FOLDER, folder=ROOT_FOLDER)
         assert target.label == "直下"
+
+
+class TestCreateFolderMenu:
+    """フォルダを右クリック → 直下に新しいフォルダ（ユーザー要望）。"""
+
+    def folder_filter(self, name="日報"):
+        from hitofude.ui.sidebar import Filter, FilterKind
+
+        return Filter(FilterKind.FOLDER, folder=name)
+
+    def root_filter(self):
+        from hitofude.storage.index_db import ROOT_FOLDER
+        from hitofude.ui.sidebar import Filter, FilterKind
+
+        return Filter(FilterKind.FOLDER, folder=ROOT_FOLDER)
+
+    def test_メニューに項目がある(self, window) -> None:
+        window.vault.create_folder("日報")
+        window.refresh()
+        menu = window.sidebar_menu_for(self.folder_filter())
+        assert menu is not None
+        assert "新しいフォルダ…" in [action.text() for action in menu.actions()]
+
+    def test_直下にも出る(self, window) -> None:
+        menu = window.sidebar_menu_for(self.root_filter())
+        assert menu is not None
+        assert "新しいフォルダ…" in [action.text() for action in menu.actions()]
+
+    def test_選んだフォルダの中に作られる(self, window, monkeypatch) -> None:
+        from hitofude.ui import note_actions as module
+
+        window.vault.create_folder("日報")
+        window.refresh()
+        monkeypatch.setattr(
+            module.QInputDialog, "getText", staticmethod(lambda *a, **k: ("2026", True))
+        )
+        created = window.create_folder(self.folder_filter())
+        assert created == window.vault.root / "日報" / "2026"
+        assert "日報/2026" in window.vault.folders()
+        assert "作りました" in window.notice()
+
+    def test_直下から作ると直下にできる(self, window, monkeypatch) -> None:
+        from hitofude.ui import note_actions as module
+
+        monkeypatch.setattr(
+            module.QInputDialog, "getText", staticmethod(lambda *a, **k: ("日報", True))
+        )
+        created = window.create_folder(self.root_filter())
+        assert created == window.vault.root / "日報"
+
+    def test_作ったフォルダは空でもサイドバーに出る(self, window, monkeypatch) -> None:
+        from hitofude.ui import note_actions as module
+
+        monkeypatch.setattr(
+            module.QInputDialog, "getText", staticmethod(lambda *a, **k: ("空っぽ", True))
+        )
+        window.create_folder(self.root_filter())
+        model = window._sidebar.model()
+        labels = []
+        for row in range(model.rowCount()):
+            item = model.item(row)
+            for child in range(item.rowCount()):
+                labels.append(item.child(child).text())
+        assert any(label.startswith("空っぽ") for label in labels)
+
+    def test_やめれば何もしない(self, window, monkeypatch) -> None:
+        from hitofude.ui import note_actions as module
+
+        monkeypatch.setattr(
+            module.QInputDialog, "getText", staticmethod(lambda *a, **k: ("", False))
+        )
+        assert window.create_folder(self.root_filter()) is None
+        assert window.vault.folders() == []
+
+    def test_同じ名前なら知らせて作らない(self, window, monkeypatch) -> None:
+        from hitofude.ui import note_actions as module
+
+        window.vault.create_folder("日報")
+        monkeypatch.setattr(
+            module.QInputDialog, "getText", staticmethod(lambda *a, **k: ("日報", True))
+        )
+        assert window.create_folder(self.root_filter()) is None
+        assert "同じ名前" in window.notice()

@@ -910,3 +910,35 @@ class TestRootFolder:
         self.seed(db, vault)
         rows = db.notes_in_folder("仕事")
         assert {row.title for row in rows} == {"中", "深い"}
+
+
+class TestMergeFolders:
+    """索引の件数とディスクのフォルダを合わせる（ユーザー要望）。
+
+    件数は索引（速い）、存在はディスク（空フォルダも見える）。
+    """
+
+    def test_空のフォルダは0件で並ぶ(self) -> None:
+        from hitofude.storage.index_db import ROOT_FOLDER, FolderCount, merge_folders
+
+        counts = [FolderCount(folder=ROOT_FOLDER, count=1), FolderCount(folder="仕事", count=2)]
+        found = merge_folders(counts, ["仕事", "空っぽ"])
+        assert [(row.folder, row.count) for row in found] == [
+            (ROOT_FOLDER, 1),
+            ("仕事", 2),
+            ("空っぽ", 0),
+        ]
+
+    def test_ルートは常に先頭(self) -> None:
+        from hitofude.storage.index_db import ROOT_FOLDER, FolderCount, merge_folders
+
+        found = merge_folders([FolderCount(folder=ROOT_FOLDER, count=0)], ["あ", "い"])
+        assert found[0].folder == ROOT_FOLDER
+
+    def test_消えたフォルダは残さない(self) -> None:
+        """索引が古くてもディスクに無いフォルダは出さない（R9: 真実はファイル）。"""
+        from hitofude.storage.index_db import ROOT_FOLDER, FolderCount, merge_folders
+
+        counts = [FolderCount(folder=ROOT_FOLDER, count=0), FolderCount(folder="消えた", count=3)]
+        found = merge_folders(counts, [])
+        assert [row.folder for row in found] == [ROOT_FOLDER]

@@ -736,6 +736,22 @@ def _like_escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def merge_folders(counts: list[FolderCount], folders: list[str]) -> list[FolderCount]:
+    """索引の件数（`folder_tree`）とディスクのフォルダ（`Vault.folders`）を合わせる。
+
+    **存在はディスクが決め、件数は索引が決める。** 索引だけを見ると
+    空フォルダが出ず「作ったのに現れない」になり、ディスクだけを見ると
+    件数が出ない。索引にあってディスクに無いものは出さない（R9: 真実は
+    ファイル側）。ルートは常に先頭。
+    """
+    known = {count.folder: count.count for count in counts}
+    found = [FolderCount(folder=ROOT_FOLDER, count=known.get(ROOT_FOLDER, 0))]
+    found.extend(
+        FolderCount(folder=folder, count=known.get(folder, 0)) for folder in sorted(folders)
+    )
+    return found
+
+
 def note_key(note: Note, root: Path) -> str:
     """front matter に `id` があればそれ、無ければ相対パスから作る。
 

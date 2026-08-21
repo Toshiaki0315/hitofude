@@ -867,3 +867,61 @@ class TestTrashKeepsFolder:
         trashed = vault.trash(path)
         vault.restore(trashed)
         assert not (vault.trash_dir / "仕事").exists()
+
+
+class TestCreateFolder:
+    """フォルダを作る（ユーザー要望。ADR-0024 の「移動の副産物としてのみ」を広げる）。"""
+
+    def test_直下に作れる(self, vault) -> None:
+        created = vault.create_folder("日報")
+        assert created == vault.root / "日報"
+        assert created.is_dir()
+
+    def test_フォルダの中に作れる(self, vault) -> None:
+        vault.create_folder("仕事")
+        created = vault.create_folder("仕事/2026")
+        assert created == vault.root / "仕事" / "2026"
+
+    def test_名前は掃除される(self, vault) -> None:
+        created = vault.create_folder(" 日報 / 2026 ")
+        assert created == vault.root / "日報" / "2026"
+
+    def test_同じ名前があれば拒む(self, vault) -> None:
+        vault.create_folder("日報")
+        with pytest.raises(FileExistsError):
+            vault.create_folder("日報")
+
+    def test_予約フォルダは作れない(self, vault) -> None:
+        for reserved in (".trash", ".hitofude", "templates", "attachments"):
+            with pytest.raises(ValueError):
+                vault.create_folder(reserved)
+
+    def test_空の名前は拒む(self, vault) -> None:
+        with pytest.raises(ValueError):
+            vault.create_folder("   ")
+
+
+class TestFolderList:
+    """フォルダの一覧はディスクから引く（空フォルダも見せるため）。"""
+
+    def test_空のフォルダも並ぶ(self, vault) -> None:
+        vault.create_folder("空っぽ")
+        assert "空っぽ" in vault.folders()
+
+    def test_入れ子は全階層が出る(self, vault) -> None:
+        vault.create_folder("仕事/2026/期末")
+        found = vault.folders()
+        assert found == ["仕事", "仕事/2026", "仕事/2026/期末"]
+
+    def test_予約フォルダと隠しフォルダは出さない(self, vault) -> None:
+        vault.ensure_layout()
+        (vault.root / ".obsidian").mkdir(parents=True, exist_ok=True)
+        found = vault.folders()
+        for hidden in (".trash", ".hitofude", "templates", "attachments", ".obsidian"):
+            assert hidden not in found
+
+    def test_ノートが入っているフォルダも出る(self, vault) -> None:
+        path = vault.root / "仕事" / "メモ.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# メモ\n", encoding="utf-8")
+        assert "仕事" in vault.folders()
