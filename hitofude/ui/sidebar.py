@@ -439,11 +439,22 @@ class Sidebar(QTreeView):
         item.setBackground(QBrush(QColor(self._theme.selection_background)) if marked else QBrush())
 
     def dragEnterEvent(self, event) -> None:
-        if self._acceptable(event):
-            self._mark_drop(event.position().toPoint())
-            event.acceptProposedAction()
+        """入口では**中身だけ**を見る（ユーザー報告 2026-08-21）。
+
+        ここで断ると、**Qt はそれ以降 `dragMoveEvent` を送ってこない**。
+        位置まで見ていたため、サイドバーに入った場所がフォルダの行で
+        なければ（タグの上でも、ツリーの下の余白でも）そこで拒否され、
+        そのままフォルダまで運んでも受けられなかった。一覧の下の行ほど
+        斜めに入って入口が下になるので、**特定のノートだけ動かせない**
+        ように見えていた。
+
+        どのフォルダに入るかは `dragMoveEvent` と `dropEvent` が見る。
+        """
+        if dropped_note(event.mimeData()) is None:
+            event.ignore()
             return
-        event.ignore()
+        self._mark_drop(event.position().toPoint())
+        event.acceptProposedAction()
 
     def dragMoveEvent(self, event) -> None:
         if self._acceptable(event):

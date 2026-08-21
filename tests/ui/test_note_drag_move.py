@@ -272,3 +272,93 @@ class TestDropHighlight:
         event, _mime = drop_at(window._sidebar, note_mime("動かす.md"), point)
         window._sidebar.dropEvent(event)
         assert window._sidebar.drop_target() is None
+
+
+class TestEnterAnywhere:
+    """入口では位置で断らない（ユーザー報告 2026-08-21）。
+
+    **`dragEnterEvent` で断ると、Qt はそれ以降 `dragMoveEvent` を送らない。**
+    サイドバーに入った位置がフォルダの行でなければ（タグやゴミ箱の上でも、
+    行と行の隙間でも）その時点で拒否され、そこからフォルダまで運んでも
+    受けられなかった。
+
+    一覧の下の行ほどサイドバーへ斜めに入るため入口が下（タグの辺り）に
+    なり、**特定のノートだけ移動できない**ように見えていた（実機ログで
+    `受け先=None 受けた=False` の 1 行で終わっていた）。
+
+    入口は**中身**（ノートかどうか）だけで決める。位置の判断は移動中と
+    落とすときに行う。
+    """
+
+    def prepared(self, window: MainWindow):
+        window.vault.create_folder("日報")
+        note = window.vault.create("動かす", "# 動かす\n\n本文\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        note = window.vault.create("タグ付き", "# タグ付き\n\n#仕事\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        window._sidebar.expandAll()
+
+    def point_of(self, window, target: Filter) -> QPoint:
+        index = window._sidebar._find(target)
+        assert index is not None, f"{target} が見つからない"
+        return window._sidebar.visualRect(index).center()
+
+    def enter_at(self, window, point: QPoint, mime: QMimeData):
+        event = QDragEnterEvent(
+            point,
+            Qt.DropAction.MoveAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        window._sidebar.dragEnterEvent(event)
+        return event
+
+    def test_タグの上から入っても受ける(self, window) -> None:
+        self.prepared(window)
+        mime = note_mime("動かす.md")
+        point = self.point_of(window, Filter(FilterKind.TAG, tag="仕事"))
+        assert self.enter_at(window, point, mime).isAccepted()
+
+    def test_行の無いところから入っても受ける(self, window) -> None:
+        """一覧の下の行からだと、ツリーの下の余白へ入ることが多い。"""
+        self.prepared(window)
+        mime = note_mime("動かす.md")
+        bottom = QPoint(10, window._sidebar.viewport().height() - 2)
+        assert self.enter_at(window, bottom, mime).isAccepted()
+
+    def test_入ったあとフォルダへ運べば受ける(self, window) -> None:
+        self.prepared(window)
+        mime = note_mime("動かす.md")
+        self.enter_at(window, QPoint(10, window._sidebar.viewport().height() - 2), mime)
+
+        event = QDragMoveEvent(
+            self.point_of(window, Filter(FilterKind.FOLDER, folder="日報")),
+            Qt.DropAction.MoveAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        window._sidebar.dragMoveEvent(event)
+        assert event.isAccepted()
+
+    def test_ノート以外は入口で断る(self, window) -> None:
+        """**何でも受けるわけではない。** 中身の判断は入口でする。"""
+        self.prepared(window)
+        mime = QMimeData()
+        mime.setText("ただの文字")
+        point = self.point_of(window, Filter(FilterKind.FOLDER, folder="日報"))
+        assert not self.enter_at(window, point, mime).isAccepted()
+
+    def test_フォルダでないところに落としても動かさない(self, window) -> None:
+        self.prepared(window)
+        path = window.vault.root / "動かす.md"
+        event, _mime = drop_at(
+            window._sidebar,
+            note_mime("動かす.md"),
+            self.point_of(window, Filter(FilterKind.TAG, tag="仕事")),
+        )
+        window._sidebar.dropEvent(event)
+        assert path.exists()
+        assert not event.isAccepted()
