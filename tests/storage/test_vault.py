@@ -1064,3 +1064,69 @@ class TestScanSurvivesUnreadable:
         finally:
             vault.root.chmod(0o755)
         assert found == []
+
+
+class TestRenameFolder:
+    """フォルダの名前を変える（ユーザー要望 2026-08-22）。
+
+    **中身ごと動かさない。** ディレクトリの名前を変えるだけなので、
+    中のノートは 1 バイトも触らない（front matter も履歴の鍵も無傷）。
+    """
+
+    def prepared(self, vault):
+        vault.ensure_layout()
+        vault.create_folder("仕事")
+        note = vault.create("会議", "# 会議\n\n本文\n", folder=vault.root / "仕事")
+        return note
+
+    def test_名前が変わる(self, vault) -> None:
+        self.prepared(vault)
+        moved = vault.rename_folder("仕事", "業務")
+        assert moved == vault.root / "業務"
+        assert not (vault.root / "仕事").exists()
+
+    def test_中のノートはそのまま(self, vault) -> None:
+        note = self.prepared(vault)
+        before = note.path.read_text(encoding="utf-8")
+        vault.rename_folder("仕事", "業務")
+        assert (vault.root / "業務" / note.path.name).read_text(encoding="utf-8") == before
+
+    def test_親は変わらない(self, vault) -> None:
+        """**動かすのではなく名前を変える。** 深いところのフォルダも同じ。"""
+        vault.ensure_layout()
+        vault.create_folder("仕事/2026")
+        moved = vault.rename_folder("仕事/2026", "2027")
+        assert moved == vault.root / "仕事" / "2027"
+
+    def test_使えない文字は直す(self, vault) -> None:
+        self.prepared(vault)
+        moved = vault.rename_folder("仕事", "業務/2026")
+        assert moved.parent == vault.root
+        assert "/" not in moved.name
+
+    def test_空の名前は断る(self, vault) -> None:
+        self.prepared(vault)
+        with pytest.raises(ValueError):
+            vault.rename_folder("仕事", "   ")
+
+    def test_同じ名前が既にあれば断る(self, vault) -> None:
+        """**混ぜない。** 黙って中身が合流すると、どちらのノートか分からなくなる。"""
+        self.prepared(vault)
+        vault.create_folder("業務")
+        with pytest.raises(FileExistsError):
+            vault.rename_folder("仕事", "業務")
+        assert (vault.root / "仕事").is_dir()
+
+    def test_予約フォルダは変えられない(self, vault) -> None:
+        vault.ensure_layout()
+        with pytest.raises(ValueError):
+            vault.rename_folder(".trash", "ごみ")
+
+    def test_無いフォルダは断る(self, vault) -> None:
+        vault.ensure_layout()
+        with pytest.raises(ValueError):
+            vault.rename_folder("無い", "ある")
+
+    def test_同じ名前なら何もしない(self, vault) -> None:
+        self.prepared(vault)
+        assert vault.rename_folder("仕事", "仕事") == vault.root / "仕事"

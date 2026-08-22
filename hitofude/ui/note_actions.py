@@ -368,6 +368,8 @@ class NoteActions:
             )
             # **「直下」には出さない。** 保管フォルダそのものは消せない
             if target.folder != ROOT_FOLDER:
+                # **消すより先に並べる。** 直したいだけのときに削除を通らせない
+                menu.addAction("名前を変更…").triggered.connect(lambda: self.rename_folder(target))
                 menu.addAction("フォルダを削除…").triggered.connect(
                     lambda: self.delete_folder(target)
                 )
@@ -418,6 +420,52 @@ class NoteActions:
         window.notify(f"フォルダ「{shown}」を作りました")
         logger.info("フォルダを作った: %s", shown)
         return created
+
+    def rename_folder(self, target: Filter) -> Path | None:
+        """フォルダの名前を変える（ユーザー要望）。変えた先を返す。
+
+        **中身は動かさない**（`Vault.rename_folder`）が、**中のノートの
+        パスは全部変わる**。索引・一覧・開いているノート・絞り込みが
+        そろって追いつかないと、消えた場所へ自動保存が走る。
+        """
+        window = self._window
+        folder = target.folder or ""
+        current = folder.rsplit("/", 1)[-1]
+        name, accepted = QInputDialog.getText(
+            window, "フォルダの名前を変更", "新しい名前", text=current
+        )
+        if not accepted or not name.strip():
+            return None
+
+        was_open = window.current_note is not None and window.current_note.path.is_relative_to(
+            window._vault.root / folder
+        )
+        window.flush()
+        try:
+            moved = window._vault.rename_folder(folder, name)
+        except FileExistsError:
+            window.notify(f"「{name}」は同じ名前のフォルダが既にあります")
+            return None
+        except (ValueError, OSError) as error:
+            logger.warning("フォルダの名前を変えられなかった: %s", error)
+            window.notify(f"名前を変えられませんでした: {error}")
+            return None
+        if moved == window._vault.root / folder:
+            return moved  # 同じ名前。何も変わらない
+
+        # **索引を引き直す。** 中のノートのパスが全部変わっている
+        window._db.sync(window._vault)
+        renamed = str(moved.relative_to(window._vault.root))
+        if was_open and window.current_note is not None:
+            # 古いパスのまま持っていると、消えた場所へ自動保存が走る
+            window.open_and_select(moved / window.current_note.path.name)
+        if window.filter.kind is FilterKind.FOLDER and window.filter.folder == folder:
+            window.show_folder(renamed)  # 見ていたフォルダに追いつく
+        else:
+            window.refresh()
+        window.notify(f"フォルダ「{folder}」を「{renamed}」にしました")
+        logger.info("フォルダの名前を変えた: %s -> %s", folder, renamed)
+        return moved
 
     def delete_folder(self, target: Filter) -> bool:
         """空のフォルダを消す（ユーザー要望）。消したら True。

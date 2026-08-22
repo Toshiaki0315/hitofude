@@ -365,6 +365,39 @@ class Vault:
         target.mkdir(parents=True)
         return target
 
+    def rename_folder(self, folder: str, name: str) -> Path:
+        """フォルダの名前を変える（ユーザー要望）。新しい場所を返す。
+
+        **中身は触らない。** ディレクトリの名前を変えるだけなので、中の
+        ノートは 1 バイトも変わらない（front matter の id も、履歴の鍵も
+        無傷）。**親も変えない**（動かすのは「フォルダへ移動」の仕事）。
+
+        既に同じ名前があれば `FileExistsError`。黙って中身が合流すると、
+        どちらのノートだったのか分からなくなる。
+        """
+        cleaned = self._folder_relative(folder)
+        if not cleaned:
+            raise ValueError("フォルダの名前が空")
+        source = self._writable_folder(self.root / cleaned)
+        if not source.is_dir():
+            raise ValueError(f"フォルダが無い: {folder}")
+
+        # **空は先に断る。** `sanitize_filename("")` は「無題」を返すので、
+        # 通すと打ち間違いが「無題」というフォルダになる
+        typed = name.strip()
+        if not typed:
+            raise ValueError("新しい名前が空")
+        # 名前は 1 段ぶん。`/` を打たれても階層は増やさない（移動ではない）
+        new_name = sanitize_filename(typed.replace("/", "-"))
+        target = source.parent / new_name
+        if target == source:
+            return source
+        if target.exists():
+            raise FileExistsError(target)
+        self._writable_folder(target)  # 予約フォルダの名前は使わせない
+        source.rename(target)
+        return target
+
     def delete_folder(self, folder: str) -> Path:
         """フォルダを消す（ユーザー要望）。消した場所を返す。
 

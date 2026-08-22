@@ -488,3 +488,100 @@ class TestOpenInFinder:
         """メニューを開いてから Finder で消された、はありうる。"""
         ran = self.opened(window, monkeypatch, Filter(FilterKind.FOLDER, folder="消えた"))
         assert ran == []
+
+
+class TestRenameFolderMenu:
+    """フォルダの名前を変える（ユーザー要望 2026-08-22）。
+
+    **取り残さない。** 名前が変わるとノートのパスも全部変わるので、
+    索引・一覧・開いているノート・絞り込みがそろって追いつく必要がある。
+    """
+
+    def prepared(self, window):
+        window.vault.create_folder("仕事")
+        note = window.vault.create("会議", "# 会議\n\n本文\n", folder=window.vault.root / "仕事")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        return note
+
+    def target(self, folder="仕事"):
+        return Filter(FilterKind.FOLDER, folder=folder)
+
+    def labels(self, window, target=None):
+        menu = window.sidebar_menu_for(target or self.target())
+        assert menu is not None
+        try:
+            return [action.text() for action in menu.actions() if action.text()]
+        finally:
+            menu.deleteLater()
+
+    def typed(self, monkeypatch, name: str, accepted: bool = True):
+        from hitofude.ui import note_actions as module
+
+        monkeypatch.setattr(
+            module.QInputDialog, "getText", staticmethod(lambda *a, **k: (name, accepted))
+        )
+
+    def test_メニューに出る(self, window) -> None:
+        self.prepared(window)
+        assert "名前を変更…" in self.labels(window)
+
+    def test_削除の上に出る(self, window) -> None:
+        """**消すより先に並べる。** 直したいだけのときに削除を通らせない。"""
+        self.prepared(window)
+        found = self.labels(window)
+        assert found.index("名前を変更…") < found.index("フォルダを削除…")
+
+    def test_直下には出さない(self, window) -> None:
+        """保管フォルダそのものの名前は設定で変えるもの（削除も出していない）。"""
+        assert "名前を変更…" not in self.labels(window, self.target(ROOT_FOLDER))
+
+    def test_名前が変わる(self, window, monkeypatch) -> None:
+        self.prepared(window)
+        self.typed(monkeypatch, "業務")
+        window.rename_folder(self.target())
+        assert (window.vault.root / "業務").is_dir()
+        assert not (window.vault.root / "仕事").exists()
+
+    def test_取り消せば何もしない(self, window, monkeypatch) -> None:
+        self.prepared(window)
+        self.typed(monkeypatch, "業務", accepted=False)
+        window.rename_folder(self.target())
+        assert (window.vault.root / "仕事").is_dir()
+
+    def test_索引が追いつく(self, window, monkeypatch) -> None:
+        self.prepared(window)
+        self.typed(monkeypatch, "業務")
+        window.rename_folder(self.target())
+        paths = {str(row.path) for row in window.vault_index.notes()}
+        assert "業務/会議.md" in paths
+        assert "仕事/会議.md" not in paths
+
+    def test_見ていたフォルダに追いつく(self, window, monkeypatch) -> None:
+        """**名前を変えた先を見せる。** 変えた瞬間に一覧が空になると驚く。"""
+        self.prepared(window)
+        window.set_filter(self.target())
+        self.typed(monkeypatch, "業務")
+        window.rename_folder(self.target())
+        assert window.filter == self.target("業務")
+        titles = {
+            window.note_list.model().note_at(window.note_list.model().index(row, 0)).title
+            for row in range(window.note_list.model().rowCount())
+        }
+        assert titles == {"会議"}
+
+    def test_開いているノートも追いつく(self, window, monkeypatch) -> None:
+        """**古いパスへ自動保存させない**（消えた場所へ書き戻る）。"""
+        note = self.prepared(window)
+        window.open_and_select(note.path)
+        self.typed(monkeypatch, "業務")
+        window.rename_folder(self.target())
+        assert window.current_note.path == window.vault.root / "業務" / "会議.md"
+
+    def test_同じ名前があれば知らせる(self, window, monkeypatch) -> None:
+        self.prepared(window)
+        window.vault.create_folder("業務")
+        self.typed(monkeypatch, "業務")
+        window.rename_folder(self.target())
+        assert (window.vault.root / "仕事").is_dir()
+        assert "同じ名前" in window.notice() or "できません" in window.notice()

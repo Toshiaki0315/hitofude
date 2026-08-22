@@ -718,6 +718,10 @@ class MainWindow(QMainWindow):
         """選んだフォルダの中に新しいフォルダを作る（サイドバーの右クリック）。"""
         return self._notes.create_folder(target)
 
+    def rename_folder(self, target: Filter) -> Path | None:
+        """フォルダの名前を変える（サイドバーの右クリック）。実体は NoteActions。"""
+        return self._notes.rename_folder(target)
+
     def delete_folder(self, target: Filter) -> bool:
         """空のフォルダを消す（サイドバーの右クリック）。"""
         return self._notes.delete_folder(target)
