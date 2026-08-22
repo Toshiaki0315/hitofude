@@ -7,6 +7,7 @@
 固定されていること**もここで固定する。
 """
 
+import base64
 import json
 
 import pytest
@@ -229,3 +230,32 @@ class TestPack:
     def test_本数も抑える(self) -> None:
         found = llm.pack([(f"題{n}", "本文") for n in range(20)], each=100, most=5)
         assert len(found) == 5
+
+
+class TestImages:
+    """画像を渡す（ADR-0027 の 3。読み取りをここ経由でやる）。"""
+
+    def test_base64_にして載せる(self) -> None:
+        transport = FakeTransport(responses("会議メモ"))
+        found = llm.LocalLLM(transport=transport)
+        assert found.generate("読んで", images=[b"\x89PNG\r\n"]) == "会議メモ"
+        assert transport.payloads[0]["images"] == [base64.b64encode(b"\x89PNG\r\n").decode()]
+
+    def test_複数枚も順に載せる(self) -> None:
+        transport = FakeTransport(responses("あ"))
+        llm.LocalLLM(transport=transport).generate("読んで", images=[b"one", b"two"])
+        assert transport.payloads[0]["images"] == [
+            base64.b64encode(b"one").decode(),
+            base64.b64encode(b"two").decode(),
+        ]
+
+    def test_渡さなければ載せない(self) -> None:
+        """**文章だけの頼み事に空の枠を足さない**（モデルによっては読み方が変わる）。"""
+        transport = FakeTransport(responses("要点"))
+        llm.LocalLLM(transport=transport).generate("まとめて")
+        assert "images" not in transport.payloads[0]
+
+    def test_空の並びも載せない(self) -> None:
+        transport = FakeTransport(responses("要点"))
+        llm.LocalLLM(transport=transport).generate("まとめて", images=[])
+        assert "images" not in transport.payloads[0]

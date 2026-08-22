@@ -8,11 +8,12 @@ Ollama（別プロセス）へ HTTP で頼む。**ここは Qt を知らない**
 設定でも変えられないようにしてある（ADR-0025 の 3）。
 """
 
+import base64
 import json
 import logging
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -182,6 +183,7 @@ class LocalLLM:
         self,
         prompt: str,
         *,
+        images: Sequence[bytes] | None = None,
         on_chunk: Callable[[str], None] | None = None,
         should_stop: Callable[[], bool] | None = None,
     ) -> str:
@@ -189,6 +191,10 @@ class LocalLLM:
 
         最初の 1 文字まで数秒かかる（読み込みだけで実測 3.6 秒）ので、
         書き終わるのを待ってから出すと固まったように見える。
+
+        `images` は画像の中身そのまま（Ollama へは base64 で渡す）。
+        文字の読み取り（ADR-0027）がここを通る。**渡さなければ枠ごと
+        載せない** — 空の `images` を付けると読み方が変わるモデルがある。
         """
         payload = {
             "model": self.model,
@@ -196,6 +202,8 @@ class LocalLLM:
             "stream": True,
             "options": {"num_ctx": self.context},
         }
+        if images:
+            payload["images"] = [base64.b64encode(image).decode("ascii") for image in images]
         parts: list[str] = []
         for line in self._request("/api/generate", payload):
             if should_stop is not None and should_stop():

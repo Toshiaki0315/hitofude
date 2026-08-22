@@ -5,11 +5,13 @@
 テストで実物を動かさない。
 """
 
+import base64
+import json
 from pathlib import Path
 
 import pytest
 
-from hitofude.core import ocr
+from hitofude.core import llm, ocr
 
 
 class FakeRunner:
@@ -115,3 +117,26 @@ class TestCleanup:
 
     def test_3行以上の空行は畳む(self) -> None:
         assert ocr.tidy("上\n\n\n\n下") == "上\n\n下"
+
+
+class TestLlmEngineWiring:
+    """**作り物ではなく本物の `LocalLLM` を繋ぐ**（レビュー指摘）。
+
+    ここまでの試験は `images=` を持つ作り物を渡していたので、本物に
+    その引数が無いことをすり抜けていた。実測すると、設定を
+    「ローカルLLM」にした取り込みが**毎回 0 字**で返っていた。
+    """
+
+    def test_本物の口に画像を渡せる(self, image) -> None:
+        sent: list[dict] = []
+
+        def transport(url: str, payload: dict | None, timeout: float):
+            if payload is None:
+                return iter([json.dumps({"models": [{"name": "gemma3:4b"}]}).encode()])
+            sent.append(payload)
+            return iter([json.dumps({"response": "会議メモ", "done": True}).encode()])
+
+        found = ocr.LlmEngine(client=llm.LocalLLM(transport=transport))
+        assert found.available()
+        assert found.read(image) == "会議メモ"
+        assert sent[0]["images"] == [base64.b64encode(image.read_bytes()).decode()]
