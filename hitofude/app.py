@@ -8,7 +8,7 @@ from typing import cast
 # QtWebEngine（Mermaid の描画・ADR-0021）は QApplication より先に import
 # されている必要がある。忘れると WebEngine の初期化で警告や落ちが出る
 import PySide6.QtWebEngineWidgets  # noqa: F401
-from PySide6.QtCore import QLockFile, QObject, Qt, Signal
+from PySide6.QtCore import QLibraryInfo, QLockFile, QObject, Qt, QTranslator, Signal
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPalette
 from PySide6.QtWidgets import QApplication, QToolTip, QWidget
 
@@ -376,6 +376,38 @@ def apply_theme(app: QApplication, theme: ThemeColors) -> None:
     app.setPalette(palette)
 
 
+_TRANSLATORS: list[QTranslator] = []
+"""読み込んだ翻訳。**参照を持ち続ける。** Qt は所有しないので、捨てると
+その場で英語に戻る（Python が回収する）。"""
+
+# 読む順に意味がある。あとに入れたものが先に引かれるので、細かいほうを後に
+_CATALOGS = ("qt_ja", "qtbase_ja")
+
+
+def install_translations(app: QApplication) -> list[QTranslator]:
+    """Qt が出す言葉を日本語にする（ユーザー要望）。
+
+    本文の右クリックは **Qt の標準メニュー**（Undo / Cut / Paste …）で、
+    アプリの言葉と混ざって英語で出ていた。翻訳のカタログは PySide6 に
+    同梱されているので、読み込んで当てるだけでよい。
+
+    **二度読み込まない。** 設定を触るたびに呼ばれても積み上がらないよう、
+    一度入れたらそれを返す。
+    """
+    if _TRANSLATORS:
+        return _TRANSLATORS
+
+    directory = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+    for name in _CATALOGS:
+        translator = QTranslator(app)
+        if translator.load(name, directory):
+            app.installTranslator(translator)
+            _TRANSLATORS.append(translator)
+        else:
+            logger.info("翻訳を読めなかった: %s", name)
+    return _TRANSLATORS
+
+
 def create_application(argv: list[str] | None = None) -> QApplication:
     """QApplication を用意する。
 
@@ -398,6 +430,7 @@ def create_application(argv: list[str] | None = None) -> QApplication:
     app.setOrganizationDomain(ORG_DOMAIN)
     app.setApplicationVersion(__version__)
 
+    install_translations(app)
     apply_chrome_font(app)
     apply_theme(app, colors_for(ThemeMode.SYSTEM, system_is_dark=system_is_dark()))
     return app

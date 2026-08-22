@@ -454,3 +454,45 @@ class TestVaultLock:
         assert first is not None and second is not None
         first.unlock()
         second.unlock()
+
+
+class TestQtJapanese:
+    """Qt が出す言葉も日本語にする（ユーザー要望 2026-08-22）。
+
+    本文の右クリックは **Qt の標準メニュー**（Undo / Cut / Paste …）で、
+    アプリの言葉と混ざって英語で出ていた。翻訳のカタログ（`qtbase_ja.qm`）は
+    PySide6 に同梱されているので、読み込むだけでよい。
+    """
+
+    def test_カタログが同梱されている(self) -> None:
+        from pathlib import Path
+
+        from PySide6.QtCore import QLibraryInfo
+
+        found = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath))
+        assert (found / "qtbase_ja.qm").is_file()
+
+    def test_本文の右クリックが日本語(self, qapp) -> None:
+        """**Qt の言葉を直に読む。** 実際にメニューを作って確かめる。"""
+        from PySide6.QtWidgets import QPlainTextEdit
+
+        from hitofude.app import install_translations
+
+        install_translations(qapp)
+        editor = QPlainTextEdit()
+        menu = editor.createStandardContextMenu()
+        try:
+            labels = [action.text() for action in menu.actions() if action.text()]
+        finally:
+            menu.deleteLater()
+            editor.deleteLater()
+        assert any("取り消す" in label or "元に戻す" in label for label in labels), labels
+        assert not any(label.startswith("Undo") for label in labels), labels
+
+    def test_二度読み込んでも増えない(self, qapp) -> None:
+        """設定を触るたびに呼ばれても、翻訳が積み上がらない。"""
+        from hitofude.app import install_translations
+
+        first = install_translations(qapp)
+        second = install_translations(qapp)
+        assert first is second

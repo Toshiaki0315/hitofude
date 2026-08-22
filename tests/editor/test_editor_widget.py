@@ -311,3 +311,36 @@ class TestContentWidth:
         before = editor.image_width()
         editor.set_content_width(880)
         assert editor.image_width() > before
+
+
+class TestContextMenu:
+    """本文の右クリック（ユーザー要望 2026-08-22）。
+
+    Qt の標準メニューを使う（元に戻す・切り取り…）。**日本語のカタログは
+    `app.install_translations()` が当てる**が、その訳には Windows 流の
+    アクセスキー（`元に戻す(&U)`）が付いている。macOS には要らない飾りなので
+    落とす（Qt の cocoa 側も落とすが、**確かめられないものは自分で落とす**）。
+    """
+
+    def labels(self, editor) -> list[str]:
+        menu = editor.build_context_menu()
+        try:
+            return [action.text() for action in menu.actions() if action.text()]
+        finally:
+            menu.deleteLater()
+
+    def test_アクセスキーの飾りを出さない(self, editor) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        from hitofude.app import install_translations
+
+        install_translations(QApplication.instance())
+        editor.setPlainText("本文")
+        for label in self.labels(editor):
+            assert "&" not in label, label
+            assert "(" not in label.split("\t")[0], label
+
+    def test_項目は今まで通り(self, editor) -> None:
+        """**減らさない。** Qt が用意するものをそのまま使う。"""
+        editor.setPlainText("本文")
+        assert len(self.labels(editor)) >= 5

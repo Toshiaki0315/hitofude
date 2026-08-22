@@ -24,7 +24,7 @@ from PySide6.QtGui import (
     QTextBlock,
     QTextCursor,
 )
-from PySide6.QtWidgets import QListWidget, QPlainTextEdit, QTextEdit, QWidget
+from PySide6.QtWidgets import QListWidget, QMenu, QPlainTextEdit, QTextEdit, QWidget
 
 from hitofude.core import code_langs, frontmatter, notelink, search, table, tags
 from hitofude.core.activation import ActivationKind, activation_at
@@ -1093,6 +1093,26 @@ class MarkdownEditor(QPlainTextEdit):
         self._dismiss_tag_popup()
         super().focusOutEvent(event)
 
+    def build_context_menu(self) -> QMenu:
+        """本文の右クリックで出すメニュー。
+
+        中身は Qt の標準（元に戻す・切り取り…）をそのまま使う。**減らさない。**
+        訳（`qtbase_ja.qm`）には Windows 流のアクセスキー（`元に戻す(&U)`）が
+        付いているので、そこだけ落とす。macOS には要らない飾りで、
+        **Qt の cocoa 側も落とすが、確かめられないものは自分で落とす**。
+        """
+        menu = self.createStandardContextMenu()
+        for action in menu.actions():
+            text = action.text()
+            if text:
+                action.setText(_without_mnemonic(text))
+        return menu
+
+    def contextMenuEvent(self, event) -> None:
+        menu = self.build_context_menu()
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        menu.popup(event.globalPos())
+
     def set_attachment_handler(self, handler: Callable[[bytes, str], str | None] | None) -> None:
         """画像を受け取ったときの保存先を差し込む。
 
@@ -1797,3 +1817,12 @@ class MarkdownEditor(QPlainTextEdit):
         if current.left() == margin and current.right() == margin:
             return  # 同じ値を入れ直すと resize が再帰する
         self.setViewportMargins(margin, current.top(), margin, current.bottom())
+
+
+# `元に戻す(&U)` の `(&U)` と、素の `&`。Windows 流のアクセスキーで、
+# macOS には要らない
+_MNEMONIC = re.compile(r"\(&[^)]\)|&(?=\w)")
+
+
+def _without_mnemonic(text: str) -> str:
+    return _MNEMONIC.sub("", text)
