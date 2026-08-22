@@ -65,6 +65,9 @@ class Glyph(Enum):
     OUTLINE = auto()
     """アウトライン。**段差の付いた行**で入れ子を表す。"""
 
+    CLOSE = auto()
+    """閉じる（×）。枠の無い窓には OS の閉じるボタンが無い。"""
+
     GEAR = auto()
     """メニュー。歯車。"""
 
@@ -186,6 +189,12 @@ def _draw_folder(painter: QPainter) -> None:
             QPointF(8, 50),
         ]
     )
+
+
+def _draw_close(painter: QPainter) -> None:
+    """×。**線 2 本だけ**（丸で囲むと押せる範囲より大きく見える）。"""
+    painter.drawLine(QPointF(20, 20), QPointF(44, 44))
+    painter.drawLine(QPointF(44, 20), QPointF(20, 44))
 
 
 def _draw_tag(painter: QPainter) -> None:
@@ -398,6 +407,7 @@ _DRAW = {
     Glyph.PINNED: _draw_pinned,
     Glyph.TRASH: _draw_trash,
     Glyph.TAG: _draw_tag,
+    Glyph.CLOSE: _draw_close,
     Glyph.FOLDER: _draw_folder,
     Glyph.BOLD: _draw_bold,
     Glyph.ITALIC: _draw_italic,

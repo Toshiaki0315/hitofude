@@ -17,10 +17,12 @@ from PySide6.QtCore import QModelIndex, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QKeyEvent, QPainter, QTextDocument
 from PySide6.QtWidgets import (
     QDialog,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QPushButton,
     QStyledItemDelegate,
     QStyleOptionViewItem,
     QVBoxLayout,
@@ -29,8 +31,14 @@ from PySide6.QtWidgets import (
 
 from hitofude.storage.index_db import HIGHLIGHT_END, HIGHLIGHT_START
 from hitofude.theme import LIGHT, ThemeColors
+from hitofude.ui.icons import Glyph, glyph_icon
 
 MAX_RESULTS = 50
+
+# 閉じるボタン（ユーザー要望）。入力欄と同じ行に置くので、**高さは入力欄より
+# 小さく**（大きいと行が伸びて、一覧のぶんが減る）
+CLOSE_BUTTON = 24
+CLOSE_ICON = 12
 
 # 1 行の内側の余白（上下左右）。帯と文字が接しないぶん
 PADDING = 4
@@ -127,6 +135,18 @@ class Palette(QDialog):
         self._input.setPlaceholderText(placeholder)
         self._input.setClearButtonEnabled(True)
 
+        # **閉じるボタン**（ユーザー要望）。枠の無い窓なので OS の閉じる
+        # ボタンが無く、Esc を知らないと閉じられなかった
+        self._close = QPushButton(self)
+        self._close.setIcon(glyph_icon(Glyph.CLOSE, theme.muted_foreground))
+        self._close.setIconSize(QSize(CLOSE_ICON, CLOSE_ICON))
+        self._close.setFixedSize(CLOSE_BUTTON, CLOSE_BUTTON)
+        self._close.setFlat(True)
+        self._close.setToolTip("閉じる（Esc）")
+        # **打つ手を止めない。** 押す気が無い人には無いのと同じ
+        self._close.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._close.clicked.connect(self.reject)
+
         self._results = QListWidget(self)
         self._results.setItemDelegate(_ResultDelegate(theme, self._results))
         self._results.setFrameShape(QListWidget.Shape.NoFrame)
@@ -137,15 +157,36 @@ class Palette(QDialog):
         self._hint.setStyleSheet(f"QLabel {{ color: {theme.muted_foreground}; padding: 2px 4px; }}")
         self._hint.hide()
 
+        # **縦を食わない。** 別の行にすると一覧が狭くなり、候補が減る
+        top = QHBoxLayout()
+        top.setContentsMargins(0, 0, 0, 0)
+        top.setSpacing(6)
+        top.addWidget(self._input, 1)
+        top.addWidget(self._close)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
-        layout.addWidget(self._input)
+        layout.addLayout(top)
         layout.addWidget(self._hint)
         layout.addWidget(self._results)
 
         self._input.textChanged.connect(self._refresh)
         self._results.itemActivated.connect(self._accept_item)
         self._input.installEventFilter(self)
+
+    # ------------------------------------------------------------------ 参照
+
+    @property
+    def close_button(self) -> QPushButton:
+        return self._close
+
+    @property
+    def input_box(self) -> QLineEdit:
+        return self._input
+
+    @property
+    def results_list(self) -> QListWidget:
+        return self._results
 
     # ------------------------------------------------------------------ 設定
 

@@ -347,3 +347,52 @@ class TestSearchJump:
 
         offset = frontmatter.body_offset(window.editor.toPlainText())
         assert window.editor.textCursor().position() == offset
+
+
+class TestCloseButton:
+    """閉じるボタン（ユーザー要望 2026-08-22）。
+
+    **Esc を知らないと閉じられなかった。** 枠の無い窓なので、OS の閉じる
+    ボタンも無い。押して閉じられる場所を用意する。
+    """
+
+    def palette(self, qtbot):
+        from hitofude.ui.quick_open import Palette
+
+        found = Palette(placeholder="本文を検索…")
+        qtbot.addWidget(found)
+        found.open_with("")
+        return found
+
+    def test_ボタンがある(self, qtbot) -> None:
+        found = self.palette(qtbot)
+        assert found.close_button.isVisible()
+
+    def test_押すと閉じる(self, qtbot) -> None:
+        found = self.palette(qtbot)
+        found.close_button.click()
+        assert not found.isVisible()
+
+    def test_Escでも閉じる(self, qtbot) -> None:
+        """**今まで通り。** 覚えている人の手を止めない。"""
+        from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
+
+        found = self.palette(qtbot)
+        QTest.keyClick(found, Qt.Key.Key_Escape)
+        assert not found.isVisible()
+
+    def test_打つ手が止まらない(self, qtbot) -> None:
+        """**フォーカスを奪わない。** 押す気が無い人には無いのと同じ。"""
+        from PySide6.QtCore import Qt
+
+        found = self.palette(qtbot)
+        assert found.close_button.focusPolicy() == Qt.FocusPolicy.NoFocus
+        # offscreen では窓が前面にならないので `hasFocus()` は使えない。
+        # **窓の中でどこを打っているか**は focusWidget が持つ
+        assert found.focusWidget() is found.input_box
+
+    def test_入力欄と同じ行に置く(self, qtbot) -> None:
+        """**縦を食わない。** 一覧が狭くなると候補が減る。"""
+        found = self.palette(qtbot)
+        assert found.close_button.y() < found.results_list.y()
