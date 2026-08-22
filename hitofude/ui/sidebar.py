@@ -51,7 +51,7 @@ TRASH_LABEL = "ゴミ箱"
 # 上下 5px で 26px 前後になり、同じ落ち着きになる
 ROW_PADDING = 5
 
-# 環境設定の「行間」から引く余白。**px は設定に出さない**（文字サイズと
+# 設定の「行間」から引く余白。**px は設定に出さない**（文字サイズと
 # 連れ立って効き方が変わる）ので、名前から実際の値をここで決める
 _PADDINGS = {
     LineSpacing.TIGHT: 2,
@@ -284,7 +284,7 @@ class Sidebar(QTreeView):
     # ------------------------------------------------------------------ 構築
 
     def set_line_spacing(self, spacing: LineSpacing) -> None:
-        """行間を変える（環境設定）。**組み直して初めて効く**ので引き直す。"""
+        """行間を変える（設定）。**組み直して初めて効く**ので引き直す。"""
         padding = padding_for(spacing)
         if padding == self._row_padding:
             return

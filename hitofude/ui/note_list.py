@@ -211,7 +211,7 @@ class _Metrics:
     date_width: int = 48
 
 
-# 環境設定の「行間」から引く値。**上下の余白は控えめに動かす。**
+# 設定の「行間」から引く値。**上下の余白は控えめに動かす。**
 # 9px は「拡大して並べて選んだ」もので、12px にすると 4 件目が画面外に出る。
 # ゆったりを選んだ人はそれを承知で選んでいるので、そこで初めて 12px にする
 _SPACINGS = {
@@ -459,7 +459,7 @@ class NoteListView(QListView):
         self.files_dropped.emit(found)
 
     def set_line_spacing(self, spacing: LineSpacing) -> None:
-        """行間を変える（環境設定）。
+        """行間を変える（設定）。
 
         `setUniformItemSizes(True)` は高さを 1 度だけ測って全行に当てる。
         **測り直させないと古い高さのまま**なので、明示的に組み直す。

@@ -84,7 +84,7 @@ def build_menus(window) -> None:
     # **キーを割り当てない。** 押し間違いでファイルが動く操作（E-5）
     add(file_menu, "使っていない添付を片づける…", "", window.cleanup_attachments)
 
-    add(file_menu, "環境設定…", "Ctrl+,", window.open_preferences)
+    add(file_menu, "設定…", "Ctrl+,", window.open_preferences)
 
     search_menu = window.menuBar().addMenu("検索")
     add(search_menu, "クイックオープン", "Ctrl+O", window.quick_open)
@@ -124,7 +124,7 @@ def build_menus(window) -> None:
     view_menu.addSeparator()
     for label, key, slot in (
         ("サイドバー", "Ctrl+1", window.toggle_sidebar),
-        ("ノートリスト", "Ctrl+2", window.toggle_note_list),
+        ("ノートの一覧", "Ctrl+2", window.toggle_note_list),
         ("書式ツールバー", "Ctrl+3", window.toggle_toolbar),
         ("バックリンク", "Ctrl+4", window.toggle_backlinks),
         ("アウトライン", "Ctrl+5", window.toggle_outline),
@@ -162,7 +162,7 @@ def sync_view_checks(window) -> None:
     """
     states = {
         "サイドバー": not window._splitter.widget(0).isHidden(),
-        "ノートリスト": not window._splitter.widget(1).isHidden(),
+        "ノートの一覧": not window._splitter.widget(1).isHidden(),
         "書式ツールバー": window._pane.toolbar_visible(),
         "バックリンク": window._pane.backlinks.expanded(),
         "アウトライン": not window.outline_pane.isHidden(),
@@ -184,10 +184,10 @@ def build_gear_menu(window) -> QMenu:
     menu = QMenu(window)
     menu.aboutToShow.connect(lambda: sync_view_checks(window))
     groups = (
-        ("環境設定…",),
+        ("設定…",),
         (
             "サイドバー",
-            "ノートリスト",
+            "ノートの一覧",
             "書式ツールバー",
             "バックリンク",
             "アウトライン",

@@ -201,7 +201,7 @@ def key_repeat_enabled() -> bool:
 def set_macos_appearance(*, dark: bool | None) -> bool:
     """アプリが明るい/暗いどちらの外観かを macOS へ伝える。`None` で解除。
 
-    **`QPalette` だけでは足りない。** ネイティブの部品（環境設定の
+    **`QPalette` だけでは足りない。** ネイティブの部品（設定の
     ポップアップボタンなど）は OS が chrome を描くので、こちらが背景色を
     指定しても明るいまま残る。そこへパレットの明るい文字色が乗って、
     白地に薄いグレーで読めなくなっていた（ユーザー報告）。
@@ -359,7 +359,7 @@ def apply_theme(app: QApplication, theme: ThemeColors) -> None:
     palette.setColor(QPalette.ColorRole.Highlight, QColor(theme.selection_background))
     palette.setColor(QPalette.ColorRole.HighlightedText, foreground)
     palette.setColor(QPalette.ColorRole.Link, QColor(theme.accent))
-    # **ボタン系も忘れない。** ネイティブのポップアップボタン（環境設定の
+    # **ボタン系も忘れない。** ネイティブのポップアップボタン（設定の
     # 「テーマ」欄など）はここで描かれる。既定のままだと明るい chrome に
     # 明るい文字が乗って読めなくなる
     palette.setColor(QPalette.ColorRole.Button, background)

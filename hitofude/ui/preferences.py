@@ -1,4 +1,4 @@
-"""環境設定（spec §5.4）。
+"""設定（spec §5.4 では「環境設定」。画面の言葉は「設定」で揃える）。
 
 フォント / テーマ / 保管フォルダ / ゴミ箱の保持日数。
 
@@ -107,7 +107,7 @@ class PreferencesDialog(QDialog):
     def __init__(self, config: Config, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._config = config
-        self.setWindowTitle("環境設定")
+        self.setWindowTitle("設定")
         self.setMinimumWidth(420)
 
         form = QFormLayout()

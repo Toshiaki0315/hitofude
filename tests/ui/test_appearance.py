@@ -202,9 +202,9 @@ class TestShortcutRegistration:
             ("Ctrl+Shift+E", "HTML で書き出す…"),
             # macOS の慣習に合わせて印刷へ譲った（C-9）。PDF はそこからも出せる
             ("Ctrl+P", "印刷…"),
-            ("Ctrl+,", "環境設定…"),
+            ("Ctrl+,", "設定…"),
             ("Ctrl+1", "サイドバー"),
-            ("Ctrl+2", "ノートリスト"),
+            ("Ctrl+2", "ノートの一覧"),
             ("Ctrl+/", "ソースモード（Raw）"),
         ],
     )

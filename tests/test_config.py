@@ -99,7 +99,7 @@ class TestTrash:
 
 class TestLayout:
     def test_ペイン幅の既定(self, config) -> None:
-        """spec §5.1: サイドバー 180px、ノートリスト 280px。"""
+        """spec §5.1: サイドバー 180px、ノートの一覧 280px。"""
         assert config.splitter_sizes[:2] == [180, 280]
 
     def test_ペイン幅を保存できる(self, config) -> None:

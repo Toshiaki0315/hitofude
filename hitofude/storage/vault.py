@@ -692,7 +692,7 @@ class Vault:
         """
         if not self._inside_templates(path):
             # パスは手で編集できる。外のファイルをノートに変えさせない
-            raise ValueError(f"雛形ではないパス: {path}")
+            raise ValueError(f"テンプレートではないパス: {path}")
 
         name = title or path.stem
         body = frontmatter.split(path.read_text(encoding="utf-8")).body

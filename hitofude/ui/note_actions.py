@@ -724,7 +724,7 @@ class NoteActions:
         try:
             created = window._vault.create_from_template(path, folder=window.creation_folder())
         except (ValueError, OSError):
-            logger.warning("雛形から作れなかった: %s", path)
+            logger.warning("テンプレートから作れなかった: %s", path)
             return None
 
         window._open_created(created.note, created.cursor)

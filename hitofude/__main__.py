@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> int:
         QMessageBox.information(
             None,
             APP_NAME,
-            "このノートフォルダは既に別のウィンドウで開いています。\nそちらをお使いください。",
+            "この保管フォルダは既に別のウィンドウで開いています。\nそちらをお使いください。",
         )
         return 0
 

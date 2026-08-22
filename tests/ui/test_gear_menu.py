@@ -53,7 +53,7 @@ class TestPlacement:
 class TestMenuContents:
     def test_主要な項目が入っている(self, window) -> None:
         labels = [a.text() for a in gear_menu(window).actions() if a.text()]
-        assert "環境設定…" in labels
+        assert "設定…" in labels
         assert "サイドバー" in labels
         assert "ショートカット一覧" in labels
 
@@ -69,7 +69,7 @@ class TestViewChecks:
     """表示されているものに左側のチェックを入れる（ユーザー要望）。"""
 
     @pytest.mark.parametrize(
-        "label", ["サイドバー", "ノートリスト", "書式ツールバー", "バックリンク"]
+        "label", ["サイドバー", "ノートの一覧", "書式ツールバー", "バックリンク"]
     )
     def test_表示の項目はチェック可能(self, window, label) -> None:
         assert action(window, label).isCheckable()
@@ -77,7 +77,7 @@ class TestViewChecks:
     def test_開いた時点の状態が印になる(self, window) -> None:
         gear_menu(window).aboutToShow.emit()
         assert action(window, "サイドバー").isChecked()
-        assert action(window, "ノートリスト").isChecked()
+        assert action(window, "ノートの一覧").isChecked()
 
     def test_隠すとチェックが外れる(self, window) -> None:
         window.toggle_sidebar()
