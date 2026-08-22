@@ -132,3 +132,28 @@ class TestEmptyTrashWithFolders:
             window.vault.trash(note_in(window, "仕事", title))
         window.empty_trash()
         assert "2" in answer_yes[0]
+
+
+class TestOutsideVault:
+    """境界の外を渡されても落ちない（コードレビュー指摘の後始末）。
+
+    `Vault` が `ValueError` で止めるようになったので、**受け手も知らせて
+    終わる**必要がある。素通しにすると画面が落ちる。
+    """
+
+    def test_外のファイルは捨てない(self, window, tmp_path) -> None:
+        outside = tmp_path / "外のファイル.md"
+        outside.write_text("# 外\n", encoding="utf-8")
+        assert window.trash_note(outside) is False
+        assert outside.exists()
+
+    def test_捨てられなければ知らせる(self, window, tmp_path) -> None:
+        outside = tmp_path / "外のファイル.md"
+        outside.write_text("# 外\n", encoding="utf-8")
+        window.trash_note(outside)
+        assert window.notice() == "保管フォルダの中のノートだけ移せます"
+
+    def test_ゴミ箱の外は戻さない(self, window) -> None:
+        path = note_in(window, "仕事", "普通のノート")
+        assert window.restore_note(path) is None
+        assert path.exists()

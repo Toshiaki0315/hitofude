@@ -108,9 +108,25 @@ class NoteActions:
             return False
 
         window._watcher.suppress(path)
-        window._vault.trash(path)
+        if not self._trash_file(path):
+            return False
         window._db.remove_path(window._vault.root, path)
         window.refresh()
+        return True
+
+    def _trash_file(self, path: Path) -> bool:
+        """ゴミ箱へ移す。**保管フォルダの外なら知らせて終わる。**
+
+        `Vault` が境界で止めるようになった（レビュー指摘）ので、受け手も
+        知らせて終わる。素通しにすると画面が落ちる。
+        """
+        window = self._window
+        try:
+            window._vault.trash(path)
+        except (ValueError, OSError) as error:
+            logger.warning("ゴミ箱へ移せなかった: %s", error)
+            window.notify("保管フォルダの中のノートだけ移せます")
+            return False
         return True
 
     def restore_note(self, path: Path) -> Path | None:
@@ -122,7 +138,12 @@ class NoteActions:
         if not path.is_file():
             return None
         window._watcher.suppress(path)
-        target = window._vault.restore(path)
+        try:
+            target = window._vault.restore(path)
+        except (ValueError, OSError) as error:
+            logger.warning("戻せなかった: %s", error)
+            window.notify("ゴミ箱の中のノートだけ戻せます")
+            return None
         window._watcher.suppress(target)
         window._db.upsert_note(window._vault.read(target), window._vault.root)
         window.refresh()

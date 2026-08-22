@@ -988,3 +988,79 @@ class TestDeleteFolder:
     def test_無いフォルダは拒む(self, vault) -> None:
         with pytest.raises(ValueError):
             vault.delete_folder("存在しない")
+
+
+class TestTrashBoundary:
+    """**vault の外のファイルを動かさない**（コードレビュー指摘 / 高）。
+
+    `delete_permanently` には境界の検査があるのに、捨てる・戻すには無かった。
+    呼び出し側の誤りや、これから足す機能が**ユーザーの任意のファイルを
+    黙って移動できてしまう**。
+    """
+
+    def test_外のファイルは捨てられない(self, vault, tmp_path) -> None:
+        outside = tmp_path / "外の大事なファイル.md"
+        outside.write_text("# 大事\n", encoding="utf-8")
+        with pytest.raises(ValueError):
+            vault.trash(outside)
+        assert outside.exists(), "外のファイルが動いた"
+
+    def test_中のノートは今まで通り捨てられる(self, vault) -> None:
+        note = vault.create("捨てる", "# 捨てる\n")
+        moved = vault.trash(note.path)
+        assert moved.is_relative_to(vault.trash_dir)
+
+    def test_ゴミ箱の外からは戻せない(self, vault, tmp_path) -> None:
+        outside = tmp_path / "よそのファイル.md"
+        outside.write_text("# よそ\n", encoding="utf-8")
+        with pytest.raises(ValueError):
+            vault.restore(outside)
+        assert outside.exists(), "外のファイルが動いた"
+
+    def test_vaultの中でもゴミ箱の外からは戻せない(self, vault) -> None:
+        """**「戻す」はゴミ箱からの操作。** 普通のノートを二重に動かさない。"""
+        note = vault.create("普通のノート", "# 普通のノート\n")
+        with pytest.raises(ValueError):
+            vault.restore(note.path)
+        assert note.path.exists()
+
+    def test_ゴミ箱の中は今まで通り戻せる(self, vault) -> None:
+        note = vault.create("戻す", "# 戻す\n")
+        moved = vault.trash(note.path)
+        back = vault.restore(moved)
+        assert back.is_relative_to(vault.root)
+        assert not back.is_relative_to(vault.trash_dir)
+
+
+class TestScanSurvivesUnreadable:
+    """読めないフォルダが 1 つあっても走査を止めない（コードレビュー指摘 / 中）。
+
+    索引の同期はまるごと 1 回の処理なので、**途中で例外が出ると他の正常な
+    ノートまで索引に入らない**。`folders()` は既にディレクトリ単位で
+    握りつぶしている。走査もそれに揃える。
+    """
+
+    def test_読めないフォルダを飛ばして続ける(self, vault) -> None:
+        vault.ensure_layout()
+        good = vault.root / "読める"
+        good.mkdir()
+        (good / "ノート.md").write_text("# ノート\n", encoding="utf-8")
+        blocked = vault.root / "読めない"
+        blocked.mkdir()
+        (blocked / "隠れたノート.md").write_text("# 隠れた\n", encoding="utf-8")
+        blocked.chmod(0o000)
+        try:
+            found = [path.name for path in vault.scan()]
+        finally:
+            blocked.chmod(0o755)  # 後片づけ（消せなくなる）
+        assert "ノート.md" in found
+
+    def test_根が読めなければ空(self, vault) -> None:
+        """**落ちない。** 読めないなら 0 件として扱う。"""
+        vault.ensure_layout()
+        vault.root.chmod(0o000)
+        try:
+            found = list(vault.scan())
+        finally:
+            vault.root.chmod(0o755)
+        assert found == []

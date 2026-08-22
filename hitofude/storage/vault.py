@@ -213,7 +213,15 @@ class Vault:
         yield from self._walk(self.root, frozenset({self.root.resolve()}))
 
     def _walk(self, directory: Path, ancestors: frozenset[Path]) -> Iterator[Path]:
-        for entry in sorted(directory.iterdir()):
+        # **1 つのフォルダで走査ごと止めない**（レビュー指摘）。索引の同期は
+        # まるごと 1 回の処理なので、途中で例外が出ると他の正常なノートまで
+        # 索引に入らない（`folders()` は既にこうしている）
+        try:
+            entries = sorted(directory.iterdir())
+        except OSError:
+            logger.warning("読めないフォルダを飛ばす: %s", directory)
+            return
+        for entry in entries:
             # **保管フォルダの外へ出るリンクは辿らない。** 辿ると外のノートが
             # 索引に入り、編集やゴミ箱移動の対象になる。ゴミ箱移動はボリュームを
             # またぐこともあり、vault が自己完結しなくなる
@@ -527,10 +535,7 @@ class Vault:
         .trash/ の中に同じ階層を作れば、ファイル自身が場所を覚えている
         （真実をファイル側に置く。R1 の精神）。
         """
-        try:
-            relative = path.resolve().relative_to(self.root.resolve())
-        except (OSError, ValueError):
-            relative = Path(path.name)
+        relative = self._relative_to(path, self.root, "保管フォルダの外は捨てられない")
         target = self.trash_dir / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
@@ -542,6 +547,20 @@ class Vault:
         os.utime(target)
         return target
 
+    def _relative_to(self, path: Path, boundary: Path, message: str) -> Path:
+        """`boundary` から見た位置。**外なら動かさずに止める**（レビュー指摘）。
+
+        `delete_permanently` には境界の検査があったのに、捨てる・戻すには
+        無かった。無いと、呼び出し側の誤りや**これから足す機能が
+        ユーザーの任意のファイルを黙って移動できてしまう**。
+
+        字句上の判定ではなく実体で見る（`.trash/../大事.md` を通さない）。
+        """
+        try:
+            return path.resolve().relative_to(boundary.resolve())
+        except (OSError, ValueError) as error:
+            raise ValueError(f"{message}: {path}") from error
+
     def restore(self, path: Path) -> Path:
         """ゴミ箱から**元のフォルダへ**戻す（K-5）。
 
@@ -549,10 +568,7 @@ class Vault:
         作り直す（捨てる前には在ったのだから、戻すのに要る）。
         K-5 より前の平らなゴミ箱（.trash 直下）は今まで通り直下へ。
         """
-        try:
-            relative = path.resolve().relative_to(self.trash_dir.resolve())
-        except (OSError, ValueError):
-            relative = Path(path.name)
+        relative = self._relative_to(path, self.trash_dir, "ゴミ箱の中だけ戻せる")
         destination = self.root / relative.parent
         destination.mkdir(parents=True, exist_ok=True)
         target = unique_path(destination, path.stem, path.suffix)
