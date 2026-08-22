@@ -321,3 +321,64 @@ class TestSourcesBackground:
         from hitofude.theme import LIGHT
 
         assert LIGHT.rule.lower() in pane.related_list.styleSheet().lower()
+
+
+class TestFocus:
+    """キーボードでも辿れるようにする（ユーザー要望 2026-08-22）。
+
+    **押すだけで本文から手が離れない**ようにはしたまま、Tab では回れる
+    ようにする（macOS の作法。クリックでは奪わない）。
+    """
+
+    def test_質問欄は打てる(self, pane) -> None:
+        from PySide6.QtCore import Qt
+
+        assert pane.question_box.focusPolicy() == Qt.FocusPolicy.StrongFocus
+
+    @pytest.mark.parametrize(
+        "name", ["summary_button", "review_button", "related_button", "ask_button", "stop_button"]
+    )
+    def test_ボタンはTabで回れる(self, pane, name: str) -> None:
+        """**クリックでは奪わない。** 押した直後に本文へ打ち続けられる。"""
+        from PySide6.QtCore import Qt
+
+        assert getattr(pane, name).focusPolicy() == Qt.FocusPolicy.TabFocus
+
+    def test_一覧は素通りする(self, pane) -> None:
+        """出典・関連は押して開くもの。**Tab の道に挟むと本文が遠くなる。**"""
+        from PySide6.QtCore import Qt
+
+        assert pane.related_list.focusPolicy() == Qt.FocusPolicy.NoFocus
+
+
+class TestAskEnabled:
+    """空の質問では押せない（ユーザー要望 2026-08-22）。
+
+    **押しても何も起きないボタンを押させない**（G-3 と同じ作法）。
+    """
+
+    def test_空なら押せない(self, pane) -> None:
+        assert pane.ask_button.isEnabled() is False
+
+    def test_打てば押せる(self, pane) -> None:
+        pane.question_box.setText("予算は？")
+        assert pane.ask_button.isEnabled() is True
+
+    def test_消せばまた押せない(self, pane) -> None:
+        pane.question_box.setText("予算は？")
+        pane.question_box.clear()
+        assert pane.ask_button.isEnabled() is False
+
+    def test_空白だけは空と同じ(self, pane) -> None:
+        pane.question_box.setText("   ")
+        assert pane.ask_button.isEnabled() is False
+
+    def test_Ollamaが無ければ打っても押せない(self, pane) -> None:
+        pane.question_box.setText("予算は？")
+        pane.set_available(False)
+        assert pane.ask_button.isEnabled() is False
+
+    def test_走っている間は押せない(self, pane) -> None:
+        pane.question_box.setText("予算は？")
+        pane.begin()
+        assert pane.ask_button.isEnabled() is False

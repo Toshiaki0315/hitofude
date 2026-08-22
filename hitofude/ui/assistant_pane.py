@@ -88,8 +88,9 @@ class AssistantPane(QWidget):
         self._related = QPushButton("関連", self)
         self._stop = QPushButton("止める", self)
         for button in (self._summary, self._review, self._related, self._stop):
-            # 本文から手が離れないように（一覧のボタンと同じ作法）
-            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            # **Tab では回れる。クリックでは奪わない**（ユーザー要望 2026-08-22）。
+            # 押した直後に本文へ打ち続けられる（macOS の作法）
+            button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self._summary.clicked.connect(lambda: self.requested.emit(Task.SUMMARY))
         self._review.clicked.connect(lambda: self.requested.emit(Task.REVIEW))
         self._stop.clicked.connect(self.stopped.emit)
@@ -113,8 +114,10 @@ class AssistantPane(QWidget):
         self._question.setPlaceholderText(QUESTION_HINT)
         self._question.returnPressed.connect(self._on_question)
         self._ask = QPushButton("質問", self)
-        self._ask.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._ask.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self._ask.clicked.connect(self._on_question)
+        # **空の質問では押せない**（押しても何も起きないボタンを押させない）
+        self._question.textChanged.connect(lambda _text: self._refresh_buttons())
 
         self._output = QPlainTextEdit(self)
         self._output.setReadOnly(True)  # 直すなら本文で直す（版の履歴と同じ）
@@ -148,6 +151,17 @@ class AssistantPane(QWidget):
         layout.addWidget(self._status)
         layout.addWidget(self._notes)
         layout.addWidget(self._output, 1)
+
+        # Tab の順は**上から下・左から右**。作った順（止める が先）だと
+        # 質問欄より前に「止める」が来て、打ちに行くのに 1 回多く押す
+        for previous, following in (
+            (self._summary, self._review),
+            (self._review, self._related),
+            (self._related, self._stop),
+            (self._stop, self._question),
+            (self._question, self._ask),
+        ):
+            self.setTabOrder(previous, following)
 
         self.setMinimumWidth(ASSISTANT_MIN_WIDTH)
         self.set_theme(theme)
@@ -322,8 +336,8 @@ class AssistantPane(QWidget):
         can_ask = self._available and not self._running
         self._summary.setEnabled(can_ask)
         self._review.setEnabled(can_ask)
-        self._ask.setEnabled(can_ask)
         self._question.setEnabled(can_ask)
+        self._ask.setEnabled(can_ask and bool(self._question.text().strip()))
         # **関連は索引を引くだけ。** Ollama の有無に関係なく押せる（L-3）
         self._related.setEnabled(not self._running)
         self._stop.setEnabled(self._running)
