@@ -272,3 +272,121 @@ class TestHybridPdf:
         )
         found = importer.to_markdown(self.pdf(tmp_path), ocr=FakeOcr("絵から読んだ"))
         assert "絵から読んだ" in found
+
+
+class TestPdfImages:
+    """PDF の中の画像を取り込む（ユーザー要望 2026-08-23）。
+
+    **図が消えるのは痛い。** 文字と図が同じページにあると、これまでは
+    文字だけが残っていた。PowerPoint の取り込みと同じく `attachments/` へ
+    置いて `![](…)` を入れる。
+
+    **位置は復元できない**（pypdf はページ単位でしか教えない）ので、
+    そのページの本文の**後ろにまとめて置く**。
+    """
+
+    def test_小さい絵は捨てる(self) -> None:
+        """ロゴ・罫線の飾り・透明の詰め物まで拾ってしまう。"""
+        from hitofude.editor.importer import MIN_IMAGE_SIDE, worth_keeping
+
+        assert worth_keeping(width=MIN_IMAGE_SIDE, height=MIN_IMAGE_SIDE) is True
+        assert worth_keeping(width=MIN_IMAGE_SIDE - 1, height=500) is False
+        assert worth_keeping(width=500, height=MIN_IMAGE_SIDE - 1) is False
+
+    def test_同じ絵は一度だけ(self) -> None:
+        """**各ページのロゴを何枚も貼らない。** 同じ中身は 1 回で足りる。"""
+        from hitofude.editor.importer import pick_images
+
+        found = pick_images(
+            [
+                ("a.jpg", b"logo", 400, 400),
+                ("b.jpg", b"logo", 400, 400),
+                ("c.jpg", b"figure", 400, 400),
+            ]
+        )
+        assert [name for name, _data in found] == ["a.jpg", "c.jpg"]
+
+    def test_多すぎる絵は打ち切る(self) -> None:
+        """地紋の入った資料は 1 ページに何十枚も持っている。"""
+        from hitofude.editor.importer import MAX_IMAGES, pick_images
+
+        many = [(f"{n}.jpg", str(n).encode(), 400, 400) for n in range(MAX_IMAGES + 10)]
+        assert len(pick_images(many)) == MAX_IMAGES
+
+    def test_ページの本文の後ろに置く(self, tmp_path, monkeypatch) -> None:
+        from hitofude.editor import importer
+
+        monkeypatch.setattr(
+            importer,
+            "pdf_pages",
+            lambda _p: ["1 ページ目の本文です。読み取りに回らない長さにしてあります"],
+        )
+        monkeypatch.setattr(
+            importer, "pdf_images", lambda _p: {0: [("図.jpg", b"binary", 400, 400)]}
+        )
+        pdf = tmp_path / "図つき.pdf"
+        pdf.write_bytes(b"%PDF-1.4")
+        found = importer.to_markdown(
+            pdf, save_image=lambda _data, _suffix: "![](attachments/図.jpg)"
+        )
+        assert found.index("1 ページ目の本文です") < found.index("![](attachments/図.jpg)")
+
+    def test_保存できなければ入れない(self, tmp_path, monkeypatch) -> None:
+        """**壊れたリンクを書かない**（`save_attachment` の約束と同じ）。"""
+        from hitofude.editor import importer
+
+        monkeypatch.setattr(
+            importer, "pdf_pages", lambda _p: ["本文が入っているページです。読み取りには回りません"]
+        )
+        monkeypatch.setattr(
+            importer, "pdf_images", lambda _p: {0: [("図.jpg", b"binary", 400, 400)]}
+        )
+        pdf = tmp_path / "図つき.pdf"
+        pdf.write_bytes(b"%PDF-1.4")
+        found = importer.to_markdown(pdf, save_image=lambda _data, _suffix: None)
+        assert "![](" not in found
+
+    def test_読み取ったページの絵は貼らない(self, tmp_path, monkeypatch) -> None:
+        """**紙の写真と読み取った文字が二重になる。** そのページの絵は
+        ページそのもの（実測: スキャン 1 ページで 108KB が付いた）。"""
+        from hitofude.editor import importer
+
+        monkeypatch.setattr(
+            importer,
+            "pdf_pages",
+            lambda _p: ["", "文字のあるページです。読み取りに回らない長さにしてあります"],
+        )
+        monkeypatch.setattr(
+            importer, "pdf_page_images", lambda _p, directory, pages=None: [directory / "1.png"]
+        )
+        monkeypatch.setattr(
+            importer,
+            "pdf_images",
+            lambda _p: {
+                0: [("紙.jpg", b"scan", 900, 1200)],
+                1: [("図.jpg", b"figure", 400, 400)],
+            },
+        )
+        pdf = tmp_path / "混在.pdf"
+        pdf.write_bytes(b"%PDF-1.4")
+        saved: list[bytes] = []
+        importer.to_markdown(
+            pdf,
+            save_image=lambda data, _suffix: (saved.append(data), "![](x)")[1],
+            ocr=FakeOcr("読み取った文字"),
+        )
+        assert saved == [b"figure"], "読み取ったページの絵まで貼っている"
+
+    def test_置き場が無ければ取り出さない(self, tmp_path, monkeypatch) -> None:
+        """`save_image` を渡さない呼び方（書き出しの検査など）では触らない。"""
+        from hitofude.editor import importer
+
+        monkeypatch.setattr(
+            importer, "pdf_pages", lambda _p: ["本文が入っているページです。読み取りには回りません"]
+        )
+        asked: list = []
+        monkeypatch.setattr(importer, "pdf_images", lambda p: asked.append(p) or {})
+        pdf = tmp_path / "図つき.pdf"
+        pdf.write_bytes(b"%PDF-1.4")
+        importer.to_markdown(pdf)
+        assert asked == []

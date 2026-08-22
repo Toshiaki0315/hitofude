@@ -86,6 +86,58 @@ def pdf_page_images(path: Path, directory: Path, pages: list[int] | None = None)
     return found
 
 
+def worth_keeping(*, width: int, height: int) -> bool:
+    """取り込む価値のある大きさか。**飾りを本文に貼らない。**"""
+    return width >= MIN_IMAGE_SIDE and height >= MIN_IMAGE_SIDE
+
+
+def pick_images(found: list[tuple[str, bytes, int, int]]) -> list[tuple[str, bytes]]:
+    """取り出す絵を選ぶ（純ロジック）。`(名前, 中身, 幅, 高さ)` を受ける。
+
+    **同じ中身は 1 回だけ。** 各ページのロゴを何枚も貼らない。
+    """
+    seen: set[bytes] = set()
+    kept: list[tuple[str, bytes]] = []
+    for name, data, width, height in found:
+        if not worth_keeping(width=width, height=height) or data in seen:
+            continue
+        seen.add(data)
+        kept.append((name, data))
+        if len(kept) >= MAX_IMAGES:
+            break
+    return kept
+
+
+def pdf_images(path: Path) -> dict[int, list[tuple[str, bytes, int, int]]]:
+    """ページごとの埋め込み画像（ユーザー要望 2026-08-23）。読めなければ空。
+
+    **QtPdf には取り出す口が無い**（`render` しかない）ので `pypdf` を使う。
+    位置は分からない — pypdf はページ単位でしか教えないので、本文の
+    どこに挟まっていたかは復元できない。
+    """
+    from pypdf import PdfReader
+
+    try:
+        reader = PdfReader(str(path))
+    except Exception as error:  # 壊れた PDF・暗号化
+        logger.warning("PDF の画像を読めなかった: %s", error)
+        return {}
+
+    found: dict[int, list[tuple[str, bytes, int, int]]] = {}
+    for number, page in enumerate(reader.pages):
+        try:
+            images = [
+                (image.name, image.data, image.image.width, image.image.height)
+                for image in page.images
+            ]
+        except Exception as error:  # 1 ページの故障で全部を諦めない
+            logger.warning("%d ページ目の画像を読めなかった: %s", number + 1, error)
+            continue
+        if images:
+            found[number] = images
+    return found
+
+
 def to_markdown(path: Path, *, save_image=None, ocr=None) -> str:
     """資料 1 つを Markdown にする。読めなければ空。
 
@@ -112,13 +164,27 @@ def to_markdown(path: Path, *, save_image=None, ocr=None) -> str:
     # 呼び出し側が「読めた」と誤解して**中身の無いノート**を作ってしまう
     # **ページごとに切り分ける**（ユーザー指摘 2026-08-23）。文書ごとに
     # 見ていたので、1 ページでも文字があると絵のページが丸ごと落ちていた
-    pages = _fill_blank_pages(path, pages, reader=ocr)
+    blanks = _blank_pages(pages)
+    pages = _fill_blank_pages(path, pages, blanks, reader=ocr)
     if not any(page.strip() for page in pages):
         logger.warning("文字を取り出せなかった: %s", path)
         return ""
 
+    # **読み取ったページの絵は貼らない。** そのページの絵はページそのもので、
+    # 読み取った文字と二重になる（実測: スキャン 1 ページで 108KB が付いた）
+    pages = _attach_images(path, pages, save_image=save_image, skip=blanks)
     return imported.to_markdown(pages, title=path.stem)
 
+
+MIN_IMAGE_SIDE = 100
+"""これより小さい絵は捨てる（ユーザー要望 2026-08-23）。
+
+ロゴ・罫線の飾り・透明の詰め物まで拾ってしまう。**縦横のどちらかが
+小さければ落とす**（細長い飾り線を通さないため）。
+"""
+
+MAX_IMAGES = 30
+"""1 つの資料から取り出す絵の上限。地紋の入ったものは何十枚も持っている。"""
 
 MIN_PAGE_CHARS = 20
 """このページには文字が無い、と見なす境目（ADR-0027）。
@@ -132,13 +198,18 @@ MIN_PAGE_CHARS = 20
 """
 
 
-def _fill_blank_pages(path: Path, pages: list[str], *, reader) -> list[str]:
+def _blank_pages(pages: list[str]) -> set[int]:
+    """文字の取れなかったページ（0 始まり）。"""
+    return {number for number, page in enumerate(pages) if len(page.strip()) < MIN_PAGE_CHARS}
+
+
+def _fill_blank_pages(path: Path, pages: list[str], blank: set[int], *, reader) -> list[str]:
     """文字の取れなかったページだけ、絵から読んで埋める（ADR-0027）。
 
     **読めたページは捨てない。** 読み取りが使えなくても、文字のある
     ページはそのまま残す（読めないページのせいで全部を失わない）。
     """
-    blanks = [number for number, page in enumerate(pages) if len(page.strip()) < MIN_PAGE_CHARS]
+    blanks = sorted(blank)
     if not blanks or reader is None or not reader.available():
         if blanks:
             logger.info("読み取りが使えないので %d ページは空のまま: %s", len(blanks), path)
@@ -178,3 +249,39 @@ def _from_images(images: list[Path], *, title: str, reader) -> str:
     if not any(page.strip() for page in pages):
         return ""
     return imported.to_markdown(pages, title=title)
+
+
+def _attach_images(path: Path, pages: list[str], *, save_image, skip: set[int]) -> list[str]:
+    """ページの絵を保管フォルダへ置き、本文の**後ろに**足す。
+
+    **位置は復元できない**ので、そのページの本文の後ろにまとめる。
+    `save_image` が無ければ何もしない（書き出しの検査など、置き場が無い
+    呼び方がある）。
+    """
+    if save_image is None:
+        return pages
+
+    found = pdf_images(path)
+    if not found:
+        return pages
+
+    # **資料ぜんたいで数える。** ページごとに上限を持つと、地紋の入った
+    # 資料で結局あふれる
+    flat = [
+        (number, entry)
+        for number, entries in found.items()
+        if number not in skip
+        for entry in entries
+    ]
+    picked = pick_images([entry for _number, entry in flat])
+    kept = {name for name, _data in picked}
+
+    filled = list(pages)
+    for number, (name, data, _width, _height) in flat:
+        if name not in kept:
+            continue
+        kept.discard(name)  # 同じ中身は 1 回だけ（`pick_images` の約束）
+        markdown = save_image(data, Path(name).suffix or ".png")
+        if markdown:  # **壊れたリンクを書かない**（save_attachment と同じ）
+            filled[number] = f"{filled[number]}\n\n{markdown}"
+    return filled
