@@ -14,6 +14,8 @@
 | `会議メモ.png`        | 画像（読み取りに回る）                    |
 | `会議メモ.jpg`        | 同上（写真に近い圧縮）                    |
 | `会議メモ.pptx`       | PowerPoint（`pptx_import`）               |
+| `会議メモ-図つき.pdf` | 文字と図が同じページ（図は添付になる）    |
+| `会議メモ-混在.pdf`   | 1 枚目は文字・2 枚目は絵（ページごとに判断）|
 
 **作ったものは `samples/` に入れてある**（読み込みを試すのに毎回作らなくて
 よいように。ユーザー決定 2026-08-23）。中身を変えたら作り直して入れ替える。
@@ -164,6 +166,90 @@ def _draw_arrow(painter: QPainter, x: float, y: float, length: float, scale: flo
     painter.drawPolygon(head)
 
 
+def figure_image() -> QImage:
+    """棒グラフ 1 枚（ADR-0027 追記）。**文字ではなく図**を置くために作る。
+
+    文字の写った絵を置くと「読み取られるのか、添付になるのか」が
+    分からなくなるので、**読ませる意味の無い図**にしてある。
+    """
+    width, height = 520, 300
+    image = QImage(width, height, QImage.Format.Format_RGB32)
+    image.fill(QColor("white"))
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setFont(QFont("Hiragino Sans", 13))
+    painter.setPen(QColor("#333333"))
+    painter.drawText(QRectF(16, 10, width - 32, 30), int(Qt.AlignmentFlag.AlignLeft), "費用の内訳")
+    painter.drawLine(QPointF(60, height - 50), QPointF(width - 30, height - 50))
+
+    bars = [("会場費", 0.92), ("印刷費", 0.28), ("予備", 0.15)]
+    for index, (label, ratio) in enumerate(bars):
+        left = 90 + index * 130
+        bar_height = (height - 110) * ratio
+        painter.setBrush(QBrush(QColor("#2C5AA0")))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRect(QRectF(left, height - 50 - bar_height, 70, bar_height))
+        painter.setPen(QColor("#333333"))
+        painter.drawText(
+            QRectF(left - 15, height - 44, 100, 24), int(Qt.AlignmentFlag.AlignLeft), label
+        )
+    painter.end()
+    return image
+
+
+def write_pdf_with_figure(path: Path) -> None:
+    """文字と図が**同じページ**にある PDF（ADR-0027 追記）。
+
+    読み取りには回らず（文字がある）、**図だけが添付として取り込まれる**。
+    """
+    writer = QPdfWriter(str(path))
+    writer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
+    writer.setResolution(150)
+    painter = QPainter(writer)
+    view = painter.viewport()
+    scale = view.width() / PAGE_WIDTH
+    margin = 90 * scale
+
+    painter.setFont(QFont("Hiragino Sans", int(26 * scale)))
+    painter.drawText(QRectF(margin, margin, view.width() - margin * 2, 80 * scale), 0, TITLE)
+    painter.setFont(QFont("Hiragino Sans", int(17 * scale)))
+    painter.drawText(
+        QRectF(margin, margin + 90 * scale, view.width() - margin * 2, 300 * scale),
+        int(Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap),
+        PARAGRAPH + "\n\n内訳は下の図のとおり。",
+    )
+    figure = figure_image()
+    top = margin + 320 * scale
+    painter.drawImage(
+        QRectF(margin, top, figure.width() * scale * 1.6, figure.height() * scale * 1.6), figure
+    )
+    painter.end()
+
+
+def write_mixed_pdf(path: Path, image: QImage) -> None:
+    """1 枚目は文字、2 枚目は絵だけ（ページごとの切り分けを見るため）。"""
+    writer = QPdfWriter(str(path))
+    writer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
+    writer.setResolution(150)
+    painter = QPainter(writer)
+    view = painter.viewport()
+    scale = view.width() / PAGE_WIDTH
+    margin = 90 * scale
+
+    painter.setFont(QFont("Hiragino Sans", int(17 * scale)))
+    painter.drawText(
+        QRectF(margin, margin, view.width() - margin * 2, 400 * scale),
+        int(Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap),
+        "1 枚目は文字として入っています。ここは読み取りに回りません。\n\n"
+        "2 枚目は紙を取り込んだページで、そちらだけが読み取りに回ります。",
+    )
+    writer.newPage()
+    painter.drawImage(
+        QRectF(0, 0, view.width(), view.width() * image.height() / image.width()), image
+    )
+    painter.end()
+
+
 def write_pdf(path: Path) -> None:
     """文字が入った PDF。**取り込みは読み取りに回らない**（速くて正確）。"""
     writer = QPdfWriter(str(path))
@@ -250,6 +336,8 @@ def main(argv: list[str]) -> int:
     image = write_image(target / "会議メモ.png")
     write_image(target / "会議メモ.jpg", quality=85)
     write_scanned_pdf(target / "会議メモ-スキャン.pdf", image)
+    write_pdf_with_figure(target / "会議メモ-図つき.pdf")
+    write_mixed_pdf(target / "会議メモ-混在.pdf", image)
     write_pptx(target / "会議メモ.pptx")
 
     for path in sorted(target.iterdir()):
