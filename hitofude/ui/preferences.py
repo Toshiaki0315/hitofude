@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -101,11 +102,25 @@ def _resolve_vault(text: str) -> Path | None:
     return path
 
 
+PAGE_MARGIN = 12
+"""ページの内側の余白。タブの枠に文字が貼り付くと窮屈に見える。"""
+
 PORT_FIELD = 90
 """ポートの入力欄。**5 桁が入れば足りる**（タブ幅と同じ考え方）。"""
 
 LLM_NOTE = "（送り先は 127.0.0.1 に固定）"
 """**外へ出さないことがこの機能の前提**（ADR-0025 の 3）。画面でも明示する。"""
+
+
+def _page(form: QFormLayout) -> QWidget:
+    """フォーム 1 つをページにする。**余白はページ側で取る**（タブの枠に
+    文字が貼り付くと窮屈に見える）。"""
+    page = QWidget()
+    layout = QVBoxLayout(page)
+    layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
+    layout.addLayout(form)
+    layout.addStretch(1)
+    return page
 
 
 class PreferencesDialog(QDialog):
@@ -203,6 +218,12 @@ class PreferencesDialog(QDialog):
         form.addRow("ゴミ箱の保持", self._trash_days)
 
         # ------------------------------------------------- 手元の LLM
+        # **毛色が違うものを同じ列に並べない**（ユーザー要望）。フォントや
+        # 行間は「見え方」で、ここは「誰に読ませるか」。ページを分ける
+        llm_form = QFormLayout()
+        llm_form.setVerticalSpacing(FORM_SPACING)
+        llm_form.setHorizontalSpacing(FORM_SPACING)
+
         # **送り先は出さない。** 相手は `127.0.0.1` に固定（ADR-0025 の 3）。
         # ここを設定に出すと「うっかり外に出す」道ができる
         self._model = QComboBox(self)
@@ -210,7 +231,7 @@ class PreferencesDialog(QDialog):
         self._model.addItems(models if models else [config.llm_model])
         self._model.setCurrentText(config.llm_model)
         self._model.setToolTip("`ollama list` に出る名前。入っていないものも書けます。")
-        form.addRow("LLM のモデル", self._model)
+        llm_form.addRow("モデル", self._model)
 
         self._port = QSpinBox(self)
         self._port.setRange(1, 65535)
@@ -222,14 +243,14 @@ class PreferencesDialog(QDialog):
         self._llm_note = QLabel(LLM_NOTE, self)
         port_row.addWidget(self._llm_note)
         port_row.addStretch(1)
-        form.addRow("LLM のポート", port_row)
+        llm_form.addRow("ポート", port_row)
 
         self._context = QComboBox(self)
         for tokens in CONTEXT_CHOICES:
             self._context.addItem(f"{tokens // 1024}k トークン", tokens)
         self._context.setCurrentIndex(self._context.findData(config.llm_context))
         self._context.setToolTip("一度に渡せる長さ。**広げるほどメモリを食います**。")
-        form.addRow("LLM に渡す量", self._context)
+        llm_form.addRow("一度に渡す量", self._context)
 
         self._restart_note = QLabel("保管フォルダの変更は再起動後に反映されます。", self)
         self._restart_note.setVisible(False)
@@ -242,15 +263,17 @@ class PreferencesDialog(QDialog):
 
         # `ResetRole` に置くと OS の作法どおり左端へ並ぶ
         self._reset = buttons.addButton("デフォルトに戻す", QDialogButtonBox.ButtonRole.ResetRole)
-        self._reset.setToolTip(
-            "フォント・行間・タブ幅・テーマ・ゴミ箱の保持を既定へ戻します（保管フォルダはそのまま）"
-        )
+        self._reset.setToolTip("両方のページを既定へ戻します（保管フォルダはそのまま）")
         self._reset.clicked.connect(self.reset_to_defaults)
+
+        self._tabs = QTabWidget(self)
+        self._tabs.addTab(_page(form), "一般")
+        self._tabs.addTab(_page(llm_form), "アシスタント")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(DIALOG_MARGIN, DIALOG_MARGIN, DIALOG_MARGIN, DIALOG_MARGIN)
         layout.setSpacing(FORM_SPACING + 2)
-        layout.addLayout(form)
+        layout.addWidget(self._tabs)
         layout.addWidget(self._restart_note)
         layout.addWidget(buttons)
 
@@ -261,6 +284,11 @@ class PreferencesDialog(QDialog):
     @property
     def reset_button(self) -> QPushButton:
         return self._reset
+
+    @property
+    def tabs(self) -> QTabWidget:
+        """ページ。**開いていないページも保存する**（`apply` は全部を見る）。"""
+        return self._tabs
 
     @property
     def model_box(self) -> QComboBox:

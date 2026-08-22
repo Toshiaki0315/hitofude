@@ -345,11 +345,20 @@ class TestLayout:
     """
 
     def test_行間が詰まりすぎない(self, dialog) -> None:
+        """**どのページも詰まっていない**（2 ページになった。ユーザー要望）。"""
         from hitofude.ui.preferences import FORM_SPACING
 
-        form = dialog.layout().itemAt(0).layout()
-        assert form.verticalSpacing() >= FORM_SPACING
-        assert form.horizontalSpacing() >= FORM_SPACING
+        pages = [dialog.tabs.widget(i) for i in range(dialog.tabs.count())]
+        forms = [page.layout().itemAt(0).layout() for page in pages]
+        assert forms, "ページが無い"
+        for form in forms:
+            assert form.verticalSpacing() >= FORM_SPACING
+            assert form.horizontalSpacing() >= FORM_SPACING
+
+    def test_ページの内側にも余白がある(self, dialog) -> None:
+        """タブの枠に文字が貼り付くと窮屈に見える。"""
+        margins = dialog.tabs.widget(0).layout().contentsMargins()
+        assert margins.left() >= 8
 
     def test_外側にも余白がある(self, dialog) -> None:
         margins = dialog.layout().contentsMargins()
@@ -611,3 +620,63 @@ class TestLlmSection:
             DEFAULT_PORT,
             CONTEXT_TOKENS,
         )
+
+
+class TestTabs:
+    """設定を 2 ページに分ける（ユーザー要望 2026-08-22）。
+
+    **毛色が違うものを同じ列に並べない。** フォントや行間は「見え方」で、
+    LLM の設定は「誰に読ませるか」。同じ縦一列に混ぜると、探すときに
+    毎回全部を読むことになる。
+    """
+
+    def dialog(self, qtbot, tmp_path):
+        from PySide6.QtCore import QSettings
+
+        from hitofude.config import Config
+        from hitofude.ui.preferences import PreferencesDialog
+
+        config = Config(QSettings(str(tmp_path / "t.ini"), QSettings.Format.IniFormat))
+        found = PreferencesDialog(config)
+        qtbot.addWidget(found)
+        return found, config
+
+    def labels(self, dialog) -> list[str]:
+        return [dialog.tabs.tabText(i) for i in range(dialog.tabs.count())]
+
+    def test_2ページある(self, qtbot, tmp_path) -> None:
+        dialog, _config = self.dialog(qtbot, tmp_path)
+        assert self.labels(dialog) == ["一般", "アシスタント"]
+
+    def test_最初に出るのは一般(self, qtbot, tmp_path) -> None:
+        """**よく開くほうを先に。** LLM は一度決めたら触らない設定。"""
+        dialog, _config = self.dialog(qtbot, tmp_path)
+        assert dialog.tabs.currentIndex() == 0
+
+    def test_見え方は一般のページ(self, qtbot, tmp_path) -> None:
+        dialog, _config = self.dialog(qtbot, tmp_path)
+        assert dialog.tabs.indexOf(dialog._font.parentWidget()) == 0
+
+    def test_LLMは2ページ目(self, qtbot, tmp_path) -> None:
+        dialog, _config = self.dialog(qtbot, tmp_path)
+        assert dialog.tabs.indexOf(dialog.model_box.parentWidget()) == 1
+
+    def test_開いていないページも保存される(self, qtbot, tmp_path) -> None:
+        """**見えていない欄も書き込む。** ページを開かないと保存されない、
+        は驚く（前に打った値が消えたように見える）。"""
+        dialog, config = self.dialog(qtbot, tmp_path)
+        dialog.model_box.setCurrentText("qwen3:8b")
+        dialog.tabs.setCurrentIndex(0)
+        dialog.apply()
+        assert config.llm_model == "qwen3:8b"
+
+    def test_デフォルトに戻すは両方に効く(self, qtbot, tmp_path) -> None:
+        from hitofude.config import DEFAULT_TAB_WIDTH
+        from hitofude.core.llm import DEFAULT_MODEL
+
+        dialog, config = self.dialog(qtbot, tmp_path)
+        dialog._tab_width.setValue(8)
+        dialog.model_box.setCurrentText("qwen3:8b")
+        dialog.reset_to_defaults()
+        dialog.apply()
+        assert (config.tab_width, config.llm_model) == (DEFAULT_TAB_WIDTH, DEFAULT_MODEL)
