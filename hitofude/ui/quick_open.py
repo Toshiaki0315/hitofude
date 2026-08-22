@@ -31,13 +31,14 @@ from PySide6.QtWidgets import (
 
 from hitofude.storage.index_db import HIGHLIGHT_END, HIGHLIGHT_START
 from hitofude.theme import LIGHT, ThemeColors
+from hitofude.ui.format_toolbar import BUTTON_RADIUS  # 丸みは 1 か所から引く
 from hitofude.ui.icons import Glyph, glyph_icon
 
 MAX_RESULTS = 50
 
-# 閉じるボタン（ユーザー要望）。入力欄と同じ行に置くので、**高さは入力欄より
-# 小さく**（大きいと行が伸びて、一覧のぶんが減る）
-CLOSE_BUTTON = 24
+# 閉じるボタン（ユーザー要望）。**記号だけでは気づかれない**（薄い × を
+# 大きくしても見つからなかった、というユーザー報告が 2 回）。言葉で書き、
+# 一覧のボタンと同じ角丸の枠を付ける
 CLOSE_ICON = 12
 
 # 1 行の内側の余白（上下左右）。帯と文字が接しないぶん
@@ -137,12 +138,18 @@ class Palette(QDialog):
 
         # **閉じるボタン**（ユーザー要望）。枠の無い窓なので OS の閉じる
         # ボタンが無く、Esc を知らないと閉じられなかった
-        self._close = QPushButton(self)
+        self._close = QPushButton("閉じる", self)
         self._close.setIcon(glyph_icon(Glyph.CLOSE, theme.muted_foreground))
         self._close.setIconSize(QSize(CLOSE_ICON, CLOSE_ICON))
-        self._close.setFixedSize(CLOSE_BUTTON, CLOSE_BUTTON)
-        self._close.setFlat(True)
         self._close.setToolTip("閉じる（Esc）")
+        # 一覧のボタン（ソート・新規）と同じ形。**押せるものだと分かる形を
+        # アプリの中で 1 つに揃える。** 色は増やさない
+        self._close.setStyleSheet(
+            f"QPushButton {{ color: {theme.muted_foreground}; "
+            f"border: 1px solid {theme.rule}; border-radius: {BUTTON_RADIUS}px; "
+            f"padding: 3px 8px; }}"
+            f"QPushButton:hover {{ background: {theme.tag_background}; }}"
+        )
         # **打つ手を止めない。** 押す気が無い人には無いのと同じ
         self._close.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._close.clicked.connect(self.reject)

@@ -392,6 +392,26 @@ class TestCloseButton:
         # **窓の中でどこを打っているか**は focusWidget が持つ
         assert found.focusWidget() is found.input_box
 
+    def test_文字で書いてある(self, qtbot) -> None:
+        """**記号だけでは気づかれない**（ユーザー報告 2 回目）。薄い × を
+        大きくしても見つからなかったので、言葉で書く。"""
+        found = self.palette(qtbot)
+        assert found.close_button.text() == "閉じる"
+
+    def test_枠がある(self, qtbot) -> None:
+        """一覧のボタン（ソート・新規）と同じ角丸の枠。**押せるものだと
+        分かる形をアプリの中で 1 つに揃える。**"""
+        from hitofude.theme import LIGHT
+
+        found = self.palette(qtbot)
+        style = found.close_button.styleSheet().lower()
+        assert LIGHT.rule.lower() in style
+        assert "border-radius" in style
+        # 丸みは 1 か所から引く（別々に書くと食い違う）
+        from hitofude.ui.format_toolbar import BUTTON_RADIUS
+
+        assert f"{BUTTON_RADIUS}px" in style
+
     def test_入力欄と同じ行に置く(self, qtbot) -> None:
         """**縦を食わない。** 一覧が狭くなると候補が減る。"""
         found = self.palette(qtbot)
