@@ -708,11 +708,12 @@ class TestOcrSetting:
         dialog, _config = self.dialog(qtbot, tmp_path)
         assert dialog.tabs.indexOf(dialog.ocr_box.parentWidget()) == 1
 
-    def test_どちらが速いか書いてある(self, qtbot, tmp_path) -> None:
-        """**選ぶ材料を画面に置く**（実測はドキュメントにしかなかった）。"""
+    def test_どちらが既定か分かる(self, qtbot, tmp_path) -> None:
+        """**選択肢の文言はユーザーが決めた**（2026-08-22）。速さの比較は
+        設定画面では出さず、使い方のノートに書く。"""
         dialog, _config = self.dialog(qtbot, tmp_path)
         items = [dialog.ocr_box.itemText(i) for i in range(dialog.ocr_box.count())]
-        assert any("速い" in item or "正確" in item for item in items)
+        assert items == ["macOS（デフォルト）", "ローカルLLM"]
 
     def test_デフォルトに戻すで戻る(self, qtbot, tmp_path) -> None:
         from hitofude.core.ocr import DEFAULT_ENGINE, Engine

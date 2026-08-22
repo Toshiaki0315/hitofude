@@ -255,8 +255,8 @@ class PreferencesDialog(QDialog):
 
         # 画像を文字にする読み手（ADR-0027）。**選ぶ材料を画面に置く**
         self._ocr = QComboBox(self)
-        self._ocr.addItem("macOS（速い・正確）", Engine.MAC)
-        self._ocr.addItem("手元の LLM（モデル次第）", Engine.LLM)
+        self._ocr.addItem("macOS（デフォルト）", Engine.MAC)
+        self._ocr.addItem("ローカルLLM", Engine.LLM)
         self._ocr.setCurrentIndex(self._ocr.findData(config.ocr_engine))
         self._ocr.setToolTip("PDF や画像から文字を読み取るときに使うもの。")
         llm_form.addRow("文字の読み取り", self._ocr)
