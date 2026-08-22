@@ -218,7 +218,7 @@ class PreferencesDialog(QDialog):
         self._trash_days.setValue(config.trash_days)
         form.addRow("ゴミ箱の保持", self._trash_days)
 
-        # ------------------------------------------------- 手元の LLM
+        # ------------------------------------------------- ローカルLLM
         # **毛色が違うものを同じ列に並べない**（ユーザー要望）。フォントや
         # 行間は「見え方」で、ここは「誰に読ませるか」。ページを分ける
         llm_form = QFormLayout()

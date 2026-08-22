@@ -302,7 +302,7 @@ class Config:
 
     @property
     def assistant_visible(self) -> bool:
-        """手元の LLM の欄を出すか（L-1）。**既定は出さない。**
+        """ローカルLLM の欄を出すか（L-1）。**既定は出さない。**
 
         画面を勝手に狭くしない。要る人が `Cmd+6` で開く（アウトラインと同じ）。
         """
@@ -312,7 +312,7 @@ class Config:
     def assistant_visible(self, value: bool) -> None:
         self.settings.setValue(_ASSISTANT, bool(value))
 
-    # ------------------------------------------------------- 手元の LLM
+    # ------------------------------------------------------- ローカルLLM
 
     @property
     def llm_model(self) -> str:

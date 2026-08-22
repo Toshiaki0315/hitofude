@@ -237,7 +237,7 @@ class MainWindow(QMainWindow):
         self._outline.heading_activated.connect(self.jump_to_line)
         self._outline.hide()
 
-        # 手元の LLM の答え（L-1 / ADR-0025）。**本文の右**。アウトラインと
+        # ローカルLLM の答え（L-1 / ADR-0025）。**本文の右**。アウトラインと
         # 同じ理由で、左に寄せると本文が押し出される
         self._assistant = AssistantPane(theme=theme)
         self._assistant.hide()
@@ -1197,7 +1197,7 @@ class MainWindow(QMainWindow):
         if showing:
             self._update_outline()
 
-    # ----------------------------------------------------- 手元の LLM（L-1）
+    # ----------------------------------------------------- ローカルLLM（L-1）
 
     @property
     def assistant_pane(self) -> AssistantPane:
@@ -1225,7 +1225,7 @@ class MainWindow(QMainWindow):
     def ocr_engine(self):
         """画像を文字にする読み手（ADR-0027）。設定で切り替える。
 
-        **既定は macOS**（速くて正確）。手元の LLM は大きなモデルを積める
+        **既定は macOS**（速くて正確）。ローカルLLM は大きなモデルを積める
         人向け。どちらも無ければ「使えない」と答える（呼ぶ側が知らせる）。
         """
         if self._config.ocr_engine is ocr.Engine.LLM:
@@ -1240,7 +1240,7 @@ class MainWindow(QMainWindow):
         )
 
     def toggle_assistant(self) -> None:
-        """`Cmd+6`。手元の LLM の欄を開閉する（L-1 / ADR-0025）。"""
+        """`Cmd+6`。ローカルLLM の欄を開閉する（L-1 / ADR-0025）。"""
         self.show_assistant(self._assistant.isHidden())
 
     def show_assistant(self, showing: bool) -> None:
