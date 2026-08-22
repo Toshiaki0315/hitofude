@@ -1,7 +1,10 @@
-"""ポップアップメニューの文字を少し大きくする（ユーザー要望）。
+"""ポップアップの文字の大きさ。
 
-一覧の並び順、一覧の右クリック、サイドバーの右クリック。**どれも押す前に
-読むもの**で、既定の大きさでは小さかった。
+**ツールチップは +2pt**（押す前に読むもので、既定は小さかった）。
+
+**メニューは OS の大きさのまま**（2026-08-22 に戻した）。本文の右クリックは
+Qt が出すネイティブのメニューで、こちらだけ大きいと並べたときに別のアプリの
+ように見える（ユーザーの画像）。
 
 macOS の画面上部のメニューバーは OS が描くので、こちらからは変えられない。
 変えられるのは、アプリの中で開くポップアップだけ。
@@ -14,10 +17,6 @@ from hitofude.ui.note_list_pane import NoteListPane
 from hitofude.ui.sidebar import ALL, TRASH
 
 pytestmark = pytest.mark.gui
-
-
-def bigger_than(menu, widget) -> bool:
-    return menu.font().pointSizeF() == pytest.approx(widget.font().pointSizeF() + MENU_FONT_STEP)
 
 
 class TestStep:
@@ -53,10 +52,20 @@ class TestTooltips:
 
 
 class TestMenus:
+    """**メニューは OS の大きさに戻した**（ユーザー要望 2026-08-22）。
+
+    本文の右クリックは Qt が出すネイティブのメニューで、こちらだけ +2pt に
+    していたため、並べると別のアプリのように見えた（ユーザーの画像）。
+    ツールチップの +2pt はそのまま（あちらは比べる相手がいない）。
+    """
+
+    def same_as(self, menu, widget) -> bool:
+        return menu.font().pointSizeF() == pytest.approx(widget.font().pointSizeF())
+
     def test_並び順のメニュー(self, qtbot) -> None:
         pane = NoteListPane()
         qtbot.addWidget(pane)
-        assert bigger_than(pane.sort_button.menu(), pane)
+        assert self.same_as(pane.sort_button.menu(), pane)
 
     def test_一覧の右クリック(self, window) -> None:
         note = window.vault.create("メモ", "# メモ\n")
@@ -65,14 +74,14 @@ class TestMenus:
 
         menu = window.context_menu_for(note.path.relative_to(window.vault.root))
         try:
-            assert bigger_than(menu, window)
+            assert self.same_as(menu, window)
         finally:
             menu.deleteLater()
 
     def test_サイドバーの右クリック(self, window) -> None:
         menu = window.sidebar_menu_for(TRASH)
         try:
-            assert bigger_than(menu, window)
+            assert self.same_as(menu, window)
         finally:
             menu.deleteLater()
 

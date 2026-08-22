@@ -444,3 +444,64 @@ class TestMoveToFolder:
         )
         assert window.move_note_to_folder(note.path) is None
         assert note.path.exists()
+
+
+class TestMenuLook:
+    """右クリックのメニューを本文のものに合わせる（ユーザー要望 2026-08-22）。
+
+    本文の右クリックは Qt が出す**ネイティブのメニュー**で、アイコンが付き、
+    文字も余白も OS の既定。こちらのメニューだけ +2pt でアイコンが無く、
+    並べると別のアプリのように見えた。
+
+    **アイコンは OS からもらう**（`QIcon.fromTheme`）。自分で描くと SF Symbols
+    と並んだときにまた浮く。macOS 以外や offscreen では空のアイコンが返り、
+    **付かないだけ**で何も壊れない。
+    """
+
+    def actions_of(self, menu):
+        return [action for action in menu.actions() if action.text()]
+
+    def test_一覧のメニューにアイコンを頼む(self, window) -> None:
+        """**名前で頼む。** 実物が返るかは OS 次第（offscreen では空）。"""
+        from hitofude.ui.note_actions import MENU_ICONS
+
+        path = make_note(window, "会議")
+        menu = window.context_menu_for(path.relative_to(window.vault.root))
+        try:
+            labels = [action.text() for action in self.actions_of(menu)]
+        finally:
+            menu.deleteLater()
+        assert set(labels) <= set(MENU_ICONS) | {"ピン留めを外す"}, "アイコンの割り当てが無い項目"
+
+    def test_フォルダのメニューも同じ(self, window) -> None:
+        from hitofude.storage.index_db import ROOT_FOLDER
+        from hitofude.ui.note_actions import MENU_ICONS
+        from hitofude.ui.sidebar import Filter, FilterKind
+
+        window.vault.create_folder("仕事")
+        window.refresh()
+        for folder in ("仕事", ROOT_FOLDER):
+            menu = window.sidebar_menu_for(Filter(FilterKind.FOLDER, folder=folder))
+            try:
+                labels = [action.text() for action in self.actions_of(menu)]
+            finally:
+                menu.deleteLater()
+            assert set(labels) <= set(MENU_ICONS), folder
+
+    def test_文字の大きさは変えない(self, window) -> None:
+        """**本文の右クリックと揃える。** あちらは OS の既定の大きさ。"""
+        path = make_note(window, "会議")
+        menu = window.context_menu_for(path.relative_to(window.vault.root))
+        try:
+            assert menu.font().pointSizeF() == window.font().pointSizeF()
+        finally:
+            menu.deleteLater()
+
+    def test_余白も触らない(self, window) -> None:
+        """macOS のメニューは OS が描く。**スタイルシートを当てない。**"""
+        path = make_note(window, "会議")
+        menu = window.context_menu_for(path.relative_to(window.vault.root))
+        try:
+            assert menu.styleSheet() == ""
+        finally:
+            menu.deleteLater()

@@ -11,10 +11,9 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtGui import QTextCursor
+from PySide6.QtGui import QAction, QIcon, QTextCursor
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QMessageBox
 
-from hitofude.app import apply_menu_font
 from hitofude.core import template
 from hitofude.core.document import Note, with_title
 from hitofude.core.template import daily_title
@@ -31,6 +30,39 @@ CLEANUP_PREVIEW = 10
 
 # 「フォルダへ移動…」の先頭の選択肢。直下（フォルダから出す）を表す
 ROOT_FOLDER_CHOICE = "（保管フォルダ直下）"
+
+# 右クリックの項目 → OS に頼むアイコンの名前（ユーザー要望 2026-08-22）。
+# **本文の右クリック（Qt のネイティブメニュー）に合わせる。** 自分で描くと
+# SF Symbols と並んだときにまた浮く。macOS 以外や offscreen では空が返り、
+# **付かないだけ**で何も壊れない
+MENU_ICONS = {
+    "ピン留め": "emblem-favorite",
+    "ピン留めを外す": "emblem-favorite",
+    "名前を変更…": "document-properties",
+    "複製": "edit-copy",
+    "テンプレートに登録…": "document-new",
+    "フォルダへ移動…": "go-next",
+    "リンクをコピー": "insert-link",
+    "Finder で表示": "system-file-manager",
+    "Finder で開く": "system-file-manager",
+    "ゴミ箱へ移動": "user-trash",
+    "元に戻す": "edit-undo",
+    "完全に削除…": "edit-delete",
+    "新しいフォルダ…": "folder-new",
+    "フォルダを削除…": "edit-delete",
+    "ゴミ箱を空にする…": "user-trash",
+    "この検索を削除…": "edit-delete",
+}
+
+
+def add_item(menu: QMenu, label: str) -> QAction:
+    """メニューに 1 項目足す。**アイコンは OS からもらう。**"""
+    action = menu.addAction(label)
+    name = MENU_ICONS.get(label)
+    if name:
+        action.setIcon(QIcon.fromTheme(name))
+    return action
+
 
 PINNED_NOTICE = "ピン留めしているノートは削除できません。先にピン留めを外してください。"
 
@@ -354,31 +386,28 @@ class NoteActions:
         """
         if target.kind is FilterKind.SEARCH:
             menu = QMenu(self._window)
-            apply_menu_font(menu)
-            menu.addAction("この検索を削除…").triggered.connect(
+            add_item(menu, "この検索を削除…").triggered.connect(
                 lambda: self.delete_saved_search(target)
             )
             return menu
         if target.kind is FilterKind.FOLDER:
             menu = QMenu(self._window)
-            apply_menu_font(menu)
-            menu.addAction("新しいフォルダ…").triggered.connect(lambda: self.create_folder(target))
-            menu.addAction("Finder で開く").triggered.connect(
+            add_item(menu, "新しいフォルダ…").triggered.connect(lambda: self.create_folder(target))
+            add_item(menu, "Finder で開く").triggered.connect(
                 lambda: self.open_folder_in_finder(target)
             )
             # **「直下」には出さない。** 保管フォルダそのものは消せない
             if target.folder != ROOT_FOLDER:
                 # **消すより先に並べる。** 直したいだけのときに削除を通らせない
-                menu.addAction("名前を変更…").triggered.connect(lambda: self.rename_folder(target))
-                menu.addAction("フォルダを削除…").triggered.connect(
+                add_item(menu, "名前を変更…").triggered.connect(lambda: self.rename_folder(target))
+                add_item(menu, "フォルダを削除…").triggered.connect(
                     lambda: self.delete_folder(target)
                 )
             return menu
         if target.kind is not FilterKind.TRASH:
             return None
         menu = QMenu(self._window)
-        apply_menu_font(menu)
-        action = menu.addAction("ゴミ箱を空にする…")
+        action = add_item(menu, "ゴミ箱を空にする…")
         action.triggered.connect(self.empty_trash)
         # **押してから断らない。** 件数は開く前に分かるので、押せない状態で
         # 見せる（一覧の「ゴミ箱へ移動」がピン留め時にそうなっているのと同じ）
@@ -584,27 +613,26 @@ class NoteActions:
         window = self._window
         path = window._vault.root / relative
         menu = QMenu(window)
-        apply_menu_font(menu)
         if window._filter.kind is FilterKind.TRASH:
-            menu.addAction("元に戻す").triggered.connect(lambda: self.restore_note(path))
+            add_item(menu, "元に戻す").triggered.connect(lambda: self.restore_note(path))
             menu.addSeparator()
             # 「…」は「押すと確認が出る」の合図（他のメニューと揃える）
-            menu.addAction("完全に削除…").triggered.connect(lambda: self.delete_permanently(path))
+            add_item(menu, "完全に削除…").triggered.connect(lambda: self.delete_permanently(path))
             return menu
 
         label = "ピン留めを外す" if self.is_pinned(path) else "ピン留め"
-        menu.addAction(label).triggered.connect(lambda: self.toggle_pin(path))
-        menu.addAction("名前を変更…").triggered.connect(lambda: self.prompt_rename(path))
-        menu.addAction("複製").triggered.connect(lambda: self.duplicate_note(path))
-        menu.addAction("テンプレートに登録…").triggered.connect(
+        add_item(menu, label).triggered.connect(lambda: self.toggle_pin(path))
+        add_item(menu, "名前を変更…").triggered.connect(lambda: self.prompt_rename(path))
+        add_item(menu, "複製").triggered.connect(lambda: self.duplicate_note(path))
+        add_item(menu, "テンプレートに登録…").triggered.connect(
             lambda: self.register_template(path)
         )
-        menu.addAction("フォルダへ移動…").triggered.connect(lambda: self.move_note_to_folder(path))
+        add_item(menu, "フォルダへ移動…").triggered.connect(lambda: self.move_note_to_folder(path))
         menu.addSeparator()
-        menu.addAction("リンクをコピー").triggered.connect(lambda: self.copy_note_link(path))
-        menu.addAction("Finder で表示").triggered.connect(lambda: self.reveal_note(path))
+        add_item(menu, "リンクをコピー").triggered.connect(lambda: self.copy_note_link(path))
+        add_item(menu, "Finder で表示").triggered.connect(lambda: self.reveal_note(path))
         menu.addSeparator()
-        trash = menu.addAction("ゴミ箱へ移動")
+        trash = add_item(menu, "ゴミ箱へ移動")
         trash.triggered.connect(lambda: self.trash_note(path))
         # 項目ごと消すと理由が分からない。押せない状態で見せる
         trash.setEnabled(not self.is_pinned(path))

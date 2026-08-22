@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from hitofude.app import apply_menu_font
 from hitofude.storage.index_db import SortOrder
 from hitofude.theme import LIGHT, ThemeColors
 from hitofude.ui.format_toolbar import BAR_HEIGHT, BUTTON_RADIUS, BUTTON_SIZE, ICON_SIZE
@@ -74,7 +73,6 @@ class NoteListPane(QWidget):
             # 押しても本文のキャレットを手放さない（書式ツールバーと同じ扱い）
             button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         menu = QMenu(self._sort)
-        apply_menu_font(menu)
         self._sort_actions: dict[SortOrder, QAction] = {}
         for order, label in SORT_LABELS.items():
             action = menu.addAction(label)
