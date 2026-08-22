@@ -15,6 +15,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QSettings
 
+from hitofude.core import llm
 from hitofude.core.paths import relative_inside
 from hitofude.storage.index_db import SortOrder
 from hitofude.theme import ThemeMode
@@ -91,6 +92,9 @@ _TOOLBAR = "layout/toolbar_visible"
 _BACKLINKS = "layout/backlinks_expanded"
 _OUTLINE = "layout/outline_visible"
 _ASSISTANT = "layout/assistant_visible"
+_LLM_MODEL = "llm/model"
+_LLM_PORT = "llm/port"
+_LLM_CONTEXT = "llm/context"
 _TAB_WIDTH = "editor/tab_width"
 _SORT_ORDER = "list/sort_order"
 _GEOMETRY = "layout/geometry"
@@ -306,6 +310,50 @@ class Config:
     @assistant_visible.setter
     def assistant_visible(self, value: bool) -> None:
         self.settings.setValue(_ASSISTANT, bool(value))
+
+    # ------------------------------------------------------- 手元の LLM
+
+    @property
+    def llm_model(self) -> str:
+        """読ませるモデル（ADR-0025 追記）。**空なら既定へ戻す。**
+
+        空のまま保存できると、押しても何も起きないアプリになる。
+        """
+        found = str(self.settings.value(_LLM_MODEL, llm.DEFAULT_MODEL)).strip()
+        return found or llm.DEFAULT_MODEL
+
+    @llm_model.setter
+    def llm_model(self, value: str) -> None:
+        self.settings.setValue(_LLM_MODEL, value.strip() or llm.DEFAULT_MODEL)
+
+    @property
+    def llm_port(self) -> int:
+        """Ollama のポート（ADR-0025 追記）。
+
+        **相手は `127.0.0.1` に固定**で、設定に出すのはポートだけ。
+        `OLLAMA_HOST` で別のポートにしている人がいるので、そこだけ開ける。
+        外の機械を指せるようにはしない（ノートが外に出ない、が前提）。
+        """
+        found = self.settings.value(_LLM_PORT, llm.DEFAULT_PORT, type=int)
+        return found if 1 <= found <= 65535 else llm.DEFAULT_PORT
+
+    @llm_port.setter
+    def llm_port(self, value: int) -> None:
+        self.settings.setValue(_LLM_PORT, int(value))
+
+    @property
+    def llm_context(self) -> int:
+        """一度に渡せる長さ（トークン）。
+
+        短すぎれば指示すら入らず、長すぎればメモリを食い潰す。
+        知らない値は既定へ戻す（設定ファイルは手で編集できる）。
+        """
+        found = self.settings.value(_LLM_CONTEXT, llm.CONTEXT_TOKENS, type=int)
+        return found if found in llm.CONTEXT_CHOICES else llm.CONTEXT_TOKENS
+
+    @llm_context.setter
+    def llm_context(self, value: int) -> None:
+        self.settings.setValue(_LLM_CONTEXT, int(value))
 
     @property
     def toolbar_visible(self) -> bool:

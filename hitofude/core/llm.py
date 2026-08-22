@@ -20,14 +20,29 @@ from hitofude.core import frontmatter
 
 logger = logging.getLogger(__name__)
 
-HOST = "http://127.0.0.1:11434"
-"""**変えられない。** 設定に出すと「うっかり外に出す」道ができる。"""
+HOST = "127.0.0.1"
+"""**変えられない。** 設定に出すと「うっかり外に出す」道ができる。
+
+ポートだけは設定から変えられる（`OLLAMA_HOST` で別のポートにしている人が
+いる）。**相手の機械は変えられない**（ADR-0025 の 3）。
+"""
+
+DEFAULT_PORT = 11434
+
+
+def endpoint(port: int = DEFAULT_PORT) -> str:
+    """送り先。**`127.0.0.1` から動かせない。**"""
+    return f"http://{HOST}:{port}"
+
 
 DEFAULT_MODEL = "gemma3:4b"
 """実測で要約 1 本 12.8 秒（M4 / 32GB）。1b は日本語が壊れる（docs/ollama.md）。"""
 
 CONTEXT_TOKENS = 8192
 """既定（多くのモデルで 4k）だと**長いノートが黙って切り捨てられる**。"""
+
+CONTEXT_CHOICES = (4096, 8192, 16384, 32768)
+"""設定で選べる長さ。**広げるほどメモリを食う**（docs/ollama.md）。"""
 
 TIMEOUT_SECONDS = 120.0
 """12b 級に長いノートを読ませても届く長さ。"""
@@ -143,6 +158,8 @@ class LocalLLM:
     """Ollama への口。**中身の判断はしない**（プロンプトは `build_prompt`）。"""
 
     model: str = DEFAULT_MODEL
+    port: int = DEFAULT_PORT
+    context: int = CONTEXT_TOKENS
     transport: Transport = field(default=_urlopen)
 
     def available(self) -> bool:
@@ -177,7 +194,7 @@ class LocalLLM:
             "model": self.model,
             "prompt": prompt,
             "stream": True,
-            "options": {"num_ctx": CONTEXT_TOKENS},
+            "options": {"num_ctx": self.context},
         }
         parts: list[str] = []
         for line in self._request("/api/generate", payload):
@@ -206,7 +223,7 @@ class LocalLLM:
 
     def _request(self, path: str, payload: dict | None) -> Iterable[bytes]:
         try:
-            return self.transport(f"{HOST}{path}", payload, TIMEOUT_SECONDS)
+            return self.transport(f"{endpoint(self.port)}{path}", payload, TIMEOUT_SECONDS)
         except (OSError, urllib.error.URLError) as error:
             logger.info("Ollama に繋がらない: %s", error)
             raise NotRunning(str(error)) from error

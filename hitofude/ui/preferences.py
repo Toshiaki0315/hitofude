@@ -42,6 +42,7 @@ from hitofude.config import (
     ContentWidth,
     LineSpacing,
 )
+from hitofude.core.llm import CONTEXT_CHOICES, CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PORT
 from hitofude.theme import ThemeMode
 
 THEME_LABELS = {
@@ -100,11 +101,24 @@ def _resolve_vault(text: str) -> Path | None:
     return path
 
 
+PORT_FIELD = 90
+"""ポートの入力欄。**5 桁が入れば足りる**（タブ幅と同じ考え方）。"""
+
+LLM_NOTE = "（送り先は 127.0.0.1 に固定）"
+"""**外へ出さないことがこの機能の前提**（ADR-0025 の 3）。画面でも明示する。"""
+
+
 class PreferencesDialog(QDialog):
     applied = Signal()
     """設定が書き込まれたあとに飛ぶ。呼び出し側が見た目を更新する。"""
 
-    def __init__(self, config: Config, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        config: Config,
+        parent: QWidget | None = None,
+        *,
+        models: list[str] | None = None,
+    ) -> None:
         super().__init__(parent)
         self._config = config
         self.setWindowTitle("設定")
@@ -188,6 +202,35 @@ class PreferencesDialog(QDialog):
         self._trash_days.setValue(config.trash_days)
         form.addRow("ゴミ箱の保持", self._trash_days)
 
+        # ------------------------------------------------- 手元の LLM
+        # **送り先は出さない。** 相手は `127.0.0.1` に固定（ADR-0025 の 3）。
+        # ここを設定に出すと「うっかり外に出す」道ができる
+        self._model = QComboBox(self)
+        self._model.setEditable(True)  # これから pull するモデルも書ける
+        self._model.addItems(models if models else [config.llm_model])
+        self._model.setCurrentText(config.llm_model)
+        self._model.setToolTip("`ollama list` に出る名前。入っていないものも書けます。")
+        form.addRow("LLM のモデル", self._model)
+
+        self._port = QSpinBox(self)
+        self._port.setRange(1, 65535)
+        self._port.setValue(config.llm_port)
+        self._port.setMaximumWidth(PORT_FIELD)
+        self._port.setToolTip("Ollama のポート。`OLLAMA_HOST` で変えている場合はここも合わせます。")
+        port_row = QHBoxLayout()
+        port_row.addWidget(self._port)
+        self._llm_note = QLabel(LLM_NOTE, self)
+        port_row.addWidget(self._llm_note)
+        port_row.addStretch(1)
+        form.addRow("LLM のポート", port_row)
+
+        self._context = QComboBox(self)
+        for tokens in CONTEXT_CHOICES:
+            self._context.addItem(f"{tokens // 1024}k トークン", tokens)
+        self._context.setCurrentIndex(self._context.findData(config.llm_context))
+        self._context.setToolTip("一度に渡せる長さ。**広げるほどメモリを食います**。")
+        form.addRow("LLM に渡す量", self._context)
+
         self._restart_note = QLabel("保管フォルダの変更は再起動後に反映されます。", self)
         self._restart_note.setVisible(False)
 
@@ -218,6 +261,21 @@ class PreferencesDialog(QDialog):
     @property
     def reset_button(self) -> QPushButton:
         return self._reset
+
+    @property
+    def model_box(self) -> QComboBox:
+        return self._model
+
+    @property
+    def port_box(self) -> QSpinBox:
+        return self._port
+
+    @property
+    def context_box(self) -> QComboBox:
+        return self._context
+
+    def llm_note_text(self) -> str:
+        return self._llm_note.text()
 
     @property
     def line_spacing(self) -> LineSpacing:
@@ -315,6 +373,9 @@ class PreferencesDialog(QDialog):
         self._trash_days.setValue(DEFAULT_TRASH_DAYS)
         self._spacing.setCurrentIndex(self._spacing.findData(LineSpacing.NORMAL))
         self._content_width.setCurrentIndex(self._content_width.findData(ContentWidth.STANDARD))
+        self._model.setCurrentText(DEFAULT_MODEL)
+        self._port.setValue(DEFAULT_PORT)
+        self._context.setCurrentIndex(self._context.findData(CONTEXT_TOKENS))
 
     def accept(self) -> None:
         """OK。**受け取れない場所なら閉じない。** 閉じると打ち直しからになる。"""
@@ -332,6 +393,9 @@ class PreferencesDialog(QDialog):
         self._config.line_spacing = self.line_spacing
         self._config.content_width = self.content_width
         self._config.trash_days = self._trash_days.value()
+        self._config.llm_model = self._model.currentText()
+        self._config.llm_port = self._port.value()
+        self._config.llm_context = self._context.currentData()
         vault = self._accept_typed_vault()
         if vault is None:
             return False

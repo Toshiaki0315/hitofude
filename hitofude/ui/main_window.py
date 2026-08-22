@@ -248,7 +248,7 @@ class MainWindow(QMainWindow):
         self._assistant.note_activated.connect(
             lambda relative: self.open_and_select(self._vault.root / relative)
         )
-        self._llm = llm_module.LocalLLM()
+        self._llm = self._llm_from_config()
         self._assistant_stop = False
 
         self._splitter = PaneSplitter(theme.rule)
@@ -1197,9 +1197,31 @@ class MainWindow(QMainWindow):
     def assistant_pane(self) -> AssistantPane:
         return self._assistant
 
+    @property
+    def llm(self):
+        """読ませる相手。設定から作る（ADR-0025 追記）。"""
+        return self._llm
+
     def set_llm(self, client) -> None:
-        """読ませる相手を差し替える（テストと、将来の設定用）。"""
+        """読ませる相手を差し替える（テスト用）。"""
         self._llm = client
+
+    def reload_llm(self) -> None:
+        """設定を読み直して相手を作り直す。
+
+        **設定画面で変えたのに古い相手のまま**、を防ぐ。作り直しは安く、
+        走っている生成は自分の相手を握ったまま終わる。
+        """
+        self._llm = self._llm_from_config()
+        if not self._assistant.isHidden():
+            self._assistant.set_available(self._llm.available())
+
+    def _llm_from_config(self):
+        return llm_module.LocalLLM(
+            model=self._config.llm_model,
+            port=self._config.llm_port,
+            context=self._config.llm_context,
+        )
 
     def toggle_assistant(self) -> None:
         """`Cmd+6`。手元の LLM の欄を開閉する（L-1 / ADR-0025）。"""
@@ -1614,7 +1636,8 @@ class MainWindow(QMainWindow):
 
     def open_preferences(self) -> None:
         """`Cmd+,`（spec §5.4）。"""
-        dialog = PreferencesDialog(self._config, self)
+        # **入っているモデルを候補に出す。** 名前を 1 文字間違えると動かない
+        dialog = PreferencesDialog(self._config, self, models=self._llm.models())
         dialog.applied.connect(self._apply_preferences)
         dialog.exec()
         # exec() 後も親の子リストに残り続ける。QFontComboBox ×2 を抱えた
@@ -1665,6 +1688,7 @@ class MainWindow(QMainWindow):
         self._apply_list_font()
         self._theme_watcher.set_mode(self._config.theme_mode)
         self._vault.purge_trash(self._config.trash_days)
+        self.reload_llm()
         history.prune(self.history_root(), now=self._history_now())
 
     # ------------------------------------------------------------------ 表示

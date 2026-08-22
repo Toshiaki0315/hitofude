@@ -537,3 +537,77 @@ class TestContentWidth:
         dialog._content_width.setCurrentIndex(dialog._content_width.findData(ContentWidth.FULL))
         dialog.reset_button.click()
         assert dialog._content_width.currentData() is ContentWidth.STANDARD
+
+
+class TestLlmSection:
+    """手元の LLM の設定（ADR-0025 追記）。
+
+    **送り先は出さない。** 変えられるのはポートまで（相手は `127.0.0.1`
+    に固定）。ここを設定に出すと「うっかり外に出す」道ができる。
+    """
+
+    def dialog(self, qtbot, tmp_path, models=None):
+        from PySide6.QtCore import QSettings
+
+        from hitofude.config import Config
+        from hitofude.ui.preferences import PreferencesDialog
+
+        config = Config(QSettings(str(tmp_path / "t.ini"), QSettings.Format.IniFormat))
+        found = PreferencesDialog(config, models=models)
+        qtbot.addWidget(found)
+        return found, config
+
+    def test_モデルを選べる(self, qtbot, tmp_path) -> None:
+        dialog, config = self.dialog(qtbot, tmp_path, models=["gemma3:4b", "qwen3:8b"])
+        dialog.model_box.setCurrentText("qwen3:8b")
+        dialog.apply()
+        assert config.llm_model == "qwen3:8b"
+
+    def test_入っているモデルが候補に出る(self, qtbot, tmp_path) -> None:
+        """**打たせない。** 名前を 1 文字間違えると動かない。"""
+        dialog, _config = self.dialog(qtbot, tmp_path, models=["gemma3:4b", "qwen3:8b"])
+        items = [dialog.model_box.itemText(i) for i in range(dialog.model_box.count())]
+        assert items == ["gemma3:4b", "qwen3:8b"]
+
+    def test_候補に無い名前も打てる(self, qtbot, tmp_path) -> None:
+        """これから `ollama pull` するモデルを先に書いておける。"""
+        dialog, config = self.dialog(qtbot, tmp_path, models=["gemma3:4b"])
+        dialog.model_box.setCurrentText("phi4:14b")
+        dialog.apply()
+        assert config.llm_model == "phi4:14b"
+
+    def test_Ollamaが無ければ今の値だけ(self, qtbot, tmp_path) -> None:
+        dialog, _config = self.dialog(qtbot, tmp_path, models=[])
+        items = [dialog.model_box.itemText(i) for i in range(dialog.model_box.count())]
+        assert items == [_config.llm_model]
+
+    def test_ポートを変えられる(self, qtbot, tmp_path) -> None:
+        dialog, config = self.dialog(qtbot, tmp_path)
+        dialog.port_box.setValue(11500)
+        dialog.apply()
+        assert config.llm_port == 11500
+
+    def test_送り先は出さない(self, qtbot, tmp_path) -> None:
+        """**`127.0.0.1` 固定を画面でも明示する**（ADR-0025 の 3）。"""
+        dialog, _config = self.dialog(qtbot, tmp_path)
+        assert "127.0.0.1" in dialog.llm_note_text()
+
+    def test_文脈の長さを選べる(self, qtbot, tmp_path) -> None:
+        dialog, config = self.dialog(qtbot, tmp_path)
+        dialog.context_box.setCurrentIndex(dialog.context_box.findData(16384))
+        dialog.apply()
+        assert config.llm_context == 16384
+
+    def test_デフォルトに戻すで戻る(self, qtbot, tmp_path) -> None:
+        from hitofude.core.llm import CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PORT
+
+        dialog, config = self.dialog(qtbot, tmp_path, models=["gemma3:4b"])
+        dialog.model_box.setCurrentText("qwen3:8b")
+        dialog.port_box.setValue(11500)
+        dialog.reset_to_defaults()
+        dialog.apply()
+        assert (config.llm_model, config.llm_port, config.llm_context) == (
+            DEFAULT_MODEL,
+            DEFAULT_PORT,
+            CONTEXT_TOKENS,
+        )

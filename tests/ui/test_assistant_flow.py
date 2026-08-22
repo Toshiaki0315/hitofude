@@ -307,3 +307,36 @@ class TestQuestionFlow:
         self.wait(window)
         window.assistant_pane.activate_related(0)
         assert window.current_note.title in {"会議メモ", "予算資料"}
+
+
+class TestSettings:
+    """設定からモデル・ポート・渡す量を決める（ADR-0025 追記）。"""
+
+    def test_設定のモデルを使う(self, window, config) -> None:
+        config.llm_model = "qwen3:8b"
+        window.reload_llm()
+        assert window.llm.model == "qwen3:8b"
+
+    def test_設定のポートを使う(self, window, config) -> None:
+        config.llm_port = 11500
+        window.reload_llm()
+        assert window.llm.port == 11500
+
+    def test_設定の渡す量を使う(self, window, config) -> None:
+        config.llm_context = 16384
+        window.reload_llm()
+        assert window.llm.context == 16384
+
+    def test_設定を変えたら作り直す(self, window, config) -> None:
+        """**設定画面で変えたのに古い相手のまま**にしない。"""
+        config.llm_model = "qwen3:8b"
+        window._apply_preferences()
+        assert window.llm.model == "qwen3:8b"
+
+    def test_送り先は127001のまま(self, window, config) -> None:
+        """ポートを変えても**相手の機械は変わらない**（ADR-0025 の 3）。"""
+        from hitofude.core.llm import endpoint
+
+        config.llm_port = 11500
+        window.reload_llm()
+        assert endpoint(window.llm.port) == "http://127.0.0.1:11500"

@@ -260,3 +260,57 @@ class TestSavedSearches:
     def test_壊れた値は空に戻す(self, config) -> None:
         config.settings.setValue("sidebar/saved_searches", "{壊れたJSON")
         assert config.saved_searches == []
+
+
+class TestLlmSettings:
+    """手元の LLM の設定（L-1〜L-3 / ADR-0025 追記）。
+
+    **送り先は設定に出さない。** 変えられるのはポートまでで、相手は
+    `127.0.0.1` に固定する（外へ出さないことがこの機能の前提）。
+    """
+
+    def test_モデルの既定(self, config) -> None:
+        from hitofude.core.llm import DEFAULT_MODEL
+
+        assert config.llm_model == DEFAULT_MODEL
+
+    def test_モデルを変えられる(self, config) -> None:
+        config.llm_model = "qwen3:8b"
+        assert config.llm_model == "qwen3:8b"
+
+    def test_空のモデル名は既定へ戻す(self, config) -> None:
+        """**空のまま保存すると、押しても何も起きないアプリになる。**"""
+        from hitofude.core.llm import DEFAULT_MODEL
+
+        config.llm_model = "   "
+        assert config.llm_model == DEFAULT_MODEL
+
+    def test_ポートの既定(self, config) -> None:
+        assert config.llm_port == 11434
+
+    def test_ポートを変えられる(self, config) -> None:
+        """`OLLAMA_HOST` で別のポートにしている人がいる。"""
+        config.llm_port = 11500
+        assert config.llm_port == 11500
+
+    @pytest.mark.parametrize("bad", [0, -1, 70000])
+    def test_使えないポートは既定へ戻す(self, config, bad: int) -> None:
+        config.settings.setValue("llm/port", bad)
+        assert config.llm_port == 11434
+
+    def test_文脈の長さの既定(self, config) -> None:
+        from hitofude.core.llm import CONTEXT_TOKENS
+
+        assert config.llm_context == CONTEXT_TOKENS
+
+    def test_文脈の長さを変えられる(self, config) -> None:
+        config.llm_context = 16384
+        assert config.llm_context == 16384
+
+    @pytest.mark.parametrize("bad", [0, 100, 999999])
+    def test_無茶な長さは既定へ戻す(self, config, bad: int) -> None:
+        """短すぎれば指示すら入らず、長すぎればメモリを食い潰す。"""
+        from hitofude.core.llm import CONTEXT_TOKENS
+
+        config.settings.setValue("llm/context", bad)
+        assert config.llm_context == CONTEXT_TOKENS
