@@ -56,11 +56,14 @@ def pdf_pages(path: Path) -> list[str]:
     return pages
 
 
-def pdf_page_images(path: Path, directory: Path) -> list[Path]:
-    """PDF の各ページを絵にする（ADR-0027）。読めなければ空。
+def pdf_page_images(path: Path, directory: Path, pages: list[int] | None = None) -> list[Path]:
+    """PDF のページを絵にする（ADR-0027）。読めなければ空。
 
     文字が入っていない PDF（紙を取り込んだもの）を読むのに要る。
     **一時の置き場は呼ぶ側が渡す**（後片づけをそちらに任せる）。
+
+    `pages`（0 始まり）を渡すと**そのページだけ**。文字のあるページまで
+    絵にすると、要らない読み取りで待たされる。
     """
     from PySide6.QtCore import QSize
     from PySide6.QtPdf import QPdfDocument
@@ -71,7 +74,8 @@ def pdf_page_images(path: Path, directory: Path) -> list[Path]:
         return []
 
     found: list[Path] = []
-    for number in range(document.pageCount()):
+    wanted = range(document.pageCount()) if pages is None else pages
+    for number in wanted:
         size = document.pagePointSize(number)
         height = int(PAGE_WIDTH * size.height() / size.width()) if size.width() else PAGE_WIDTH
         image = document.render(number, QSize(PAGE_WIDTH, height))
@@ -106,23 +110,55 @@ def to_markdown(path: Path, *, save_image=None, ocr=None) -> str:
     # **本文が無ければ空を返す。** ページはあっても文字が 1 つも無いことが
     # ある（画像を PDF にしたもの。ユーザー報告）。題名だけ返すと、
     # 呼び出し側が「読めた」と誤解して**中身の無いノート**を作ってしまう
+    # **ページごとに切り分ける**（ユーザー指摘 2026-08-23）。文書ごとに
+    # 見ていたので、1 ページでも文字があると絵のページが丸ごと落ちていた
+    pages = _fill_blank_pages(path, pages, reader=ocr)
     if not any(page.strip() for page in pages):
-        # **絵から読む**（ADR-0027）。紙を取り込んだ PDF はここへ来る。
-        # 文字が取れるなら回さない（速くて正確なほうを黙って捨てない）
-        logger.info("文字が無いので読み取りに回す: %s", path)
-        return _scanned_pdf(path, reader=ocr)
+        logger.warning("文字を取り出せなかった: %s", path)
+        return ""
 
     return imported.to_markdown(pages, title=path.stem)
 
 
-def _scanned_pdf(path: Path, *, reader) -> str:
-    """文字の入っていない PDF を、ページの絵から読む（ADR-0027）。"""
-    if reader is None or not reader.available():
-        logger.warning("読み取りができないので諦める: %s", path)
-        return ""
+MIN_PAGE_CHARS = 20
+"""このページには文字が無い、と見なす境目（ADR-0027）。
+
+**0 にしない。** 紙を取り込んだページからは、ゴミのような数文字が
+取れることがある（ページ番号や罫線の誤認）。そこで「文字がある」と
+判断すると、そのページは読めないまま終わる。
+
+**行き過ぎても害は小さい。** 短い扉ページを読み取りに回しても、0.5 秒
+かけて同じ言葉が返るだけ。
+"""
+
+
+def _fill_blank_pages(path: Path, pages: list[str], *, reader) -> list[str]:
+    """文字の取れなかったページだけ、絵から読んで埋める（ADR-0027）。
+
+    **読めたページは捨てない。** 読み取りが使えなくても、文字のある
+    ページはそのまま残す（読めないページのせいで全部を失わない）。
+    """
+    blanks = [number for number, page in enumerate(pages) if len(page.strip()) < MIN_PAGE_CHARS]
+    if not blanks or reader is None or not reader.available():
+        if blanks:
+            logger.info("読み取りが使えないので %d ページは空のまま: %s", len(blanks), path)
+        return pages
+
+    logger.info("文字の無い %d ページを読み取りに回す: %s", len(blanks), path)
+    filled = list(pages)
     with tempfile.TemporaryDirectory() as workspace:
-        images = pdf_page_images(path, Path(workspace))
-        return _from_images(images, title=path.stem, reader=reader)
+        images = pdf_page_images(path, Path(workspace), blanks)
+        for number, image in zip(blanks, images, strict=False):
+            try:
+                found = reader.read(image)
+            except Exception as error:  # 読み手の事情（道具が無い・モデルが違う）
+                logger.warning("読み取れなかった（%d ページ目）: %s", number + 1, error)
+                continue
+            # **長いほうを残す。** 短くても本物の文字が入っているページを、
+            # 読み取りの結果で上書きして失わない（読み取りが外すこともある）
+            if len(found.strip()) > len(filled[number].strip()):
+                filled[number] = found
+    return filled
 
 
 def _from_images(images: list[Path], *, title: str, reader) -> str:

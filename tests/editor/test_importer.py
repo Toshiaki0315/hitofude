@@ -178,7 +178,9 @@ class TestScannedPdf:
         from hitofude.editor import importer
 
         monkeypatch.setattr(importer, "pdf_pages", lambda _path: ["", "  "])
-        monkeypatch.setattr(importer, "pdf_page_images", lambda _path, _dir: [tmp_path / "1.png"])
+        monkeypatch.setattr(
+            importer, "pdf_page_images", lambda _path, _dir, pages=None: [tmp_path / "1.png"]
+        )
         pdf = tmp_path / "スキャン.pdf"
         pdf.write_bytes(b"%PDF-1.4")
         found = importer.to_markdown(pdf, ocr=FakeOcr("読み取った本文"))
@@ -194,3 +196,79 @@ class TestScannedPdf:
         pdf.write_bytes(b"%PDF-1.4")
         importer.to_markdown(pdf, ocr=reader)
         assert reader.seen == []
+
+
+class TestHybridPdf:
+    """文字のページと絵のページが混ざった PDF（ユーザー指摘 2026-08-23）。
+
+    **切り分けは文書ごとではなくページごと。** 1 ページでも文字があれば
+    読み取りに回らない作りだったので、**絵だけのページが丸ごと落ちていた**
+    （実測: 2 ページの PDF で 2 ページ目が消えた）。
+    """
+
+    def pdf(self, tmp_path):
+        path = tmp_path / "混在.pdf"
+        path.write_bytes(b"%PDF-1.4")
+        return path
+
+    def test_文字の無いページだけ読み取る(self, tmp_path, monkeypatch) -> None:
+        from hitofude.editor import importer
+
+        monkeypatch.setattr(
+            importer, "pdf_pages", lambda _p: ["1 ページ目は文字として入っている本文です", ""]
+        )
+        asked: list[list[int]] = []
+
+        def fake_images(_path, directory, pages=None):
+            asked.append(list(pages or []))
+            return [directory / "2.png"]
+
+        monkeypatch.setattr(importer, "pdf_page_images", fake_images)
+        found = importer.to_markdown(self.pdf(tmp_path), ocr=FakeOcr("絵から読んだ文字"))
+        assert "1 ページ目は文字として入っている本文です" in found
+        assert "絵から読んだ文字" in found
+        assert asked == [[1]], "文字のあるページまで絵にしている"
+
+    def test_全部に文字があれば読み取らない(self, tmp_path, monkeypatch) -> None:
+        from hitofude.editor import importer
+
+        monkeypatch.setattr(importer, "pdf_pages", lambda _p: ["あるページ", "こちらもある"])
+        reader = FakeOcr()
+        importer.to_markdown(self.pdf(tmp_path), ocr=reader)
+        assert reader.seen == []
+
+    def test_読み取りが使えなくても文字は残す(self, tmp_path, monkeypatch) -> None:
+        """**読めないページのせいで、読めたページまで捨てない。**"""
+        from hitofude.editor import importer
+
+        monkeypatch.setattr(
+            importer, "pdf_pages", lambda _p: ["1 ページ目は文字として入っている本文です", ""]
+        )
+        found = importer.to_markdown(self.pdf(tmp_path))
+        assert "1 ページ目は文字として入っている本文です" in found
+
+    def test_短い実文を読み取りで上書きしない(self, tmp_path, monkeypatch) -> None:
+        """**読み取りが外すこともある。** 短くても本物の文字が入っている
+        ページを、より短い読み取り結果で潰さない。"""
+        from hitofude.editor import importer
+
+        monkeypatch.setattr(importer, "pdf_pages", lambda _p: ["第 2 章 予算について"])
+        monkeypatch.setattr(
+            importer, "pdf_page_images", lambda _p, directory, pages=None: [directory / "1.png"]
+        )
+        found = importer.to_markdown(self.pdf(tmp_path), ocr=FakeOcr("第2章"))
+        assert "第 2 章 予算について" in found
+
+    def test_ごく短いページも読み取りに回す(self, tmp_path, monkeypatch) -> None:
+        """スキャンしたページは**ゴミのような数文字**が取れることがある。
+        そこで止まると、そのページは読めないまま終わる。"""
+        from hitofude.editor import importer
+
+        monkeypatch.setattr(
+            importer, "pdf_pages", lambda _p: ["ちゃんとした本文が入っている 1 ページ目です", "3"]
+        )
+        monkeypatch.setattr(
+            importer, "pdf_page_images", lambda _p, directory, pages=None: [directory / "2.png"]
+        )
+        found = importer.to_markdown(self.pdf(tmp_path), ocr=FakeOcr("絵から読んだ"))
+        assert "絵から読んだ" in found
