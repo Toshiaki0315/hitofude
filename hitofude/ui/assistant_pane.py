@@ -336,9 +336,12 @@ class AssistantPane(QWidget):
             f"QPlainTextEdit {{ background: {theme.background}; "
             f"color: {theme.foreground}; border: none; padding: 4px 8px; }}"
         )
+        # **答えと地続きに見えない**ように薄い面を敷く（ユーザー要望）。
+        # 色は増やさず、既にあるもの（タグの面と罫線）を使い回す
         self._notes.setStyleSheet(
-            f"QListWidget {{ background: {theme.background}; "
-            f"color: {theme.foreground}; border: none; }}"
+            f"QListWidget {{ background: {theme.tag_background}; "
+            f"color: {theme.foreground}; border: none; "
+            f"border-bottom: 1px solid {theme.rule}; }}"
             f"QListWidget::item {{ padding: 3px 8px; }}"
             f"QListWidget::item:selected {{ background: {theme.selection_background}; }}"
         )

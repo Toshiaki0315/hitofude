@@ -289,3 +289,35 @@ class TestSourcesLook:
 
         pane.set_sources([(Path("会議.md"), "会議メモ"), (Path("買い物.md"), "買い物")])
         assert pane.related_labels() == ["会議メモ", "買い物"]
+
+
+class TestSourcesBackground:
+    """出典・関連の一覧に薄い面を敷く（ユーザー要望 2026-08-22）。
+
+    **答えと地続きに見えると、どこまでが出典か分からない。** 色は増やさず、
+    既にある薄い面（`tag_background`）を使い回す。
+    """
+
+    def test_一覧に色が敷かれる(self, pane) -> None:
+        from hitofude.theme import LIGHT
+
+        assert LIGHT.tag_background.lower() in pane.related_list.styleSheet().lower()
+
+    def test_テーマで色が変わる(self, pane) -> None:
+        from hitofude.theme import DARK
+
+        pane.set_theme(DARK)
+        assert DARK.tag_background.lower() in pane.related_list.styleSheet().lower()
+
+    def test_答えの欄は今まで通り(self, pane) -> None:
+        """**面を敷くのは一覧だけ。** 答えまで塗ると本文と見分けが付かない。"""
+        from hitofude.theme import LIGHT
+
+        assert LIGHT.background.lower() in pane.output.styleSheet().lower()
+        assert LIGHT.tag_background.lower() not in pane.output.styleSheet().lower()
+
+    def test_下に仕切りが入る(self, pane) -> None:
+        """答えとの境目。**同じ役目の線に色を増やさない**（`rule` を使う）。"""
+        from hitofude.theme import LIGHT
+
+        assert LIGHT.rule.lower() in pane.related_list.styleSheet().lower()
