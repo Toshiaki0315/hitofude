@@ -543,3 +543,37 @@ class TestPlainMode:
         highlighter.set_plain_mode(False)
         highlighter.rehighlight()
         assert is_hidden(document, 0, 0)
+
+
+class TestHugeLine:
+    """1 行が巨大なときは装飾を諦める（コードレビュー指摘）。
+
+    **打鍵のたびにその行を丸ごと解析する。** 巨大な JSON や Base64 を
+    貼ると 1 行が数万字になり、実測で 20,000 字 = 10〜26ms（§6.6 の予算は
+    16ms）。全体のガード（`is_huge`）は行数と総量しか見ておらず、
+    **短いファイルの中の 1 行**は素通りしていた。
+    """
+
+    def test_長すぎる行は装飾しない(self, document, highlighter) -> None:
+        from hitofude.editor.highlighter import INLINE_SCAN_LIMIT
+
+        set_text(document, "**強調**" + "あ" * INLINE_SCAN_LIMIT)
+        assert not is_hidden(document, 0, 0), "潰されている（解析が走った）"
+
+    def test_境目までは今まで通り(self, document, highlighter) -> None:
+        from hitofude.editor.highlighter import INLINE_SCAN_LIMIT
+
+        set_text(document, "**強調**" + "あ" * (INLINE_SCAN_LIMIT - 100))
+        assert is_hidden(document, 0, 0)
+
+    def test_速い(self, document, highlighter) -> None:
+        """**予算は 16ms**（§6.6）。境目の行 1 本で測る。"""
+        import time
+
+        from hitofude.editor.highlighter import INLINE_SCAN_LIMIT
+
+        text = "*_`~[]()" * (INLINE_SCAN_LIMIT * 3 // 8)
+        start = time.perf_counter()
+        set_text(document, text)
+        took = (time.perf_counter() - start) * 1000
+        assert took < 16, f"{took:.1f}ms かかった"

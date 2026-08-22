@@ -58,6 +58,17 @@ from hitofude.theme import LIGHT, ThemeColors
 # 潰した文字の大きさは描く側（painter_overlay）に置いた。**2 か所に
 # 持つと片方だけ直したときに「潰したのに点が出ない」になる**
 
+INLINE_SCAN_LIMIT = 4000
+"""1 行がこれを超えたらインライン装飾を諦める（レビュー指摘）。
+
+**打鍵のたびにその行を丸ごと解析する。** 実測は 2,000 字 2.5ms /
+4,000 字 4.9ms / 8,000 字 9.9ms / 20,000 字 10〜26ms（中身による）で、
+§6.6 の予算は 16ms。ここは**予算の 3 割**に収まる線。
+
+ふつうの文章はまず届かない（原稿用紙 10 枚ぶんが 1 行に入っている状態）。
+届くのは貼り付けた JSON や Base64 で、そこに強調やリンクは無い。
+"""
+
 # `[ ]` の 3 文字。ここに箱を置く幅を持たせる（`_hide_checkbox_slot`）
 CHECKBOX_SLOT_CHARS = 3
 
@@ -410,7 +421,13 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         info, next_state = classify_line(text, block.blockNumber(), state)
 
         in_code = info.type in _CODE_BLOCK_TYPES
-        spans = [] if in_code else scan(text)
+        # **長すぎる行は装飾を諦める**（レビュー指摘）。打鍵のたびにその行を
+        # 丸ごと解析するので、巨大な JSON や Base64 を貼ると 1 行で予算
+        # （§6.6 の 16ms）を使い切る。実測: 2,000 字 2.5ms / 4,000 字 4.9ms /
+        # 8,000 字 9.9ms / 20,000 字 10〜26ms（中身による）。
+        # `core/stats.is_huge` は行数と総量しか見ておらず、**短いファイルの
+        # 中の 1 行**は素通りしていた
+        spans = [] if in_code or len(text) > INLINE_SCAN_LIMIT else scan(text)
         reveal = self._reveal_for(block.position(), block.length(), text)
 
         # 区切り行より前にある表の行がヘッダ。区切り行が in_table を立てるので、

@@ -340,3 +340,84 @@ class TestSettings:
         config.llm_port = 11500
         window.reload_llm()
         assert endpoint(window.llm.port) == "http://127.0.0.1:11500"
+
+
+class SlowLLM:
+    """`generate` の途中で止まる相手。**後から続きを流せる。**"""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple] = []
+
+    def available(self) -> bool:
+        return True
+
+    def generate(self, prompt, *, on_chunk=None, should_stop=None) -> str:
+        self.calls.append((prompt, on_chunk, should_stop))
+        return ""
+
+    def resume(self, index: int, chunk: str) -> bool:
+        """その回の続きを 1 つ流す。**止められていれば流さない**（本物と同じ）。"""
+        _prompt, on_chunk, should_stop = self.calls[index]
+        if should_stop is not None and should_stop():
+            return False
+        if on_chunk is not None:
+            on_chunk(chunk)
+        return True
+
+
+class TestGenerationLifecycle:
+    """走っている生成の後始末（コードレビュー指摘）。
+
+    **前の答えが新しい答えに混ざらない。** 止めてから頼み直したとき、
+    前の回がまだ喋っていると、2 つの答えが交ざって出る。
+    """
+
+    def prepared(self, window: MainWindow, llm) -> None:
+        window.set_llm(llm)
+        opened(window)
+
+    def ask(self, window: MainWindow, llm, task: Task) -> None:
+        """頼んで、**ワーカーが受け取るまで待つ**（別スレッドで走る）。"""
+        from PySide6.QtWidgets import QApplication
+
+        before = len(llm.calls)
+        window.ask_assistant(task)
+        for _ in range(200):
+            if len(llm.calls) > before:
+                return
+            QApplication.processEvents()
+        raise AssertionError("ワーカーが動かなかった")
+
+    def test_止めた回は再開しない(self, window) -> None:
+        llm = SlowLLM()
+        self.prepared(window, llm)
+        self.ask(window, llm, Task.SUMMARY)
+        window.stop_assistant()
+        assert llm.resume(0, "止めたのに続き") is False
+
+    def test_頼み直すと前の回は止まる(self, window) -> None:
+        """**同じ旗を使い回さない。** 新しい回が旗を下ろすと、前の回が
+        「まだ走ってよい」と誤解して喋り出す（実際にそうなっていた）。"""
+        llm = SlowLLM()
+        self.prepared(window, llm)
+        self.ask(window, llm, Task.SUMMARY)
+        window.stop_assistant()
+        self.ask(window, llm, Task.REVIEW)
+        assert llm.resume(0, "前の回の続き") is False
+
+    def test_前の回の言葉は出さない(self, window) -> None:
+        llm = SlowLLM()
+        self.prepared(window, llm)
+        self.ask(window, llm, Task.SUMMARY)
+        window.stop_assistant()
+        self.ask(window, llm, Task.REVIEW)
+        llm.resume(0, "古い答え")
+        assert "古い答え" not in window.assistant_pane.text()
+
+    def test_閉じるときに止める(self, window) -> None:
+        """**閉じるのを待たせない。** 生成は最長 120 秒かかる。"""
+        llm = SlowLLM()
+        self.prepared(window, llm)
+        self.ask(window, llm, Task.SUMMARY)
+        window.close()
+        assert llm.resume(0, "閉じたあとの続き") is False

@@ -249,7 +249,9 @@ class MainWindow(QMainWindow):
             lambda relative: self.open_and_select(self._vault.root / relative)
         )
         self._llm = self._llm_from_config()
-        self._assistant_stop = False
+        # **回ごとに番号を振る。** 1 つの旗を使い回すと、頼み直したときに
+        # 前の回が「まだ走ってよい」と誤解して喋り出す（レビュー指摘）
+        self._assistant_run = 0
 
         self._splitter = PaneSplitter(theme.rule)
         self._splitter.addWidget(self._sidebar)
@@ -1252,15 +1254,24 @@ class MainWindow(QMainWindow):
 
     def _start_assistant(self, prompt: str, *, keep_notes: bool = False) -> None:
         """読ませて、届いたぶんから出す。**打鍵の経路に入れない**（§6.6）。"""
-        self._assistant_stop = False
+        self._assistant_run += 1
+        run = self._assistant_run
         self._assistant.begin(keep_notes=keep_notes)
         reporter = AssistantReporter(self)
-        reporter.chunk.connect(self._assistant.append)
-        reporter.finished.connect(self._assistant.finish)
-        reporter.failed.connect(self._on_assistant_failed)
-        QThreadPool.globalInstance().start(
-            AssistantTask(self._llm, prompt, reporter, lambda: self._assistant_stop)
+        # **遅れて届いた前の回の言葉を出さない。** 閉じたあとにも触らない
+        reporter.chunk.connect(lambda chunk: self._if_current(run, self._assistant.append, chunk))
+        reporter.finished.connect(lambda: self._if_current(run, self._assistant.finish))
+        reporter.failed.connect(
+            lambda reason: self._if_current(run, self._on_assistant_failed, reason)
         )
+        QThreadPool.globalInstance().start(
+            AssistantTask(self._llm, prompt, reporter, lambda: self._assistant_run != run)
+        )
+
+    def _if_current(self, run: int, handler, *args) -> None:
+        """その回がまだ今の回なら渡す。**古い回と閉じたあとは捨てる。**"""
+        if run == self._assistant_run and not self._closing:
+            handler(*args)
 
     def show_related(self, *_args) -> None:
         """今のノートに関係するノートを並べる（L-3）。
@@ -1383,8 +1394,11 @@ class MainWindow(QMainWindow):
         return frontmatter.split(text).body.strip()
 
     def stop_assistant(self) -> None:
-        """待つのをやめる。**書きかけは残す**（そこまでは読める）。"""
-        self._assistant_stop = True
+        """待つのをやめる。**書きかけは残す**（そこまでは読める）。
+
+        番号を進めるだけで止まる（走っている回は自分の番号と見比べている）。
+        """
+        self._assistant_run += 1
         self._assistant.cancel()
 
     def _on_assistant_failed(self, reason: str) -> None:
@@ -1777,6 +1791,9 @@ class MainWindow(QMainWindow):
 
         self._save_timer.stop()
         self._watcher.stop()
+        # **閉じるのを待たせない。** 生成は最長 120 秒かかる（ADR-0025）。
+        # 番号を進めておけば、次の 1 行で自分から降りる
+        self._assistant_run += 1
         # ワーカーが自分の接続で書いている最中に落とさない
         self.wait_for_index_sync()
         self._db.close()
