@@ -37,7 +37,7 @@ from hitofude.config import (
     MIN_POINT_SIZE,
     Config,
 )
-from hitofude.core import frontmatter, related, searchquery, textpos
+from hitofude.core import frontmatter, keywords, related, searchquery, textpos
 from hitofude.core import llm as llm_module
 from hitofude.core.activation import ALLOWED_SCHEMES
 from hitofude.core.document import Note
@@ -244,6 +244,7 @@ class MainWindow(QMainWindow):
         self._assistant.requested.connect(self.ask_assistant)
         self._assistant.stopped.connect(self.stop_assistant)
         self._assistant.related_requested.connect(self.show_related)
+        self._assistant.question_asked.connect(self.ask_question)
         self._assistant.note_activated.connect(
             lambda relative: self.open_and_select(self._vault.root / relative)
         )
@@ -1225,8 +1226,12 @@ class MainWindow(QMainWindow):
             self._assistant.fail("本文が空です。")
             return
 
+        self._start_assistant(prompt)
+
+    def _start_assistant(self, prompt: str, *, keep_notes: bool = False) -> None:
+        """読ませて、届いたぶんから出す。**打鍵の経路に入れない**（§6.6）。"""
         self._assistant_stop = False
-        self._assistant.begin()
+        self._assistant.begin(keep_notes=keep_notes)
         reporter = AssistantReporter(self)
         reporter.chunk.connect(self._assistant.append)
         reporter.finished.connect(self._assistant.finish)
@@ -1285,6 +1290,75 @@ class MainWindow(QMainWindow):
             for hit in self._db.search(note.title, limit=related.DEFAULT_LIMIT):
                 found.append(related.Signal(str(hit.path), "題名が本文に出てくる", related.TEXT))
         return found
+
+    def ask_question(self, question: str) -> None:
+        """vault 全体に質問する（L-2 / ADR-0025）。
+
+        **材料はこちらが選ぶ。** 索引で候補を引き、その本文を渡す。
+        モデルは探せないし、**出典を作文させない**ため、実際に渡した
+        ノートだけを画面に並べる。
+
+        当たりが 1 つも無ければ**読ませない**（材料の無い問いに答えさせると
+        作り話が出る。GPU を回す意味もない）。
+        """
+        if self._assistant.is_running():
+            return
+        hits = self._sources_for(question)
+        if not hits:
+            self._assistant.set_sources([])
+            return
+
+        # **出典は答えより先に出す。** 待っている間、何を見ているのか分かる
+        self._assistant.set_sources([(hit.path, hit.title) for hit in hits])
+
+        sources = llm_module.pack([(hit.title, self._read_for_llm(hit.path)) for hit in hits])
+        prompt = llm_module.build_question_prompt(question, sources)
+        if prompt is None:
+            return
+        self._start_assistant(prompt, keep_notes=True)
+
+    def _sources_for(self, question: str) -> list:
+        """質問に答える材料を索引から集める（L-2）。
+
+        **質問をそのまま探さない。** 全文検索は打った通りの並びを探すので、
+        「予算について何が決まった？」ではどのノートにも当たらない（実測で
+        0 件だった）。`core/keywords` で語に切り、**1 語ずつ探して束ねる**。
+
+        タグと日付の絞り込み（`#仕事` `after:`）は検索欄と同じ書き方が効く。
+        """
+        parsed = searchquery.parse(question)
+        found: list = []
+        seen: set[str] = set()
+
+        def collect(text: str) -> None:
+            for hit in self._db.search(
+                text,
+                tags=parsed.tags,
+                after=parsed.after,
+                before=parsed.before,
+                limit=llm_module.SOURCE_LIMIT,
+            ):
+                key = str(hit.path)
+                if key not in seen:
+                    seen.add(key)
+                    found.append(hit)
+
+        words = keywords.terms(parsed.text)
+        for word in words:
+            collect(word)
+        if not words:
+            # 語が取り出せない問い（記号だけ・ひらがなだけ）は打った通りに探す。
+            # タグだけの絞り込み（`#仕事`）もここを通る
+            collect(parsed.text)
+        return found[: llm_module.SOURCE_LIMIT]
+
+    def _read_for_llm(self, relative: Path) -> str:
+        """材料として渡す本文。**front matter は外す**（画面に見えていない）。"""
+        try:
+            text = (self._vault.root / relative).read_text(encoding="utf-8")
+        except OSError:
+            return ""
+        return frontmatter.split(text).body.strip()
 
     def stop_assistant(self) -> None:
         """待つのをやめる。**書きかけは残す**（そこまでは読める）。"""

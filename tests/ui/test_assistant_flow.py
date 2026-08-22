@@ -193,3 +193,117 @@ class TestRelatedFlow:
     def test_開いていなければ何もしない(self, window) -> None:
         window.show_related()
         assert window.assistant_pane.related_labels() == []
+
+
+class TestQuestionFlow:
+    """vault 全体への質問（L-2）。
+
+    **材料はこちらが選ぶ。** 索引で候補を引き、その本文を渡し、
+    **実際に渡したノートを出典として並べる**（モデルに題名を作文させない）。
+    """
+
+    def seeded(self, window: MainWindow):
+        for relative, text in (
+            ("会議メモ.md", "# 会議メモ\n\n来週の予算について話した。増額の要望が出ている。\n"),
+            ("買い物.md", "# 買い物\n\n牛乳とパンを買う。\n"),
+            ("予算資料.md", "# 予算資料\n\n予算の前年比をまとめた。\n"),
+        ):
+            path = window.vault.root / relative
+            path.write_text(text, encoding="utf-8")
+            window.vault_index.upsert_note(Note.read(path), window.vault.root)
+        window.refresh()
+
+    def sources(self, window: MainWindow) -> set[str]:
+        return set(window.assistant_pane.related_labels())
+
+    def test_答えが出る(self, window) -> None:
+        window.set_llm(FakeLLM(["予算の話は", "会議メモにあります"]))
+        self.seeded(window)
+        window.ask_question("予算")
+        self.wait(window)
+        assert window.assistant_pane.text() == "予算の話は会議メモにあります"
+
+    def wait(self, window: MainWindow) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        for _ in range(200):
+            if not window.assistant_pane.is_running():
+                return
+            QApplication.processEvents()
+
+    def test_当たったノートの本文を渡す(self, window) -> None:
+        llm = FakeLLM()
+        window.set_llm(llm)
+        self.seeded(window)
+        window.ask_question("予算")
+        self.wait(window)
+        assert "来週の予算について話した。" in llm.prompts[0]
+
+    def test_関係の無いノートは渡さない(self, window) -> None:
+        """**渡すほど当たるわけではない。** 文脈からあふれると黙って切れる。"""
+        llm = FakeLLM()
+        window.set_llm(llm)
+        self.seeded(window)
+        window.ask_question("予算")
+        self.wait(window)
+        assert "牛乳とパン" not in llm.prompts[0]
+
+    def test_出典が並ぶ(self, window) -> None:
+        window.set_llm(FakeLLM())
+        self.seeded(window)
+        window.ask_question("予算")
+        self.wait(window)
+        assert self.sources(window) == {"会議メモ", "予算資料"}
+
+    def test_出典は答えの前に出る(self, window) -> None:
+        """**何を見て答えるのかが先に分かる。** 待っている間の手がかりになる。"""
+        window.set_llm(FakeLLM())
+        self.seeded(window)
+        window.ask_question("予算")
+        assert self.sources(window)  # まだ答えは来ていない
+
+    def test_当たらなければ読ませない(self, window) -> None:
+        """**材料が無いのに GPU を回さない。** 作り話をさせないためでもある。"""
+        llm = FakeLLM()
+        window.set_llm(llm)
+        self.seeded(window)
+        window.ask_question("宇宙旅行")
+        self.wait(window)
+        assert llm.prompts == []
+        assert "見つかりませんでした" in window.assistant_pane.status_text()
+
+    def test_タグで絞れる(self, window) -> None:
+        """`#タグ` の書き方は検索と同じ（`core/searchquery`）。"""
+        path = window.vault.root / "仕事メモ.md"
+        path.write_text("# 仕事メモ\n\n予算の件。 #仕事\n", encoding="utf-8")
+        window.vault_index.upsert_note(Note.read(path), window.vault.root)
+        window.refresh()
+        self.seeded(window)
+        window.set_llm(FakeLLM())
+        window.ask_question("#仕事 予算")
+        self.wait(window)
+        assert self.sources(window) == {"仕事メモ"}
+
+    def test_自然文の質問でも当たる(self, window) -> None:
+        """**質問は検索語ではない。** そのまま探すと 0 件だった（実測）。
+        語を取り出して 1 つずつ探す（`core/keywords`）。"""
+        window.set_llm(FakeLLM())
+        self.seeded(window)
+        window.ask_question("予算について何が決まった？")
+        self.wait(window)
+        assert self.sources(window) == {"会議メモ", "予算資料"}
+
+    def test_複数の語は両方から集める(self, window) -> None:
+        window.set_llm(FakeLLM())
+        self.seeded(window)
+        window.ask_question("予算と買い物の話")
+        self.wait(window)
+        assert self.sources(window) >= {"会議メモ", "買い物"}
+
+    def test_出典を押すと開く(self, window) -> None:
+        window.set_llm(FakeLLM())
+        self.seeded(window)
+        window.ask_question("予算")
+        self.wait(window)
+        window.assistant_pane.activate_related(0)
+        assert window.current_note.title in {"会議メモ", "予算資料"}

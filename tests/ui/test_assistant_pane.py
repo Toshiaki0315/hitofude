@@ -66,6 +66,12 @@ class TestStreaming:
         pane.append("答え")
         assert pane.status_text() == ""
 
+    def test_答えも横に流さない(self, pane) -> None:
+        """折り返して読む。横棒が出ると 2 方向へ動かすことになる。"""
+        from PySide6.QtCore import Qt
+
+        assert pane.output.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+
     def test_読むだけ(self, pane) -> None:
         """**ここで直せない。** 直すなら本文で直す（履歴のダイアログと同じ）。"""
         assert pane.is_read_only() is True
@@ -167,6 +173,24 @@ class TestRelated:
             pane.related_list.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
 
+    def test_件数に合わせて縮む(self, pane) -> None:
+        """**1 件のために欄の半分を使わない**（答えの場所が狭くなる）。"""
+        from pathlib import Path
+
+        pane.set_related([(Path("1.md"), "1", ("同じタグ",))])
+        one = pane.related_list.maximumHeight()
+        pane.set_related([(Path(f"{n}.md"), str(n), ("同じタグ",)) for n in range(5)])
+        assert one < pane.related_list.maximumHeight()
+
+    def test_多すぎれば頭打ち(self, pane) -> None:
+        """**並べるのは手がかり。** 欄いっぱいに伸びると答えが見えない。"""
+        from pathlib import Path
+
+        pane.set_related([(Path(f"{n}.md"), str(n), ("同じタグ",)) for n in range(6)])
+        few = pane.related_list.maximumHeight()
+        pane.set_related([(Path(f"{n}.md"), str(n), ("同じタグ",)) for n in range(30)])
+        assert pane.related_list.maximumHeight() == few
+
     def test_無ければそう出す(self, pane) -> None:
         """**空欄で黙らない。** 探した結果 0 件なのか、押し忘れたのか分かる。"""
         pane.set_related([])
@@ -178,3 +202,45 @@ class TestRelated:
         pane.set_related([(Path("会議.md"), "会議", ("同じタグ #仕事",))])
         pane.begin()
         assert pane.related_labels() == []
+
+
+class TestQuestion:
+    """vault 全体への質問（L-2）。**出典はこちらが出す。**"""
+
+    def test_質問を送れる(self, pane, qtbot) -> None:
+        pane.question_box.setText("予算はどうなった？")
+        with qtbot.waitSignal(pane.question_asked, timeout=1000) as blocker:
+            pane.ask_button.click()
+        assert blocker.args[0] == "予算はどうなった？"
+
+    def test_Enterでも送れる(self, pane, qtbot) -> None:
+        """**打って Enter** が自然（検索欄と同じ）。"""
+        pane.question_box.setText("予算は？")
+        with qtbot.waitSignal(pane.question_asked, timeout=1000):
+            pane.question_box.returnPressed.emit()
+
+    def test_空なら送らない(self, pane) -> None:
+        """**空の質問で GPU を回さない。**"""
+        seen: list[str] = []
+        pane.question_asked.connect(seen.append)
+        pane.question_box.setText("   ")
+        pane.ask_button.click()
+        assert seen == []
+
+    def test_Ollamaが無ければ送れない(self, pane) -> None:
+        pane.set_available(False)
+        assert pane.ask_button.isEnabled() is False
+
+    def test_出典が並ぶ(self, pane) -> None:
+        from pathlib import Path
+
+        pane.set_sources([(Path("仕事/会議.md"), "会議メモ")])
+        assert pane.related_labels() == ["会議メモ"]
+
+    def test_出典も押せば開く(self, pane, qtbot) -> None:
+        from pathlib import Path
+
+        pane.set_sources([(Path("仕事/会議.md"), "会議メモ")])
+        with qtbot.waitSignal(pane.note_activated, timeout=1000) as blocker:
+            pane.activate_related(0)
+        assert blocker.args[0] == Path("仕事/会議.md")

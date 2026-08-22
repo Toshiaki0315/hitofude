@@ -16,6 +16,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPlainTextEdit,
@@ -38,7 +39,14 @@ STOPPED = "止めました。"
 
 NO_RELATED = "関連するノートはありません。\nタグを付けるか `[[ノート名]]` で結ぶと出ます。"
 
+QUESTION_HINT = "ノート全体に質問する（例: 予算の話はどこ？）"
+
+NO_SOURCES = "手がかりになるノートが見つかりませんでした。\n言葉を変えて試してください。"
+
 # 題名と理由のあいだ。理由どうしは `/` で繋ぐ
+MAX_ROWS = 6
+"""一覧に見せる行数の上限。**欄いっぱいに伸びると答えが見えない。**"""
+
 REASON_MARK = " — "
 REASON_JOIN = " / "
 
@@ -54,7 +62,10 @@ class AssistantPane(QWidget):
     """「関連」が押された。**探すのは呼び出し側**（索引を引く）。"""
 
     note_activated = Signal(object)
-    """関連ノートの相対 `Path`。**開くのは呼び出し側**。"""
+    """関連ノート・出典の相対 `Path`。**開くのは呼び出し側**。"""
+
+    question_asked = Signal(str)
+    """打たれた質問（L-2）。**探して読ませるのは呼び出し側**。"""
 
     def __init__(self, parent: QWidget | None = None, *, theme: ThemeColors = LIGHT) -> None:
         super().__init__(parent)
@@ -87,9 +98,19 @@ class AssistantPane(QWidget):
         self._notes.hide()
         self._related_paths: list[object] = []
 
+        # vault 全体への質問（L-2）。**打って Enter** が自然（検索欄と同じ）
+        self._question = QLineEdit(self)
+        self._question.setPlaceholderText(QUESTION_HINT)
+        self._question.returnPressed.connect(self._on_question)
+        self._ask = QPushButton("質問", self)
+        self._ask.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._ask.clicked.connect(self._on_question)
+
         self._output = QPlainTextEdit(self)
         self._output.setReadOnly(True)  # 直すなら本文で直す（版の履歴と同じ）
         self._output.setFrameShape(QPlainTextEdit.Shape.NoFrame)
+        # 折り返して読む。横棒が出ると 2 方向へ動かすことになる
+        self._output.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self._status = QLabel("", self)
         self._status.setWordWrap(True)
@@ -106,9 +127,16 @@ class AssistantPane(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+        asking = QHBoxLayout()
+        asking.setContentsMargins(8, 0, 8, 6)
+        asking.setSpacing(6)
+        asking.addWidget(self._question, 1)
+        asking.addWidget(self._ask)
+
         layout.addLayout(buttons)
+        layout.addLayout(asking)
         layout.addWidget(self._status)
-        layout.addWidget(self._notes, 1)
+        layout.addWidget(self._notes)
         layout.addWidget(self._output, 1)
 
         self.setMinimumWidth(ASSISTANT_MIN_WIDTH)
@@ -130,6 +158,14 @@ class AssistantPane(QWidget):
         return self._related
 
     @property
+    def ask_button(self) -> QPushButton:
+        return self._ask
+
+    @property
+    def question_box(self) -> QLineEdit:
+        return self._question
+
+    @property
     def stop_button(self) -> QPushButton:
         return self._stop
 
@@ -145,6 +181,10 @@ class AssistantPane(QWidget):
     @property
     def related_list(self) -> QListWidget:
         return self._notes
+
+    @property
+    def output(self) -> QPlainTextEdit:
+        return self._output
 
     def status_text(self) -> str:
         return self._status.text()
@@ -173,25 +213,49 @@ class AssistantPane(QWidget):
         **理由も出す。** なぜ出たのかが読めないと、関係あるのか確かめよう
         がない。0 件なら**そう言う**（空欄で黙ると押し忘れと区別が付かない）。
         """
+        self._fill_notes(found, NO_RELATED)
+
+    def _fill_notes(self, found, empty_notice: str) -> None:
         self._notes.clear()
         self._related_paths = [path for path, _title, _reasons in found]
         for _path, title, reasons in found:
-            label = f"{title}{REASON_MARK}{REASON_JOIN.join(reasons)}"
+            label = f"{title}{REASON_MARK}{REASON_JOIN.join(reasons)}" if reasons else title
             item = QListWidgetItem(label)
             item.setToolTip(label)
             self._notes.addItem(item)
         self._notes.setVisible(bool(found))
-        self._status.setText("" if found else NO_RELATED)
+        # **件数に合わせて縮む。** 1 件のために欄の半分を使わない
+        row = self._notes.sizeHintForRow(0) if found else 0
+        self._notes.setMaximumHeight(row * min(len(found), MAX_ROWS) + 4)
+        self._status.setText("" if found else empty_notice)
+
+    def set_sources(self, found: list[tuple[object, str]]) -> None:
+        """答えの材料にしたノート（L-2）。**出典はこちらが出す。**
+
+        モデルに題名を書かせると、渡していないノートを作文することがある。
+        **実際に渡したものだけ**をここに並べる。押せば開く。
+        """
+        self._fill_notes([(path, title, ()) for path, title in found], NO_SOURCES)
+
+    def _on_question(self) -> None:
+        asked = self._question.text().strip()
+        if asked:  # **空の質問で GPU を回さない**
+            self.question_asked.emit(asked)
 
     def activate_related(self, row: int) -> None:
         """その行を押したことにする（クリックとテストの共通の口）。"""
         if 0 <= row < len(self._related_paths):
             self.note_activated.emit(self._related_paths[row])
 
-    def begin(self) -> None:
-        """頼んだところ。**前の答えは消す**（混ざると読めない）。"""
+    def begin(self, *, keep_notes: bool = False) -> None:
+        """頼んだところ。**前の答えは消す**（混ざると読めない）。
+
+        質問（L-2）のときは**出典を残す**（後から並べ直すと、答えより先に
+        材料が消えて何を見ているのか分からなくなる）。
+        """
         self._running = True
-        self.set_related([])
+        if not keep_notes:
+            self.set_related([])
         self._output.setPlainText("")
         self._status.setText(WAITING)
         self._refresh_buttons()
@@ -228,6 +292,8 @@ class AssistantPane(QWidget):
         can_ask = self._available and not self._running
         self._summary.setEnabled(can_ask)
         self._review.setEnabled(can_ask)
+        self._ask.setEnabled(can_ask)
+        self._question.setEnabled(can_ask)
         # **関連は索引を引くだけ。** Ollama の有無に関係なく押せる（L-3）
         self._related.setEnabled(not self._running)
         self._stop.setEnabled(self._running)
@@ -245,6 +311,10 @@ class AssistantPane(QWidget):
             f"color: {theme.foreground}; border: none; }}"
             f"QListWidget::item {{ padding: 3px 8px; }}"
             f"QListWidget::item:selected {{ background: {theme.selection_background}; }}"
+        )
+        self._question.setStyleSheet(
+            f"QLineEdit {{ background: {theme.background}; color: {theme.foreground}; "
+            f"border: 1px solid {theme.rule}; border-radius: 5px; padding: 3px 6px; }}"
         )
         self._status.setStyleSheet(
             f"QLabel {{ background: {theme.background}; "

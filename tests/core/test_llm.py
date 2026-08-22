@@ -174,3 +174,58 @@ class TestAvailability:
 
     def test_動いていなければ空(self) -> None:
         assert llm.LocalLLM(transport=Unreachable()).models() == []
+
+
+SOURCES = [("会議メモ", "来週の予算を話した。"), ("買い物", "牛乳とパン。")]
+
+
+class TestQuestionPrompt:
+    """vault 全体への質問（L-2）。
+
+    **答えの材料はこちらが選んで渡す。** モデルに探させない（探せない）。
+    渡した抜粋だけで答えさせ、**足りなければ「書かれていない」と言わせる**。
+    """
+
+    def test_質問が入る(self) -> None:
+        found = llm.build_question_prompt("予算はどうなった？", SOURCES)
+        assert "予算はどうなった？" in found
+
+    def test_抜粋が題名付きで入る(self) -> None:
+        found = llm.build_question_prompt("予算は？", SOURCES)
+        assert "会議メモ" in found
+        assert "来週の予算を話した。" in found
+
+    def test_渡したものだけで答えさせる(self) -> None:
+        found = llm.build_question_prompt("予算は？", SOURCES)
+        assert "以外" in found or "だけ" in found
+
+    def test_無ければ無いと言わせる(self) -> None:
+        """**作り話をさせない。** 出典の無い答えは使えない。"""
+        found = llm.build_question_prompt("予算は？", SOURCES)
+        assert "書かれていません" in found
+
+    def test_材料が無ければ組み立てない(self) -> None:
+        assert llm.build_question_prompt("予算は？", []) is None
+
+    def test_質問が空なら組み立てない(self) -> None:
+        assert llm.build_question_prompt("   ", SOURCES) is None
+
+
+class TestPack:
+    """渡す量を抑える（L-2）。**文脈からあふれると黙って切れる。**"""
+
+    def test_短ければそのまま(self) -> None:
+        found = llm.pack([("題", "本文")], each=100)
+        assert found == [("題", "本文")]
+
+    def test_1本ずつ切る(self) -> None:
+        found = llm.pack([("題", "あ" * 500)], each=100)
+        assert len(found[0][1]) < 500
+
+    def test_切ったと伝える(self) -> None:
+        found = llm.pack([("題", "あ" * 500)], each=100)
+        assert llm.TRUNCATED in found[0][1]
+
+    def test_本数も抑える(self) -> None:
+        found = llm.pack([(f"題{n}", "本文") for n in range(20)], each=100, most=5)
+        assert len(found) == 5

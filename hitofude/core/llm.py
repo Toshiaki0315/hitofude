@@ -38,6 +38,16 @@ CHAR_LIMIT = 12000
 
 TRUNCATED = "\n\n（ここから先は長いので渡していません）"
 
+SOURCE_LIMIT = 5
+"""質問に答えさせるとき、材料にするノートの数（L-2）。
+
+多く渡すほど当たりは増えるが、**8k の文脈からあふれると黙って切れる**。
+5 本 × 2,000 字で 1 万字、日本語で約 5,000 トークン。指示と答えのぶんが残る。
+"""
+
+SOURCE_CHARS = 2000
+"""1 本あたりに渡す字数（L-2）。"""
+
 
 class Task(Enum):
     SUMMARY = "summary"
@@ -87,6 +97,34 @@ def fit(body: str, *, limit: int = CHAR_LIMIT) -> str:
     if len(body) <= limit:
         return body
     return body[:limit] + TRUNCATED
+
+
+_QUESTION = (
+    "あなたは日本語で答える調べ物の助手です。**次の抜粋だけを使って**質問に"
+    "答えてください。抜粋に書かれていないことは推測せず、"
+    "「ノートには書かれていません」と答えてください。"
+    "どのノートに基づくかを本文中で題名で示してください。"
+)
+
+
+def build_question_prompt(question: str, sources: list[tuple[str, str]]) -> str | None:
+    """vault 全体への質問（L-2）。材料は**呼ぶ側が選んで渡す**。
+
+    **モデルに探させない。** 探す道具（索引）はこちらにあり、どのノートを
+    見たかを画面に出せるのはこちら側だけ。出典を作文させない。
+    """
+    asked = question.strip()
+    if not asked or not sources:
+        return None
+    excerpts = "\n\n".join(f"## {title}\n{body}" for title, body in sources)
+    return f"{_QUESTION}\n\n---\n{excerpts}\n---\n\n質問: {asked}"
+
+
+def pack(
+    sources: list[tuple[str, str]], *, each: int = SOURCE_CHARS, most: int = SOURCE_LIMIT
+) -> list[tuple[str, str]]:
+    """渡す材料を抑える（L-2）。**本数も 1 本の長さも抑える。**"""
+    return [(title, fit(body, limit=each)) for title, body in sources[:most]]
 
 
 Transport = Callable[[str, dict | None, float], Iterable[bytes]]
