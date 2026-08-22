@@ -381,25 +381,49 @@
     "line": 24,
     "text": "- 箇条書き",
     "block": "BULLET_LIST_ITEM",
-    "ranges": []
+    "ranges": [
+      [
+        0,
+        1,
+        "hidden:0.5"
+      ]
+    ]
   },
   {
     "line": 25,
     "text": "- 2 つ目",
     "block": "BULLET_LIST_ITEM",
-    "ranges": []
+    "ranges": [
+      [
+        0,
+        1,
+        "hidden:0.5"
+      ]
+    ]
   },
   {
     "line": 26,
     "text": "    - 入れ子",
     "block": "BULLET_LIST_ITEM",
-    "ranges": []
+    "ranges": [
+      [
+        4,
+        1,
+        "hidden:0.5"
+      ]
+    ]
   },
   {
     "line": 27,
     "text": "        - さらに入れ子",
     "block": "BULLET_LIST_ITEM",
-    "ranges": []
+    "ranges": [
+      [
+        8,
+        1,
+        "hidden:0.5"
+      ]
+    ]
   },
   {
     "line": 28,
@@ -431,6 +455,11 @@
     "block": "TASK_LIST_ITEM",
     "ranges": [
       [
+        0,
+        1,
+        "hidden:0.5"
+      ],
+      [
         2,
         3,
         "hidden:0.5"
@@ -442,6 +471,11 @@
     "text": "- [x] 完了したタスク",
     "block": "TASK_LIST_ITEM",
     "ranges": [
+      [
+        0,
+        1,
+        "hidden:0.5"
+      ],
       [
         2,
         3,

@@ -39,19 +39,24 @@ from hitofude.core.models import (
 from hitofude.core.table import WrappedRow, fits, wrap_row, wrapped_columns
 from hitofude.core.textpos import py_to_utf16, utf16_to_py
 from hitofude.editor.painter_overlay import (
+    BULLET_GAP_RATIO,
     CHECKBOX_GAP_RATIO,
     CODE_NAME_GAP,
     CODE_NAME_PAD_Y,
     CODE_NAME_SCALE,
+    HIDDEN_POINT_SIZE,
     TABLE_FAMILIES,
     WRAP_CELL_PADDING,
+    bullet_column,
+    bullet_size,
     checkbox_size,
 )
 from hitofude.theme import LIGHT, ThemeColors
 
 # 0.5pt にすると 1 文字あたり残る幅は約 0.5px（spec §3.3 の実測）。
 # 0 は Qt が「未指定」と解釈するため使えない。
-HIDDEN_POINT_SIZE = 0.5
+# 潰した文字の大きさは描く側（painter_overlay）に置いた。**2 か所に
+# 持つと片方だけ直したときに「潰したのに点が出ない」になる**
 
 # `[ ]` の 3 文字。ここに箱を置く幅を持たせる（`_hide_checkbox_slot`）
 CHECKBOX_SLOT_CHARS = 3
@@ -259,6 +264,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._plain_mode = False
         self._cell_pad: QTextCharFormat | None = None
         self._checkbox_pad: QTextCharFormat | None = None
+        self._bullet_pad: QTextCharFormat | None = None
         self._code_name_pad: QTextCharFormat | None = None
         # `setFormat` の位置変換用。`highlightBlock` の先頭で更新する
         self._line = ""
@@ -879,8 +885,19 @@ class MarkdownHighlighter(QSyntaxHighlighter):
                 for index, character in enumerate(text):
                     if character == "|":
                         self._hide(index, 1)
+        elif info.type is BlockType.BULLET_LIST_ITEM:
+            # `-` / `*` を潰して点を描く（ユーザー要望 2026-08-22）。**空白は
+            # 残す**ので、本文の始まる位置は今までどおり
+            marker = bullet_column(text, info.marker_len)
+            if marker >= 0:
+                self._hide_bullet_slot(marker)
         elif info.type is BlockType.TASK_LIST_ITEM:
-            # `- ` は残し `[ ]` だけ潰す。箱は paintEvent が描く（§6.4）
+            # `[ ]` を潰して箱を描く（§6.4）。**`- ` も潰す**（ADR-0026）。
+            # 箱が意味を担うので、生の `-` が残ると点の行と不揃いに見える。
+            # ここには点を描かない（箱と二重になる）
+            marker = bullet_column(text, info.marker_len)
+            if marker >= 0:
+                self._hide(marker, 1)
             bracket = text.find("[", 0, info.marker_len)
             if bracket >= 0:
                 self._hide_checkbox_slot(bracket)
@@ -991,6 +1008,22 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             self._code_name_pad = slot
         return slot
 
+    def _hide_bullet_slot(self, start: int) -> None:
+        """`-` の 1 文字を潰しつつ、**点を置く幅だけ残す**。
+
+        チェックの箱（`_hide_checkbox_slot`）と同じ手。字送りで幅を作るので
+        文字は足さず、キャレット位置とソースのオフセットは 1:1（R4）。
+        """
+        pad = self._bullet_pad
+        if pad is None:
+            reserve = bullet_size(self.document().defaultFont()) * (1 + BULLET_GAP_RATIO)
+            pad = QTextCharFormat()
+            pad.setFontPointSize(HIDDEN_POINT_SIZE)
+            pad.setFontLetterSpacingType(QFont.SpacingType.AbsoluteSpacing)
+            pad.setFontLetterSpacing(reserve)
+            self._bullet_pad = pad
+        self.setFormat(start, 1, pad)
+
     def _hide_checkbox_slot(self, start: int) -> None:
         """`[ ]` を潰しつつ、**箱を置く幅だけ残す**。
 
@@ -1047,6 +1080,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
     def _build_formats(self) -> None:
         self._cell_pad = None
         self._checkbox_pad = None
+        self._bullet_pad = None
         self._code_name_pad = None
         theme = self._theme
         base = self._base_point_size

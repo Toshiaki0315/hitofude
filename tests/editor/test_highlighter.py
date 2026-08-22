@@ -127,9 +127,26 @@ class TestMarkerHiding:
         assert is_hidden(document, 0, 0)
         assert not is_hidden(document, 0, 2)
 
-    def test_リストマーカーは潰さない(self, document, highlighter) -> None:
-        """spec §6.4: 記号自体が意味を持つ表示要素なので隠さない。"""
+    def test_箇条書きの記号は潰す(self, document, highlighter) -> None:
+        """点で描くようになった（[ADR-0026](../../docs/adr/0026-bullet-glyphs.md)）。
+
+        spec §5.2 の表は「隠さない」だったが、同じ行の但し書きが
+        「`- ` は `•` に置換描画してもよい」と許していた。**記号を消すのでは
+        なく潰す**ので、ソースは 1 文字も変わらない（R1 / R4）。
+        """
         set_text(document, "- 項目")
+        assert is_hidden(document, 0, 0)
+        assert not is_hidden(document, 0, 2)  # 本文はそのまま
+
+    def test_チェックの行も記号は潰す(self, document, highlighter) -> None:
+        """**点と箱で不揃いにしない。** 箱が意味を担うので `- ` は要らない
+        （ADR-0026）。点は描かない（二重になる）。"""
+        set_text(document, "- [ ] やること")
+        assert is_hidden(document, 0, 0)
+
+    def test_番号付きの数字は潰さない(self, document, highlighter) -> None:
+        """**数字は情報。** 点にすると何番目か分からなくなる。"""
+        set_text(document, "1. 項目")
         assert not is_hidden(document, 0, 0)
 
     def test_タグは記号ごと表示する(self, document, highlighter) -> None:

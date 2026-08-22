@@ -650,3 +650,71 @@ class TestBlockBandPadding:
         plain = self.line_height(editor, 4)
         code = self.line_height(editor, 1)
         assert abs(code - plain) < plain * 0.5  # 中身の行は据え置き
+
+
+class TestBullets:
+    """箇条書きの `- ` を点で描く（ユーザー要望 2026-08-22）。
+
+    **記号のまま出ていた。** 書いた通りに `-` と `*` が並び、同じ深さでも
+    書き手によって見た目が変わる（実機の画像）。HTML の作法どおり、
+    **深さで ● ○ ■ と替える**。
+
+    文字は消さない（R1 / R4）。潰して点を描く — チェックの印と同じ手。
+    """
+
+    def bullets(self, editor) -> list:
+        return of_kind(editor, DecorationKind.BULLET)
+
+    @pytest.mark.parametrize("source", ["- あああ", "* あああ", "+ あああ"])
+    def test_どの記号でも点になる(self, editor, source: str) -> None:
+        away(editor, source)
+        assert len(self.bullets(editor)) == 1
+
+    def test_深さで形が変わる(self, editor) -> None:
+        """**同じ形が続くと入れ子が読めない**（Qiita と同じ ● ○ ■）。
+
+        字下げは**アプリの Tab と同じ 2 文字**で数える（`input_handler.INDENT`）。
+        """
+        away(editor, "- 1 段目\n  - 2 段目\n    - 3 段目")
+        assert [bullet.text for bullet in self.bullets(editor)] == ["disc", "circle", "square"]
+
+    def test_深いところは四角のまま(self, editor) -> None:
+        away(editor, "- 1\n  - 2\n    - 3\n      - 4")
+        assert self.bullets(editor)[3].text == "square"
+
+    def test_深く字下げした行はより深い形になる(self, editor) -> None:
+        """**行だけ見て深さは決まらない**（正しい深さは親のマーカー幅次第。
+        `block_parser._indent_level` の但し書き）。4 文字下げると 2 段ぶん
+        深いと見なす — アプリの Tab（2 文字）で書けば素直に ● ○ ■ になる。
+        """
+        away(editor, "- 1 段目\n    - 4 文字下げた")
+        assert [bullet.text for bullet in self.bullets(editor)] == ["disc", "square"]
+
+    def test_記号の違いでは変わらない(self, editor) -> None:
+        """`-` と `*` は同じ意味。**書き手の癖で見た目が変わらない。**"""
+        away(editor, "- ハイフン\n* アスタリスク")
+        assert self.bullets(editor)[0].text == self.bullets(editor)[1].text
+
+    def test_番号付きは点にしない(self, editor) -> None:
+        """数字は情報。**消してはいけない。**"""
+        away(editor, "1. 一つ目")
+        assert self.bullets(editor) == []
+
+    def test_チェックの行は箱のまま(self, editor) -> None:
+        """`- [ ]` は箱が担う。点と箱が二重に出ない。"""
+        away(editor, "- [ ] やること")
+        assert self.bullets(editor) == []
+
+    def test_本文に重ならない(self, editor) -> None:
+        away(editor, "- あああ")
+        bullet = self.bullets(editor)[0]
+        assert bullet.rect.right() <= text_start_x(editor, 0, len("- "))
+
+    def test_カーソルを入れると記号が戻る(self, editor) -> None:
+        """**直せなければ書けない。** 行に入ったら生の `-` が見える
+        （マーカー隠しの約束。§3.3）。"""
+        editor.setPlainText("- あああ")
+        cursor = editor.textCursor()
+        cursor.setPosition(3)
+        editor.setTextCursor(cursor)
+        assert self.bullets(editor) == []

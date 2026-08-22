@@ -77,6 +77,20 @@ CHECKBOX_SIZE_RATIO = 0.70
 CHECKBOX_GAP_RATIO = 0.10
 CHECKBOX_STROKE = 1.4
 
+BULLET_SIZE_RATIO = 0.30
+"""点の直径 ÷ 行の高さ。**箱（0.70）より小さい。** 印ではなく目印なので、
+本文より目立つと読みの邪魔になる。"""
+
+BULLET_STROKE = 1.2
+"""白丸の輪郭。細すぎると 2 段目が消えて見える。"""
+
+BULLET_SQUARE_INSET = 0.12
+"""四角の内側の詰め。塗った四角は同じ大きさだと丸より重く見える。"""
+
+BULLET_SHAPES = ("disc", "circle", "square")
+"""深さごとの形（HTML の `list-style-type` と同じ並び）。**4 段目より
+深いところは四角のまま**（記号を増やしても見分けが付かない）。"""
+
 # 見出しの開閉三角の一辺（I-4）。ADR-0016 の左余白 12px に収める
 FOLD_MARKER_SIZE = 8.0
 FOLDED = "folded"
@@ -117,6 +131,10 @@ class DecorationKind(Enum):
 
     CODE_NAME = auto()
     """` ```python:aaa.py ` のファイル名（B-3）。"""
+
+    BULLET = auto()
+    """箇条書きの点（ユーザー要望 2026-08-22）。形は `text`（`disc` /
+    `circle` / `square`）。**記号のままだと、書き手の癖で見た目が変わる。**"""
 
     QUOTE_BAR = auto()
     NOTE_BACKGROUND = auto()
@@ -494,6 +512,9 @@ def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decora
     if info.type is BlockType.TASK_LIST_ITEM and info.checked is not None:
         result.append(_checkbox(editor, block, info, geometry))
 
+    if info.type is BlockType.BULLET_LIST_ITEM and _marker_hidden(block, info):
+        result.append(_bullet(editor, block, info, geometry))
+
     if info.type is BlockType.HEADING:
         marker = _fold_marker(editor, block, geometry)
         if marker is not None:
@@ -610,6 +631,69 @@ def _checkbox(editor, block: QTextBlock, info, geometry: QRectF) -> Decoration:
         QRectF(x, top, size, size),
         CHECKED if info.checked else UNCHECKED,
     )
+
+
+HIDDEN_POINT_SIZE = 0.5
+"""潰した文字の大きさ（R4）。**消さずに残す**ので、キャレット位置と
+ソースのオフセットは 1:1 のまま。ハイライタと同じ値を見る。"""
+
+BULLET_MARKS = "-*+"
+"""どれで書いても同じ点にする（`-` と `*` は CommonMark で同じ意味）。"""
+
+BULLET_GAP_RATIO = 0.9
+"""点と本文のあいだ。**接していると読みにくい**（箱と同じ考え方）。"""
+
+
+def bullet_column(text: str, marker_len: int) -> int:
+    """`- ` の記号そのものの位置。字下げのぶんは飛ばす。**無ければ -1。**
+
+    描く側と潰す側で同じ式を使う（別々に持つと、片方を直したときに
+    「潰した場所と描く場所が違う」というずれ方をする）。
+    """
+    for index, character in enumerate(text[:marker_len]):
+        if character in BULLET_MARKS:
+            return index
+    return -1
+
+
+def _marker_hidden(block: QTextBlock, info) -> bool:
+    """`- ` が潰されているか（＝カーソルが行の外にあるか）。
+
+    **カーソルを入れたら記号を返す**のがマーカー隠しの約束（§3.3）。
+    描く側もそれに従わないと、生の `-` と点が並んで出る。
+    """
+    layout = block.layout()
+    column = bullet_column(block.text(), info.marker_len)
+    if layout is None or column < 0:
+        return False
+    for run in layout.formats():
+        if run.start <= column < run.start + run.length:
+            return run.format.fontPointSize() == HIDDEN_POINT_SIZE
+    return False
+
+
+def _bullet(editor, block: QTextBlock, info, geometry: QRectF) -> Decoration:
+    """潰した `- ` の位置に点を描く（ユーザー要望 2026-08-22）。
+
+    **深さで形を替える**（HTML と同じ ● ○ ■）。同じ形が続くと入れ子が
+    読めない。4 段目より深いところは四角のまま（記号を増やしても
+    見分けが付かない）。
+    """
+    column = max(bullet_column(block.text(), info.marker_len), 0)
+    x = geometry.left() + _column_x(block, column)
+    size = bullet_size(editor.font())
+    top = geometry.top() + (geometry.height() - size) / 2
+    return Decoration(
+        DecorationKind.BULLET,
+        QRectF(x, top, size, size),
+        # `level` は 1 始まり（いちばん外側が 1）
+        BULLET_SHAPES[min(max(info.level - 1, 0), len(BULLET_SHAPES) - 1)],
+    )
+
+
+def bullet_size(font) -> float:
+    """点の直径。**文字の大きさに連れて変わる**（箱と同じ考え方）。"""
+    return QFontMetricsF(font).height() * BULLET_SIZE_RATIO
 
 
 def _column_x(block: QTextBlock, column: int) -> float:
@@ -775,14 +859,35 @@ def paint_foreground(
             )
         painter.restore()
 
-    boxes = [d for d in decorations if d.kind is DecorationKind.CHECKBOX]
-    if not boxes:
+    marks = [d for d in decorations if d.kind in (DecorationKind.CHECKBOX, DecorationKind.BULLET)]
+    if not marks:
         return
     painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    for decoration in boxes:
-        _paint_checkbox(painter, decoration, theme)
+    for decoration in marks:
+        if decoration.kind is DecorationKind.BULLET:
+            _paint_bullet(painter, decoration, theme)
+        else:
+            _paint_checkbox(painter, decoration, theme)
     painter.restore()
+
+
+def _paint_bullet(painter: QPainter, decoration: Decoration, theme: ThemeColors) -> None:
+    """箇条書きの点。**深さで形を替える**（● ○ ■）。"""
+    box = decoration.rect
+    color = QColor(theme.foreground)
+    painter.setPen(QPen(color, BULLET_STROKE))
+    if decoration.text == "circle":
+        painter.setBrush(QColor("transparent"))
+        painter.drawEllipse(box.adjusted(0.5, 0.5, -0.5, -0.5))
+        return
+    painter.setBrush(color)
+    if decoration.text == "square":
+        # 塗った四角は同じ大きさだと丸より重く見える。少し詰める
+        inset = box.width() * BULLET_SQUARE_INSET
+        painter.drawRect(box.adjusted(inset, inset, -inset, -inset))
+        return
+    painter.drawEllipse(box)
 
 
 def _paint_checkbox(painter: QPainter, decoration: Decoration, theme: ThemeColors) -> None:
