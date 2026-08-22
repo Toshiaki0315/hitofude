@@ -324,25 +324,20 @@ class TestSourcesBackground:
 
 
 class TestFocus:
-    """キーボードでも辿れるようにする（ユーザー要望 2026-08-22）。
+    """フォーカスの受け取り方（ユーザー要望 2026-08-22）。
 
-    **押すだけで本文から手が離れない**ようにはしたまま、Tab では回れる
-    ようにする（macOS の作法。クリックでは奪わない）。
+    **押しても本文から手が離れない。** ボタンはクリックでフォーカスを
+    奪わない（macOS の作法）。
+
+    **Tab で回るかはテストしない。** macOS の既定では Tab がボタンへ
+    行かず（「フル キーボード アクセス」を入れたときだけ回る）、
+    offscreen のテストだけが通ってしまう（ユーザー報告で判明）。
     """
 
     def test_質問欄は打てる(self, pane) -> None:
         from PySide6.QtCore import Qt
 
         assert pane.question_box.focusPolicy() == Qt.FocusPolicy.StrongFocus
-
-    @pytest.mark.parametrize(
-        "name", ["summary_button", "review_button", "related_button", "ask_button", "stop_button"]
-    )
-    def test_ボタンはTabで回れる(self, pane, name: str) -> None:
-        """**クリックでは奪わない。** 押した直後に本文へ打ち続けられる。"""
-        from PySide6.QtCore import Qt
-
-        assert getattr(pane, name).focusPolicy() == Qt.FocusPolicy.TabFocus
 
     def test_一覧は素通りする(self, pane) -> None:
         """出典・関連は押して開くもの。**Tab の道に挟むと本文が遠くなる。**"""

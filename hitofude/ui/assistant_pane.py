@@ -88,8 +88,9 @@ class AssistantPane(QWidget):
         self._related = QPushButton("関連", self)
         self._stop = QPushButton("止める", self)
         for button in (self._summary, self._review, self._related, self._stop):
-            # **Tab では回れる。クリックでは奪わない**（ユーザー要望 2026-08-22）。
-            # 押した直後に本文へ打ち続けられる（macOS の作法）
+            # **クリックでは奪わない。** 押した直後に本文へ打ち続けられる。
+            # Tab で回るのは macOS の「フル キーボード アクセス」を入れた
+            # ときだけ（既定では回らない。ユーザー報告で確認）
             button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self._summary.clicked.connect(lambda: self.requested.emit(Task.SUMMARY))
         self._review.clicked.connect(lambda: self.requested.emit(Task.REVIEW))
@@ -152,8 +153,9 @@ class AssistantPane(QWidget):
         layout.addWidget(self._notes)
         layout.addWidget(self._output, 1)
 
-        # Tab の順は**上から下・左から右**。作った順（止める が先）だと
-        # 質問欄より前に「止める」が来て、打ちに行くのに 1 回多く押す
+        # 回るときの順は**上から下・左から右**（作った順だと「止める」が
+        # 質問欄より前に来る）。macOS の既定では Tab はボタンへ行かないので、
+        # 効くのは「フル キーボード アクセス」を入れている人だけ
         for previous, following in (
             (self._summary, self._review),
             (self._review, self._related),
