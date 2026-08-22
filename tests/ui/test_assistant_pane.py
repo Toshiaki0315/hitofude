@@ -244,3 +244,48 @@ class TestQuestion:
         with qtbot.waitSignal(pane.note_activated, timeout=1000) as blocker:
             pane.activate_related(0)
         assert blocker.args[0] == Path("仕事/会議.md")
+
+
+class TestSourcesLook:
+    """出典がそれと分かるように出す（ユーザー報告 2026-08-22）。
+
+    **題名だけが 2 行並んでも、それが何なのか分からない。** 実機では
+    同じ題名のノートが 2 本あり、区別も付かなかった。
+    """
+
+    def test_出典だと分かる見出しが出る(self, pane) -> None:
+        from pathlib import Path
+
+        pane.set_sources([(Path("会議.md"), "会議メモ")])
+        assert "出典" in pane.status_text()
+
+    def test_答えが流れても見出しは残る(self, pane) -> None:
+        """**何を見て答えているか**は、読んでいる間ずっと要る。"""
+        from pathlib import Path
+
+        pane.set_sources([(Path("会議.md"), "会議メモ")])
+        pane.begin(keep_notes=True)
+        pane.append("答え")
+        assert "出典" in pane.status_text()
+
+    def test_同じ題名なら置き場所で見分ける(self, pane) -> None:
+        """**どっちの「使い方」か分からない**（実機で 2 行並んだ）。"""
+        from pathlib import Path
+
+        pane.set_sources(
+            [
+                (Path("使い方.md"), "Hitofude の使い方"),
+                (Path("古い/使い方.md"), "Hitofude の使い方"),
+            ]
+        )
+        assert pane.related_labels() == [
+            "Hitofude の使い方 — 使い方",
+            "Hitofude の使い方 — 古い/使い方",
+        ]
+
+    def test_題名が違えば題名だけ(self, pane) -> None:
+        """**要らない情報を足さない。** 見分けが付くなら題名で足りる。"""
+        from pathlib import Path
+
+        pane.set_sources([(Path("会議.md"), "会議メモ"), (Path("買い物.md"), "買い物")])
+        assert pane.related_labels() == ["会議メモ", "買い物"]

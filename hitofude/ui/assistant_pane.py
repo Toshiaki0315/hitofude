@@ -43,12 +43,22 @@ QUESTION_HINT = "ノート全体に質問する（例: 予算の話はどこ？�
 
 NO_SOURCES = "手がかりになるノートが見つかりませんでした。\n言葉を変えて試してください。"
 
+SOURCES_CAPTION = "出典（この中だけを読ませています。押すと開きます）"
+"""**題名だけが並んでも、それが何なのか分からない**（ユーザー報告）。"""
+
 # 題名と理由のあいだ。理由どうしは `/` で繋ぐ
 MAX_ROWS = 6
 """一覧に見せる行数の上限。**欄いっぱいに伸びると答えが見えない。**"""
 
 REASON_MARK = " — "
 REASON_JOIN = " / "
+
+
+def _where(path) -> str:
+    """置き場所を短く。**拡張子は出さない**（一覧でも出していない）。"""
+    from pathlib import Path
+
+    return Path(str(path)).with_suffix("").as_posix()
 
 
 class AssistantPane(QWidget):
@@ -234,8 +244,19 @@ class AssistantPane(QWidget):
 
         モデルに題名を書かせると、渡していないノートを作文することがある。
         **実際に渡したものだけ**をここに並べる。押せば開く。
+
+        **同じ題名が並んだら置き場所を添える。** 実機で「Hitofude の使い方」
+        が 2 行並び、どちらのことか分からなかった（ユーザー報告）。
+        見分けが付くなら題名だけにする（要らない情報を足さない）。
         """
-        self._fill_notes([(path, title, ()) for path, title in found], NO_SOURCES)
+        titles = [title for _path, title in found]
+        rows = [
+            (path, title, (_where(path),) if titles.count(title) > 1 else ())
+            for path, title in found
+        ]
+        self._fill_notes(rows, NO_SOURCES)
+        if found:
+            self._status.setText(SOURCES_CAPTION)
 
     def _on_question(self) -> None:
         asked = self._question.text().strip()
@@ -257,18 +278,27 @@ class AssistantPane(QWidget):
         if not keep_notes:
             self.set_related([])
         self._output.setPlainText("")
-        self._status.setText(WAITING)
+        if not (keep_notes and self._caption_kept()):
+            self._status.setText(WAITING)
         self._refresh_buttons()
 
     def append(self, chunk: str) -> None:
-        """届いたぶんを足す。最初の 1 文字で「読んでいます」を消す。"""
+        """届いたぶんを足す。最初の 1 文字で「読んでいます」を消す。
+
+        **出典の見出しは消さない。** 何を見て答えているかは、読んでいる
+        あいだずっと要る。
+        """
         if not chunk:
             return
-        self._status.setText("")
+        if self._status.text() == WAITING:
+            self._status.setText("")
         cursor = self._output.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
         cursor.insertText(chunk)
         self._output.setTextCursor(cursor)
+
+    def _caption_kept(self) -> bool:
+        return self._status.text() == SOURCES_CAPTION
 
     def finish(self) -> None:
         self._running = False
