@@ -271,7 +271,8 @@ class ExportActions:
             )
             return None
 
-        note = window._vault.create(source.stem, text)
+        # **選んでいるフォルダへ**（ユーザー要望 2026-08-23。新規作成と同じ）
+        note = window._vault.create(source.stem, text, folder=window.creation_folder())
         window._open_created(note)
         logger.info("取り込んだ: %s → %s", source.name, note.path.name)
         return note.path

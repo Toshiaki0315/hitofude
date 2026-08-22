@@ -224,3 +224,58 @@ class TestRootSelection:
         window.move_note_to_folder(window.vault.root / "直下.md")
         assert "." not in captured["items"]
         assert captured["items"][0] == module.ROOT_FOLDER_CHOICE
+
+
+class TestImportIntoFolder:
+    """読み込みも選んでいるフォルダへ（ユーザー要望 2026-08-23）。
+
+    **新規作成と同じ作法。** 直下に作ると、絞り込み中の一覧に現れもせず
+    「読み込んだのに出てこない」になる。
+    """
+
+    def select_folder(self, window, name="資料"):
+        from hitofude.core.document import Note
+        from hitofude.ui.sidebar import Filter, FilterKind
+
+        path = window.vault.root / name / "既存.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# 既存\n", encoding="utf-8")
+        window.vault_index.upsert_note(Note.read(path), window.vault.root)
+        window.set_filter(Filter(FilterKind.FOLDER, folder=name))
+
+    def source(self, tmp_path):
+        path = tmp_path / "外の資料.md"
+        path.write_text("# 外の資料\n\n本文\n", encoding="utf-8")
+        return path
+
+    def test_ドロップしたmdはそのフォルダへ(self, window, tmp_path) -> None:
+        self.select_folder(window)
+        window.import_note_files([self.source(tmp_path)])
+        assert (window.vault.root / "資料" / "外の資料.md").is_file()
+
+    def test_絞っていなければ直下(self, window, tmp_path) -> None:
+        window.import_note_files([self.source(tmp_path)])
+        assert (window.vault.root / "外の資料.md").is_file()
+
+    def test_読み込んだ資料もそのフォルダへ(self, window, tmp_path, monkeypatch) -> None:
+        """「ファイル」→「読み込む…」（PDF・画像・PowerPoint）。"""
+        from hitofude.ui import export_actions as module
+
+        self.select_folder(window)
+        pdf = tmp_path / "講演資料.pdf"
+        pdf.write_bytes(b"%PDF-1.4")
+        monkeypatch.setattr(
+            module.QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: (str(pdf), ""))
+        )
+        monkeypatch.setattr(module.importer, "to_markdown", lambda *a, **k: "# 講演資料\n\n中身\n")
+        found = window.import_document()
+        assert found is not None
+        assert found.parent == window.vault.root / "資料"
+
+    def test_ゴミ箱を選んでいるときは直下(self, window, tmp_path) -> None:
+        """**ゴミ箱に読み込まない。** 捨てた場所に新しいものを置かない。"""
+        from hitofude.ui.sidebar import TRASH
+
+        window.set_filter(TRASH)
+        window.import_note_files([self.source(tmp_path)])
+        assert (window.vault.root / "外の資料.md").is_file()

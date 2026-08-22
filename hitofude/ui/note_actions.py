@@ -933,7 +933,12 @@ class NoteActions:
         for source in paths:
             if source.suffix.lower() not in MARKDOWN_SUFFIXES or not source.is_file():
                 continue
-            target = unique_path(window._vault.root, sanitize_filename(source.stem))
+            # **選んでいるフォルダへ入れる**（ユーザー要望 2026-08-23）。
+            # 直下に置くと、絞り込み中の一覧に現れもせず「取り込んだのに
+            # 出てこない」になる（新規作成と同じ作法）
+            folder = window.creation_folder() or window._vault.root
+            folder.mkdir(parents=True, exist_ok=True)
+            target = unique_path(folder, sanitize_filename(source.stem))
             window._watcher.suppress(target)
             try:
                 shutil.copyfile(source, target)

@@ -1628,6 +1628,10 @@ class MainWindow(QMainWindow):
         """サイドバーで選んだフォルダを Finder で開く。実体は NoteActions。"""
         self._notes.open_folder_in_finder(target)
 
+    def import_note_files(self, paths: list[Path]) -> list[Path]:
+        """一覧へドロップされた `.md` を取り込む。実体は NoteActions。"""
+        return self._notes.import_note_files(paths)
+
     def import_document(self) -> Path | None:
         """「ファイル」→「読み込む…」（F-2）。"""
         return self._exports.import_document()

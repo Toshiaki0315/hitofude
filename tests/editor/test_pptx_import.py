@@ -255,6 +255,8 @@ class TestPptxImages:
 
     def deck(self, tmp_path, pictures):
         """`pictures` は `(幅 px, 中身の種)` の並び。"""
+        import hashlib
+
         from PIL import Image
         from pptx import Presentation
         from pptx.util import Cm
@@ -266,9 +268,11 @@ class TestPptxImages:
             source = tmp_path / f"{seed}-{width}.png"
             if not source.exists():
                 # **種が同じなら同じ絵、違えば違う絵**（色を種から作る）。
-                # index から作ると 255 で一周して、別のはずの絵が同じになる
-                tone = hash(seed) % 200
-                Image.new("RGB", (width, width), (tone + 20, (tone * 3) % 200, 150)).save(source)
+                # `hash()` を 200 で割ると 35 枚では**必ず衝突する**（誕生日
+                # 問題）。別のはずの絵が同じ中身になり、間引きに落ちて
+                # テストが揺れた。1600 万色に散らす
+                tone = hashlib.md5(seed.encode()).digest()[:3]
+                Image.new("RGB", (width, width), tuple(tone)).save(source)
             slide.shapes.add_picture(str(source), Cm(1 + index * 5), Cm(5), Cm(3))
         path = tmp_path / "図つき.pptx"
         presentation.save(str(path))
