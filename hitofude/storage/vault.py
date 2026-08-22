@@ -257,6 +257,18 @@ class Vault:
     def read(self, path: Path) -> Note:
         return Note.read(path)
 
+    def writable_folder(self, folder: Path | None = None) -> Path:
+        """書き込んでよい場所か確かめて、無ければ作る（レビュー指摘）。
+
+        **`Vault` の外で置き場を決めさせない。** ドロップの取り込みが
+        ここを通らずに直にコピーしていたため、予約フォルダ（`attachments`
+        など）を指すリンクを選ぶと、その中へノートが入っていた（実測）。
+        一覧にも索引にも出ない場所なので、書いた人からは消えたように見える。
+        """
+        target = self._writable_folder(folder) if folder is not None else self.root
+        target.mkdir(parents=True, exist_ok=True)
+        return target
+
     def create(self, title: str, text: str | None = None, *, folder: Path | None = None) -> Note:
         """新しいノートを作る。front matter に ULID と日時を入れる（spec §7.2）。
 
@@ -265,8 +277,7 @@ class Vault:
         （渡し間違いを黙って通すと、保管フォルダの外にノートが散る）。
         """
         self.ensure_layout()
-        target = self._writable_folder(folder) if folder is not None else self.root
-        target.mkdir(parents=True, exist_ok=True)
+        target = self.writable_folder(folder)
         path = unique_path(target, sanitize_filename(title))
 
         parsed = frontmatter.split(text or "")

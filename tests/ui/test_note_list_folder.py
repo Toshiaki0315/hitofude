@@ -279,3 +279,54 @@ class TestImportIntoFolder:
         window.set_filter(TRASH)
         window.import_note_files([self.source(tmp_path)])
         assert (window.vault.root / "外の資料.md").is_file()
+
+
+class TestImportGuards:
+    """取り込みの守り（コードレビュー指摘 2026-08-23）。
+
+    どちらも**実際に起きることを確かめてから**直した。
+    """
+
+    def source(self, tmp_path):
+        path = tmp_path / "外の資料.md"
+        path.write_text("# 外の資料\n\n本文\n", encoding="utf-8")
+        return path
+
+    def select(self, window, name):
+        from hitofude.ui.sidebar import Filter, FilterKind
+
+        window.refresh()
+        window.set_filter(Filter(FilterKind.FOLDER, folder=name))
+
+    def test_予約フォルダを指すリンクには入れない(self, window, tmp_path) -> None:
+        """**実測で `attachments/` にノートが入り、索引にも幽霊が出ていた。**"""
+        link = window.vault.root / "資料"
+        link.symlink_to(window.vault.attachments_dir)
+        self.select(window, "資料")
+        assert window.import_note_files([self.source(tmp_path)]) == []
+        assert list(window.vault.attachments_dir.glob("*.md")) == []
+
+    def test_断ったことを知らせる(self, window, tmp_path) -> None:
+        link = window.vault.root / "資料"
+        link.symlink_to(window.vault.attachments_dir)
+        self.select(window, "資料")
+        window.import_note_files([self.source(tmp_path)])
+        assert "取り込め" in window.notice()
+
+    def test_書けない場所でも落ちない(self, window, tmp_path) -> None:
+        """**実測で PermissionError が UI まで出ていた**（Finder で消された
+        フォルダを選んだままドロップした状態）。"""
+        (window.vault.root / "資料").mkdir()
+        self.select(window, "資料")
+        (window.vault.root / "資料").rmdir()
+        window.vault.root.chmod(0o500)
+        try:
+            assert window.import_note_files([self.source(tmp_path)]) == []
+        finally:
+            window.vault.root.chmod(0o755)
+
+    def test_ふつうの取り込みは今まで通り(self, window, tmp_path) -> None:
+        (window.vault.root / "資料").mkdir()
+        self.select(window, "資料")
+        assert window.import_note_files([self.source(tmp_path)])
+        assert (window.vault.root / "資料" / "外の資料.md").is_file()

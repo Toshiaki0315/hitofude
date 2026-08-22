@@ -1130,3 +1130,39 @@ class TestRenameFolder:
     def test_同じ名前なら何もしない(self, vault) -> None:
         self.prepared(vault)
         assert vault.rename_folder("仕事", "仕事") == vault.root / "仕事"
+
+
+class TestWritableFolder:
+    """書き込んでよい場所か、`Vault` に確かめさせる（レビュー指摘）。
+
+    ドロップの取り込みが `Vault` を通さず直にコピーしていたので、
+    **予約フォルダを指すリンクの中へノートが入っていた**（実測）。
+    """
+
+    def test_ふつうのフォルダは通る(self, vault) -> None:
+        vault.ensure_layout()
+        found = vault.writable_folder(vault.root / "資料")
+        assert found == vault.root / "資料"
+        assert found.is_dir(), "無ければ作る"
+
+    def test_渡さなければ直下(self, vault) -> None:
+        vault.ensure_layout()
+        assert vault.writable_folder(None) == vault.root
+
+    def test_予約フォルダは断る(self, vault) -> None:
+        vault.ensure_layout()
+        with pytest.raises(ValueError):
+            vault.writable_folder(vault.attachments_dir)
+
+    def test_予約フォルダを指すリンクも断る(self, vault) -> None:
+        """**別名でも中身は同じ。** 実体で見る。"""
+        vault.ensure_layout()
+        link = vault.root / "資料"
+        link.symlink_to(vault.attachments_dir)
+        with pytest.raises(ValueError):
+            vault.writable_folder(link)
+
+    def test_保管フォルダの外は断る(self, vault, tmp_path) -> None:
+        vault.ensure_layout()
+        with pytest.raises(ValueError):
+            vault.writable_folder(tmp_path / "よそ")

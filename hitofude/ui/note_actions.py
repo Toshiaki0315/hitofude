@@ -930,29 +930,40 @@ class NoteActions:
         """
         window = self._window
         added: list[Note] = []
+        refused = 0
         for source in paths:
             if source.suffix.lower() not in MARKDOWN_SUFFIXES or not source.is_file():
                 continue
             # **選んでいるフォルダへ入れる**（ユーザー要望 2026-08-23）。
             # 直下に置くと、絞り込み中の一覧に現れもせず「取り込んだのに
-            # 出てこない」になる（新規作成と同じ作法）
-            folder = window.creation_folder() or window._vault.root
-            folder.mkdir(parents=True, exist_ok=True)
-            target = unique_path(folder, sanitize_filename(source.stem))
-            window._watcher.suppress(target)
+            # 出てこない」になる（新規作成と同じ作法）。
+            #
+            # **置き場は `Vault` に確かめさせる**（レビュー指摘）。ここで
+            # 決めていたので、予約フォルダを指すリンクの中へノートが入って
+            # いた。場所を決めるところからコピーまで**同じ `try` に入れる**
+            # ——`mkdir` や `exists` の失敗が画面まで出ていた（実測）
             try:
+                folder = window._vault.writable_folder(window.creation_folder())
+                target = unique_path(folder, sanitize_filename(source.stem))
+                window._watcher.suppress(target)
                 shutil.copyfile(source, target)
-            except OSError:
-                logger.warning("取り込めなかった: %s", source, exc_info=True)
+            except (ValueError, OSError) as error:
+                logger.warning("取り込めなかった（%s）: %s", source, error)
+                refused += 1
                 continue
             added.append(window._vault.read(target))
 
         if not added:
+            if refused:  # **黙って何も起きないのがいちばん分かりにくい**
+                window.notify("取り込めませんでした（置き場を確かめてください）")
             return []
         for note in added[:-1]:
             window._db.upsert_note(note, window._vault.root)
         window._open_created(added[-1])  # upsert・一覧更新・開く・選択まで
-        window.notify(f"{len(added)} 件のノートを取り込みました")
+        message = f"{len(added)} 件のノートを取り込みました"
+        if refused:
+            message += f"（{refused} 件は取り込めませんでした）"
+        window.notify(message)
         logger.info("ドロップから取り込んだ: %d 件", len(added))
         return [note.path for note in added]
 
