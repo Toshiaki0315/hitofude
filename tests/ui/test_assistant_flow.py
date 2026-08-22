@@ -10,6 +10,7 @@
 
 import pytest
 
+from hitofude.core.document import Note
 from hitofude.core.llm import Task
 from hitofude.ui.main_window import MainWindow
 
@@ -132,3 +133,63 @@ class TestPane:
 
         window._on_theme_changed(DARK)
         assert window.assistant_pane._theme.is_dark
+
+
+class TestRelatedFlow:
+    """関連ノート（L-3）。**索引から出す**ので LLM は動かさない。"""
+
+    def seeded(self, window: MainWindow):
+        for relative, text in (
+            ("今.md", "# 今\n\n#仕事 の話。[[会議メモ]] を見る。\n"),
+            ("仕事/会議メモ.md", "# 会議メモ\n\n#仕事 の会議。\n"),
+            ("私用/買い物.md", "# 買い物\n\n#私用 のメモ。\n"),
+            ("指す.md", "# 指す\n\n[[今]] を指している。\n"),
+        ):
+            path = window.vault.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+            window.vault_index.upsert_note(Note.read(path), window.vault.root)
+        window.refresh()
+        window.open_and_select(window.vault.root / "今.md")
+
+    def titles(self, window: MainWindow) -> list[str]:
+        return [label.split(" — ")[0] for label in window.assistant_pane.related_labels()]
+
+    def test_同じタグと指し合うノートが出る(self, window) -> None:
+        self.seeded(window)
+        window.show_related()
+        assert set(self.titles(window)) == {"会議メモ", "指す"}
+
+    def test_自分は出ない(self, window) -> None:
+        self.seeded(window)
+        window.show_related()
+        assert "今" not in self.titles(window)
+
+    def test_関係の無いノートは出ない(self, window) -> None:
+        self.seeded(window)
+        window.show_related()
+        assert "買い物" not in self.titles(window)
+
+    def test_理由が付く(self, window) -> None:
+        self.seeded(window)
+        window.show_related()
+        labels = {label.split(" — ")[0]: label for label in window.assistant_pane.related_labels()}
+        assert "タグ" in labels["会議メモ"]
+
+    def test_押すとそのノートが開く(self, window) -> None:
+        self.seeded(window)
+        window.show_related()
+        window.assistant_pane.activate_related(0)
+        assert window.current_note.title in {"会議メモ", "指す"}
+
+    def test_LLMを動かさない(self, window) -> None:
+        """**待たせない。** 索引を引くだけで、モデルには触らない。"""
+        llm = FakeLLM()
+        window.set_llm(llm)
+        self.seeded(window)
+        window.show_related()
+        assert llm.prompts == []
+
+    def test_開いていなければ何もしない(self, window) -> None:
+        window.show_related()
+        assert window.assistant_pane.related_labels() == []

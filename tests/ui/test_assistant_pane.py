@@ -114,3 +114,67 @@ class TestFailure:
         pane.begin()
         pane.fail("繋がりませんでした")
         assert pane.summary_button.isEnabled() is True
+
+
+class TestRelated:
+    """関連ノートは**モデルを通さない**（L-3）。
+
+    根拠は索引の中にある（同じタグ・`[[…]]`・題名の語）ので、Ollama が
+    無くても出る。**理由も一緒に出す**（出た理由が読めないと確かめようがない）。
+    """
+
+    def test_関連を頼める(self, pane, qtbot) -> None:
+        with qtbot.waitSignal(pane.related_requested, timeout=1000):
+            pane.related_button.click()
+
+    def test_Ollamaが無くても押せる(self, pane) -> None:
+        """索引を引くだけなので、モデルの有無に関係ない。"""
+        pane.set_available(False)
+        assert pane.related_button.isEnabled() is True
+
+    def test_題名と理由が並ぶ(self, pane) -> None:
+        from pathlib import Path
+
+        pane.set_related([(Path("仕事/会議.md"), "会議", ("同じタグ #仕事",))])
+        assert pane.related_labels() == ["会議 — 同じタグ #仕事"]
+
+    def test_理由が複数なら繋ぐ(self, pane) -> None:
+        from pathlib import Path
+
+        pane.set_related([(Path("会議.md"), "会議", ("同じタグ #仕事", "このノートを指している"))])
+        assert pane.related_labels() == ["会議 — 同じタグ #仕事 / このノートを指している"]
+
+    def test_押すと知らせる(self, pane, qtbot) -> None:
+        from pathlib import Path
+
+        pane.set_related([(Path("仕事/会議.md"), "会議", ("同じタグ #仕事",))])
+        with qtbot.waitSignal(pane.note_activated, timeout=1000) as blocker:
+            pane.activate_related(0)
+        assert blocker.args[0] == Path("仕事/会議.md")
+
+    def test_狭くても全文が読める(self, pane) -> None:
+        """**理由は長い。** 欄が狭いと切れるので、触れば全部読めるようにする。"""
+        from pathlib import Path
+
+        pane.set_related([(Path("会議.md"), "会議", ("同じタグ #仕事", "このノートを指している"))])
+        assert pane.related_tooltips() == ["会議 — 同じタグ #仕事 / このノートを指している"]
+
+    def test_横に流れない(self, pane) -> None:
+        """横スクロールバーが出ると、読むのに 2 方向へ動かすことになる。"""
+        from PySide6.QtCore import Qt
+
+        assert (
+            pane.related_list.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+
+    def test_無ければそう出す(self, pane) -> None:
+        """**空欄で黙らない。** 探した結果 0 件なのか、押し忘れたのか分かる。"""
+        pane.set_related([])
+        assert "ありません" in pane.status_text()
+
+    def test_頼み直すと消える(self, pane) -> None:
+        from pathlib import Path
+
+        pane.set_related([(Path("会議.md"), "会議", ("同じタグ #仕事",))])
+        pane.begin()
+        assert pane.related_labels() == []

@@ -423,6 +423,43 @@ class IndexDb:
         )
         return [_to_row(row) for row in rows]
 
+    def tags_of(self, note_id: str) -> list[str]:
+        """そのノートに付いているタグ（L-3）。"""
+        rows = self._connection.execute(
+            "SELECT tag FROM tags WHERE note_id = ? ORDER BY tag", (note_id,)
+        )
+        return [row["tag"] for row in rows]
+
+    def links_of(self, note_id: str) -> list[str]:
+        """そのノートが `[[…]]` で指している先の題名（L-3）。"""
+        rows = self._connection.execute(
+            "SELECT target FROM links WHERE note_id = ? ORDER BY target", (note_id,)
+        )
+        return [row["target"] for row in rows]
+
+    def notes_sharing_tags(
+        self, tags: list[str], *, order: "SortOrder" = SortOrder.MODIFIED
+    ) -> list[NoteRow]:
+        """どれか 1 つでも同じタグを持つノート（L-3）。
+
+        **新しい表は増やさない。** 既にある `tags` を引き直すだけなので、
+        索引は今まで通り捨てて作り直せる（R9）。
+        """
+        normalized = [tag_utils.normalize(tag) for tag in tags if tag_utils.normalize(tag)]
+        if not normalized:
+            return []
+        marks = ",".join("?" for _ in normalized)
+        rows = self._connection.execute(
+            f"""
+            SELECT DISTINCT notes.* FROM notes
+            JOIN tags ON tags.note_id = notes.id
+            WHERE tags.tag IN ({marks}) AND notes.trashed = 0
+            ORDER BY {_order_by(order, prefix="notes.")}
+            """,
+            normalized,
+        )
+        return [_to_row(row) for row in rows]
+
     def backlinks(self, title: str, *, order: "SortOrder" = SortOrder.MODIFIED) -> list[NoteRow]:
         """その題名を `[[...]]` で指しているノート（E-6）。
 

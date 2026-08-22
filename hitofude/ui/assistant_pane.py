@@ -16,6 +16,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
@@ -34,6 +36,12 @@ UNAVAILABLE = "Ollama が動いていません。\ndocs/ollama.md の手順で�
 
 STOPPED = "止めました。"
 
+NO_RELATED = "関連するノートはありません。\nタグを付けるか `[[ノート名]]` で結ぶと出ます。"
+
+# 題名と理由のあいだ。理由どうしは `/` で繋ぐ
+REASON_MARK = " — "
+REASON_JOIN = " / "
+
 
 class AssistantPane(QWidget):
     requested = Signal(object)
@@ -41,6 +49,12 @@ class AssistantPane(QWidget):
 
     stopped = Signal()
     """「止める」が押された。"""
+
+    related_requested = Signal()
+    """「関連」が押された。**探すのは呼び出し側**（索引を引く）。"""
+
+    note_activated = Signal(object)
+    """関連ノートの相対 `Path`。**開くのは呼び出し側**。"""
 
     def __init__(self, parent: QWidget | None = None, *, theme: ThemeColors = LIGHT) -> None:
         super().__init__(parent)
@@ -50,13 +64,28 @@ class AssistantPane(QWidget):
 
         self._summary = QPushButton("要約", self)
         self._review = QPushButton("レビュー", self)
+        self._related = QPushButton("関連", self)
         self._stop = QPushButton("止める", self)
-        for button in (self._summary, self._review, self._stop):
+        for button in (self._summary, self._review, self._related, self._stop):
             # 本文から手が離れないように（一覧のボタンと同じ作法）
             button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._summary.clicked.connect(lambda: self.requested.emit(Task.SUMMARY))
         self._review.clicked.connect(lambda: self.requested.emit(Task.REVIEW))
         self._stop.clicked.connect(self.stopped.emit)
+        self._related.clicked.connect(self.related_requested.emit)
+
+        # 関連ノート（L-3）は**モデルを通さない**ので、答えの欄とは分ける
+        self._notes = QListWidget(self)
+        self._notes.setFrameShape(QListWidget.Shape.NoFrame)
+        self._notes.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        # **横に流さない。** 2 方向へ動かして読むことになる。切れたぶんは
+        # マウスを置けば読める（`outline_pane` と同じ作法）
+        self._notes.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._notes.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self._notes.setWordWrap(False)
+        self._notes.itemClicked.connect(lambda item: self.activate_related(self._notes.row(item)))
+        self._notes.hide()
+        self._related_paths: list[object] = []
 
         self._output = QPlainTextEdit(self)
         self._output.setReadOnly(True)  # 直すなら本文で直す（版の履歴と同じ）
@@ -70,6 +99,7 @@ class AssistantPane(QWidget):
         buttons.setSpacing(6)
         buttons.addWidget(self._summary)
         buttons.addWidget(self._review)
+        buttons.addWidget(self._related)
         buttons.addStretch(1)
         buttons.addWidget(self._stop)
 
@@ -78,6 +108,7 @@ class AssistantPane(QWidget):
         layout.setSpacing(0)
         layout.addLayout(buttons)
         layout.addWidget(self._status)
+        layout.addWidget(self._notes, 1)
         layout.addWidget(self._output, 1)
 
         self.setMinimumWidth(ASSISTANT_MIN_WIDTH)
@@ -95,11 +126,25 @@ class AssistantPane(QWidget):
         return self._review
 
     @property
+    def related_button(self) -> QPushButton:
+        return self._related
+
+    @property
     def stop_button(self) -> QPushButton:
         return self._stop
 
     def text(self) -> str:
         return self._output.toPlainText()
+
+    def related_labels(self) -> list[str]:
+        return [self._notes.item(row).text() for row in range(self._notes.count())]
+
+    def related_tooltips(self) -> list[str]:
+        return [self._notes.item(row).toolTip() for row in range(self._notes.count())]
+
+    @property
+    def related_list(self) -> QListWidget:
+        return self._notes
 
     def status_text(self) -> str:
         return self._status.text()
@@ -122,9 +167,31 @@ class AssistantPane(QWidget):
             self._status.setText("")
         self._refresh_buttons()
 
+    def set_related(self, found: list[tuple[object, str, tuple[str, ...]]]) -> None:
+        """関連ノートを並べる（L-3）。`(相対パス, 題名, 理由)` の並び。
+
+        **理由も出す。** なぜ出たのかが読めないと、関係あるのか確かめよう
+        がない。0 件なら**そう言う**（空欄で黙ると押し忘れと区別が付かない）。
+        """
+        self._notes.clear()
+        self._related_paths = [path for path, _title, _reasons in found]
+        for _path, title, reasons in found:
+            label = f"{title}{REASON_MARK}{REASON_JOIN.join(reasons)}"
+            item = QListWidgetItem(label)
+            item.setToolTip(label)
+            self._notes.addItem(item)
+        self._notes.setVisible(bool(found))
+        self._status.setText("" if found else NO_RELATED)
+
+    def activate_related(self, row: int) -> None:
+        """その行を押したことにする（クリックとテストの共通の口）。"""
+        if 0 <= row < len(self._related_paths):
+            self.note_activated.emit(self._related_paths[row])
+
     def begin(self) -> None:
         """頼んだところ。**前の答えは消す**（混ざると読めない）。"""
         self._running = True
+        self.set_related([])
         self._output.setPlainText("")
         self._status.setText(WAITING)
         self._refresh_buttons()
@@ -161,6 +228,8 @@ class AssistantPane(QWidget):
         can_ask = self._available and not self._running
         self._summary.setEnabled(can_ask)
         self._review.setEnabled(can_ask)
+        # **関連は索引を引くだけ。** Ollama の有無に関係なく押せる（L-3）
+        self._related.setEnabled(not self._running)
         self._stop.setEnabled(self._running)
 
     # ------------------------------------------------------------------ 見た目
@@ -170,6 +239,12 @@ class AssistantPane(QWidget):
         self._output.setStyleSheet(
             f"QPlainTextEdit {{ background: {theme.background}; "
             f"color: {theme.foreground}; border: none; padding: 4px 8px; }}"
+        )
+        self._notes.setStyleSheet(
+            f"QListWidget {{ background: {theme.background}; "
+            f"color: {theme.foreground}; border: none; }}"
+            f"QListWidget::item {{ padding: 3px 8px; }}"
+            f"QListWidget::item:selected {{ background: {theme.selection_background}; }}"
         )
         self._status.setStyleSheet(
             f"QLabel {{ background: {theme.background}; "

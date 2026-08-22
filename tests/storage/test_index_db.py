@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from hitofude.core.document import Note
-from hitofude.storage.index_db import IndexDb, SortOrder, rebuild
+from hitofude.storage.index_db import IndexDb, SortOrder, note_key, rebuild
 from hitofude.storage.vault import Vault
 
 
@@ -977,3 +977,49 @@ class TestDirectChildrenOnly:
         counts = {row.folder: row.count for row in db.folder_tree()}
         for folder, count in counts.items():
             assert len(db.notes_in_folder(folder)) == count, folder
+
+
+class TestRelatedSignals:
+    """関連ノートの根拠を索引から引く（L-3）。
+
+    **既に索引にある**もの（タグ・`[[…]]`）を引き直すだけ。新しい表は
+    増やさない（R9: 索引は捨てて作り直せるまま）。
+    """
+
+    def seeded(self, db, vault):
+        from hitofude.core.document import Note
+
+        notes = {
+            "今.md": "# 今\n\n#仕事 の話。[[会議メモ]] を見る。\n",
+            "仕事/会議メモ.md": "# 会議メモ\n\n#仕事 の会議。\n",
+            "私用/買い物.md": "# 買い物\n\n#私用 のメモ。\n",
+            "指す.md": "# 指す\n\n[[今]] を指している。\n",
+        }
+        for relative, text in notes.items():
+            path = vault.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+            db.upsert_note(Note.read(path), vault.root)
+        return note_key(Note.read(vault.root / "今.md"), vault.root)
+
+    def test_同じタグのノートが出る(self, db, vault) -> None:
+        self.seeded(db, vault)
+        found = {str(row.path) for row in db.notes_sharing_tags(["仕事"])}
+        assert "仕事/会議メモ.md" in found
+        assert "私用/買い物.md" not in found
+
+    def test_自分のタグが分かる(self, db, vault) -> None:
+        note_id = self.seeded(db, vault)
+        assert db.tags_of(note_id) == ["仕事"]
+
+    def test_指している先が分かる(self, db, vault) -> None:
+        note_id = self.seeded(db, vault)
+        assert db.links_of(note_id) == ["会議メモ"]
+
+    def test_指されている側も引ける(self, db, vault) -> None:
+        """既にある `backlinks()` をそのまま使う（増やさない）。"""
+        self.seeded(db, vault)
+        assert [str(row.path) for row in db.backlinks("今")] == ["指す.md"]
+
+    def test_タグが無ければ空(self, db) -> None:
+        assert db.notes_sharing_tags([]) == []

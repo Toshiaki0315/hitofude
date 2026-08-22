@@ -37,7 +37,7 @@ from hitofude.config import (
     MIN_POINT_SIZE,
     Config,
 )
-from hitofude.core import frontmatter, searchquery, textpos
+from hitofude.core import frontmatter, related, searchquery, textpos
 from hitofude.core import llm as llm_module
 from hitofude.core.activation import ALLOWED_SCHEMES
 from hitofude.core.document import Note
@@ -243,6 +243,10 @@ class MainWindow(QMainWindow):
         self._assistant.hide()
         self._assistant.requested.connect(self.ask_assistant)
         self._assistant.stopped.connect(self.stop_assistant)
+        self._assistant.related_requested.connect(self.show_related)
+        self._assistant.note_activated.connect(
+            lambda relative: self.open_and_select(self._vault.root / relative)
+        )
         self._llm = llm_module.LocalLLM()
         self._assistant_stop = False
 
@@ -1230,6 +1234,57 @@ class MainWindow(QMainWindow):
         QThreadPool.globalInstance().start(
             AssistantTask(self._llm, prompt, reporter, lambda: self._assistant_stop)
         )
+
+    def show_related(self, *_args) -> None:
+        """今のノートに関係するノートを並べる（L-3）。
+
+        **モデルは通さない。** 関係の根拠は索引の中にある（同じタグ・
+        `[[…]]` の指し合い・題名の言及）。選ばせると、なぜ関係するのか
+        確かめられないうえ待たされ、Ollama を入れていない人には何も出ない。
+        """
+        if self._note is None:
+            return
+        rows = self._db.notes()
+        relative = self._note.path.relative_to(self._vault.root)
+        found = related.rank(self._related_signals(rows), exclude=str(relative))
+
+        titles = {str(row.path): row.title for row in rows}
+        self._assistant.set_related(
+            [
+                (Path(item.key), titles.get(item.key) or Path(item.key).stem, item.reasons)
+                for item in found
+            ]
+        )
+
+    def _related_signals(self, rows: list[NoteRow]) -> list[related.Signal]:
+        """索引から根拠を集める（L-3）。**理由の文言もここで決める。**"""
+        note = self._note
+        if note is None:
+            return []
+        note_id = note_key(note, self._vault.root)
+        found: list[related.Signal] = []
+
+        # 手で結んだものがいちばん強い（`[[…]]`）
+        for row in self._db.backlinks(note.title):
+            found.append(related.Signal(str(row.path), "このノートを指している", related.LINK))
+
+        by_title = {normalize(row.title): row for row in rows}
+        for target in self._db.links_of(note_id):
+            row = by_title.get(normalize(target))
+            if row is not None:
+                found.append(
+                    related.Signal(str(row.path), f"[[{target}]] で指している", related.LINK)
+                )
+
+        for tag in self._db.tags_of(note_id):
+            for row in self._db.notes_sharing_tags([tag]):
+                found.append(related.Signal(str(row.path), f"同じタグ #{tag}", related.SHARED_TAG))
+
+        # 題名が本文に出てくる（手で結んでいなくても言及は関係の印）
+        if note.title:
+            for hit in self._db.search(note.title, limit=related.DEFAULT_LIMIT):
+                found.append(related.Signal(str(hit.path), "題名が本文に出てくる", related.TEXT))
+        return found
 
     def stop_assistant(self) -> None:
         """待つのをやめる。**書きかけは残す**（そこまでは読める）。"""
