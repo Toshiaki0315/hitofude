@@ -287,7 +287,7 @@ class TestPdfImages:
 
     def test_小さい絵は捨てる(self) -> None:
         """ロゴ・罫線の飾り・透明の詰め物まで拾ってしまう。"""
-        from hitofude.editor.importer import MIN_IMAGE_SIDE, worth_keeping
+        from hitofude.core.imported import MIN_IMAGE_SIDE, worth_keeping
 
         assert worth_keeping(width=MIN_IMAGE_SIDE, height=MIN_IMAGE_SIDE) is True
         assert worth_keeping(width=MIN_IMAGE_SIDE - 1, height=500) is False
@@ -295,23 +295,21 @@ class TestPdfImages:
 
     def test_同じ絵は一度だけ(self) -> None:
         """**各ページのロゴを何枚も貼らない。** 同じ中身は 1 回で足りる。"""
-        from hitofude.editor.importer import pick_images
+        from hitofude.core.imported import ImagePicker
 
-        found = pick_images(
-            [
-                ("a.jpg", b"logo", 400, 400),
-                ("b.jpg", b"logo", 400, 400),
-                ("c.jpg", b"figure", 400, 400),
-            ]
-        )
-        assert [name for name, _data in found] == ["a.jpg", "c.jpg"]
+        picker = ImagePicker()
+        assert picker.accepts(b"logo", width=400, height=400) is True
+        assert picker.accepts(b"logo", width=400, height=400) is False
+        assert picker.accepts(b"figure", width=400, height=400) is True
 
     def test_多すぎる絵は打ち切る(self) -> None:
         """地紋の入った資料は 1 ページに何十枚も持っている。"""
-        from hitofude.editor.importer import MAX_IMAGES, pick_images
+        from hitofude.core.imported import MAX_IMAGES, ImagePicker
 
-        many = [(f"{n}.jpg", str(n).encode(), 400, 400) for n in range(MAX_IMAGES + 10)]
-        assert len(pick_images(many)) == MAX_IMAGES
+        picker = ImagePicker()
+        for number in range(MAX_IMAGES):
+            assert picker.accepts(str(number).encode(), width=400, height=400) is True
+        assert picker.accepts(b"one more", width=400, height=400) is False
 
     def test_ページの本文の後ろに置く(self, tmp_path, monkeypatch) -> None:
         from hitofude.editor import importer

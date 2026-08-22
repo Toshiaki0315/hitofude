@@ -19,6 +19,7 @@ import tempfile
 from pathlib import Path
 
 from hitofude.core import imported
+from hitofude.core.imported import ImagePicker
 from hitofude.editor import pptx_import
 
 logger = logging.getLogger(__name__)
@@ -84,28 +85,6 @@ def pdf_page_images(path: Path, directory: Path, pages: list[int] | None = None)
             found.append(target)
     document.close()
     return found
-
-
-def worth_keeping(*, width: int, height: int) -> bool:
-    """取り込む価値のある大きさか。**飾りを本文に貼らない。**"""
-    return width >= MIN_IMAGE_SIDE and height >= MIN_IMAGE_SIDE
-
-
-def pick_images(found: list[tuple[str, bytes, int, int]]) -> list[tuple[str, bytes]]:
-    """取り出す絵を選ぶ（純ロジック）。`(名前, 中身, 幅, 高さ)` を受ける。
-
-    **同じ中身は 1 回だけ。** 各ページのロゴを何枚も貼らない。
-    """
-    seen: set[bytes] = set()
-    kept: list[tuple[str, bytes]] = []
-    for name, data, width, height in found:
-        if not worth_keeping(width=width, height=height) or data in seen:
-            continue
-        seen.add(data)
-        kept.append((name, data))
-        if len(kept) >= MAX_IMAGES:
-            break
-    return kept
 
 
 def pdf_images(path: Path) -> dict[int, list[tuple[str, bytes, int, int]]]:
@@ -175,16 +154,6 @@ def to_markdown(path: Path, *, save_image=None, ocr=None) -> str:
     pages = _attach_images(path, pages, save_image=save_image, skip=blanks)
     return imported.to_markdown(pages, title=path.stem)
 
-
-MIN_IMAGE_SIDE = 100
-"""これより小さい絵は捨てる（ユーザー要望 2026-08-23）。
-
-ロゴ・罫線の飾り・透明の詰め物まで拾ってしまう。**縦横のどちらかが
-小さければ落とす**（細長い飾り線を通さないため）。
-"""
-
-MAX_IMAGES = 30
-"""1 つの資料から取り出す絵の上限。地紋の入ったものは何十枚も持っている。"""
 
 MIN_PAGE_CHARS = 20
 """このページには文字が無い、と見なす境目（ADR-0027）。
@@ -265,23 +234,15 @@ def _attach_images(path: Path, pages: list[str], *, save_image, skip: set[int]) 
     if not found:
         return pages
 
-    # **資料ぜんたいで数える。** ページごとに上限を持つと、地紋の入った
-    # 資料で結局あふれる
-    flat = [
-        (number, entry)
-        for number, entries in found.items()
-        if number not in skip
-        for entry in entries
-    ]
-    picked = pick_images([entry for _number, entry in flat])
-    kept = {name for name, _data in picked}
-
+    picker = ImagePicker()
     filled = list(pages)
-    for number, (name, data, _width, _height) in flat:
-        if name not in kept:
+    for number in sorted(found):
+        if number in skip:
             continue
-        kept.discard(name)  # 同じ中身は 1 回だけ（`pick_images` の約束）
-        markdown = save_image(data, Path(name).suffix or ".png")
-        if markdown:  # **壊れたリンクを書かない**（save_attachment と同じ）
-            filled[number] = f"{filled[number]}\n\n{markdown}"
+        for name, data, width, height in found[number]:
+            if not picker.accepts(data, width=width, height=height):
+                continue
+            markdown = save_image(data, Path(name).suffix or ".png")
+            if markdown:  # **壊れたリンクを書かない**（save_attachment と同じ）
+                filled[number] = f"{filled[number]}\n\n{markdown}"
     return filled

@@ -266,3 +266,41 @@ def _join(lines: list[str]) -> str:
         separator = "" if _CJK_RE.match(tail) and _CJK_RE.match(line[0]) else " "
         joined += separator + line
     return joined
+
+
+MIN_IMAGE_SIDE = 100
+"""これより小さい絵は取り込まない（ADR-0027 追記）。
+
+ロゴ・罫線の飾り・透明の詰め物まで拾ってしまう。**縦横のどちらかが
+小さければ落とす**（細長い飾り線を通さないため）。
+"""
+
+MAX_IMAGES = 30
+"""1 つの資料から取り込む絵の上限。地紋の入ったものは何十枚も持っている。"""
+
+
+def worth_keeping(*, width: int, height: int) -> bool:
+    """取り込む価値のある大きさか。**飾りを本文に貼らない。**"""
+    return width >= MIN_IMAGE_SIDE and height >= MIN_IMAGE_SIDE
+
+
+class ImagePicker:
+    """取り込む絵を選ぶ（PDF と PowerPoint で同じ規則を使う）。
+
+    **同じ中身は 1 回だけ。** 各ページのロゴを何枚も貼らない。資料ぜんたいで
+    数えるので、ページごとに上限を持つより素直に効く。
+    """
+
+    def __init__(self, limit: int = MAX_IMAGES) -> None:
+        self._limit = limit
+        self._seen: set[bytes] = set()
+        self.kept = 0
+
+    def accepts(self, data: bytes, *, width: int, height: int) -> bool:
+        if self.kept >= self._limit or data in self._seen:
+            return False
+        if not worth_keeping(width=width, height=height):
+            return False
+        self._seen.add(data)
+        self.kept += 1
+        return True

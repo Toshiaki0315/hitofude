@@ -181,19 +181,21 @@ class TestTable:
 
 
 class TestImages:
-    def png(self) -> bytes:
-        import base64
+    def png(self, tmp_path: Path) -> Path:
+        """**1×1 では試せない。** 飾りとして間引かれる（ADR-0027 追記）ので、
+        取り込む価値のある大きさで作る。"""
+        from PIL import Image
 
-        return base64.b64decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
-        )
+        path = tmp_path / "素材.png"
+        Image.new("RGB", (200, 200), (30, 90, 180)).save(path)
+        return path
 
     def build_with_image(self, tmp_path: Path) -> Path:
         from pptx import Presentation
         from pptx.util import Pt
 
         image = tmp_path / "図.png"
-        image.write_bytes(self.png())
+        image.write_bytes(self.png(tmp_path).read_bytes())
         presentation = Presentation()
         slide = presentation.slides.add_slide(presentation.slide_layouts[5])
         slide.shapes.title.text = "構成図"
@@ -242,3 +244,55 @@ class TestBroken:
         path = tmp_path / "空.pptx"
         presentation.save(str(path))
         assert to_markdown(path) == ""
+
+
+class TestPptxImages:
+    """PowerPoint の画像も PDF と同じ規則で間引く（ユーザー指摘 2026-08-23）。
+
+    **PDF だけ間引いていた。** 同じ絵が 2 枚入り、40px の飾りまで取り込まれて
+    いた（実測）。取り込みの入口で作法が違うのは、後から読む人が混乱する。
+    """
+
+    def deck(self, tmp_path, pictures):
+        """`pictures` は `(幅 px, 中身の種)` の並び。"""
+        from PIL import Image
+        from pptx import Presentation
+        from pptx.util import Cm
+
+        presentation = Presentation()
+        slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+        slide.shapes.title.text = "図のスライド"
+        for index, (width, seed) in enumerate(pictures):
+            source = tmp_path / f"{seed}-{width}.png"
+            if not source.exists():
+                # **種が同じなら同じ絵、違えば違う絵**（色を種から作る）。
+                # index から作ると 255 で一周して、別のはずの絵が同じになる
+                tone = hash(seed) % 200
+                Image.new("RGB", (width, width), (tone + 20, (tone * 3) % 200, 150)).save(source)
+            slide.shapes.add_picture(str(source), Cm(1 + index * 5), Cm(5), Cm(3))
+        path = tmp_path / "図つき.pptx"
+        presentation.save(str(path))
+        return path
+
+    def saved_from(self, path):
+        from hitofude.editor import importer
+
+        saved: list[bytes] = []
+        importer.to_markdown(path, save_image=lambda data, _s: (saved.append(data), "![](x)")[1])
+        return saved
+
+    def test_同じ絵は一度だけ(self, tmp_path) -> None:
+        path = self.deck(tmp_path, [(400, "同じ"), (400, "同じ"), (400, "別")])
+        assert len(self.saved_from(path)) == 2
+
+    def test_小さい絵は入らない(self, tmp_path) -> None:
+        from hitofude.core.imported import MIN_IMAGE_SIDE
+
+        path = self.deck(tmp_path, [(MIN_IMAGE_SIDE - 40, "飾り"), (400, "図")])
+        assert len(self.saved_from(path)) == 1
+
+    def test_多すぎれば打ち切る(self, tmp_path) -> None:
+        from hitofude.core.imported import MAX_IMAGES
+
+        path = self.deck(tmp_path, [(400, f"図{n}") for n in range(MAX_IMAGES + 5)])
+        assert len(self.saved_from(path)) == MAX_IMAGES

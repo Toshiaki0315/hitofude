@@ -28,6 +28,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from hitofude.core.imported import (
+    ImagePicker,
     is_page_number,
     looks_like_heading,
     normalize_text,
@@ -64,9 +65,12 @@ def to_markdown(path: Path, *, save_image: Callable[[bytes, str], str | None] | 
         logger.warning("PowerPoint を読めなかった: %s", path)
         return ""
 
+    # **PDF と同じ規則で間引く**（ユーザー指摘 2026-08-23）。同じ絵が何枚も
+    # 入り、飾りの小さな絵まで取り込まれていた。資料ぜんたいで数える
+    picker = ImagePicker()
     parts: list[str] = []
     for slide in presentation.slides:
-        parts.extend(_slide_blocks(slide, save_image))
+        parts.extend(_slide_blocks(slide, save_image, picker))
 
     if not parts:
         logger.warning("文字を取り出せなかった: %s", path)
@@ -74,7 +78,7 @@ def to_markdown(path: Path, *, save_image: Callable[[bytes, str], str | None] | 
     return f"# {path.stem}\n\n" + "\n\n".join(parts) + "\n"
 
 
-def _slide_blocks(slide, save_image) -> list[str]:
+def _slide_blocks(slide, save_image, picker) -> list[str]:
     """1 枚ぶんのブロック。タイトル → 中身 → 発表者ノートの順。"""
     blocks: list[str] = []
     title = _title_of(slide)
@@ -84,7 +88,7 @@ def _slide_blocks(slide, save_image) -> list[str]:
     for shape in slide.shapes:
         if shape == slide.shapes.title:
             continue
-        blocks.extend(_shape_blocks(shape, save_image))
+        blocks.extend(_shape_blocks(shape, save_image, picker))
 
     blocks.extend(_notes_blocks(slide))
     return blocks
@@ -98,9 +102,9 @@ def _title_of(slide) -> str:
     return normalize_text(title.text).strip() if title is not None else ""
 
 
-def _shape_blocks(shape, save_image) -> list[str]:
+def _shape_blocks(shape, save_image, picker) -> list[str]:
     if shape.shape_type == 13:  # PICTURE
-        return _picture_blocks(shape, save_image)
+        return _picture_blocks(shape, save_image, picker)
     if getattr(shape, "has_table", False) and shape.has_table:
         return _table_blocks(shape.table)
     if getattr(shape, "has_text_frame", False) and shape.has_text_frame:
@@ -238,19 +242,25 @@ def _cell_text(cell) -> str:
     return "\n".join(_paragraph_text(paragraph) for paragraph in cell.text_frame.paragraphs)
 
 
-def _picture_blocks(shape, save_image) -> list[str]:
+def _picture_blocks(shape, save_image, picker) -> list[str]:
     """画像を保管フォルダへ渡して、本文に挿す。
 
     **保存先を知らないときは飛ばす。** リンクだけ書いても絵は出ない。
+
+    **間引きは PDF と同じ**（`ImagePicker`）。小さい飾りを貼らず、同じ絵は
+    1 回だけ、資料ぜんたいで上限を持つ。
     """
     if save_image is None:
         return []
     try:
         image = shape.image
+        width, height = image.size
     except (AttributeError, KeyError, ValueError):
         logger.warning("画像を取り出せなかった")
         return []
 
+    if not picker.accepts(image.blob, width=width, height=height):
+        return []
     link = save_image(image.blob, f".{image.ext}")
     return [link] if link else []
 
