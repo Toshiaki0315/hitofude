@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup run test test-fast cov fmt lint check clean
+.PHONY: help setup run test test-fast cov fmt lint check clean ocr-tool
 
 UV := uv
 
@@ -10,7 +10,20 @@ help: ## このヘルプを表示
 setup: ## 仮想環境と依存をセットアップ
 	$(UV) sync --all-groups
 
-run: ## アプリを起動
+OCR_TOOL := hitofude/resources/bin/hitofude-ocr
+
+ocr-tool: $(OCR_TOOL) ## 文字の読み取りの道具を作る（ADR-0027）
+
+# **swiftc が無ければ作らない。** アプリは今まで通り動き、macOS 側の
+# 読み取りだけが使えない（手元の LLM には切り替えられる）
+$(OCR_TOOL): tools/ocr/ocr.swift
+	@if command -v swiftc >/dev/null 2>&1; then \
+		mkdir -p $(dir $@) && swiftc -O $< -o $@ && echo "作った: $@"; \
+	else \
+		echo "swiftc が無いので飛ばす（macOS の読み取りは使えません）"; \
+	fi
+
+run: ocr-tool ## アプリを起動
 	$(UV) run python -m hitofude
 
 test: ## テスト全件

@@ -680,3 +680,45 @@ class TestTabs:
         dialog.reset_to_defaults()
         dialog.apply()
         assert (config.tab_width, config.llm_model) == (DEFAULT_TAB_WIDTH, DEFAULT_MODEL)
+
+
+class TestOcrSetting:
+    """文字の読み取りの切り替え（ADR-0027）。"""
+
+    def dialog(self, qtbot, tmp_path):
+        from PySide6.QtCore import QSettings
+
+        from hitofude.config import Config
+        from hitofude.ui.preferences import PreferencesDialog
+
+        config = Config(QSettings(str(tmp_path / "t.ini"), QSettings.Format.IniFormat))
+        found = PreferencesDialog(config)
+        qtbot.addWidget(found)
+        return found, config
+
+    def test_選べる(self, qtbot, tmp_path) -> None:
+        from hitofude.core.ocr import Engine
+
+        dialog, config = self.dialog(qtbot, tmp_path)
+        dialog.ocr_box.setCurrentIndex(dialog.ocr_box.findData(Engine.LLM))
+        dialog.apply()
+        assert config.ocr_engine is Engine.LLM
+
+    def test_アシスタントのページにある(self, qtbot, tmp_path) -> None:
+        dialog, _config = self.dialog(qtbot, tmp_path)
+        assert dialog.tabs.indexOf(dialog.ocr_box.parentWidget()) == 1
+
+    def test_どちらが速いか書いてある(self, qtbot, tmp_path) -> None:
+        """**選ぶ材料を画面に置く**（実測はドキュメントにしかなかった）。"""
+        dialog, _config = self.dialog(qtbot, tmp_path)
+        items = [dialog.ocr_box.itemText(i) for i in range(dialog.ocr_box.count())]
+        assert any("速い" in item or "正確" in item for item in items)
+
+    def test_デフォルトに戻すで戻る(self, qtbot, tmp_path) -> None:
+        from hitofude.core.ocr import DEFAULT_ENGINE, Engine
+
+        dialog, config = self.dialog(qtbot, tmp_path)
+        dialog.ocr_box.setCurrentIndex(dialog.ocr_box.findData(Engine.LLM))
+        dialog.reset_to_defaults()
+        dialog.apply()
+        assert config.ocr_engine is DEFAULT_ENGINE

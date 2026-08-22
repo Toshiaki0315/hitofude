@@ -41,3 +41,6 @@ resources/*.iconset/
 
 # Claude Code のローカル設定（.claude/settings.json は共有する）
 .claude/settings.local.json
+
+# 文字の読み取りの道具（`make ocr-tool` が作る。ADR-0027）
+hitofude/resources/bin/

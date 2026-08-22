@@ -314,3 +314,24 @@ class TestLlmSettings:
 
         config.settings.setValue("llm/context", bad)
         assert config.llm_context == CONTEXT_TOKENS
+
+
+class TestOcrEngine:
+    """文字の読み取りをどちらでするか（ADR-0027）。"""
+
+    def test_既定はmacOS(self, config) -> None:
+        from hitofude.core.ocr import Engine
+
+        assert config.ocr_engine is Engine.MAC
+
+    def test_LLMに切り替えられる(self, config) -> None:
+        from hitofude.core.ocr import Engine
+
+        config.ocr_engine = Engine.LLM
+        assert config.ocr_engine is Engine.LLM
+
+    def test_知らない値は既定へ戻す(self, config) -> None:
+        from hitofude.core.ocr import Engine
+
+        config.settings.setValue("ocr/engine", "呪文")
+        assert config.ocr_engine is Engine.MAC

@@ -257,13 +257,17 @@ class ExportActions:
             return None
 
         source = Path(chosen)
-        text = importer.to_markdown(source, save_image=window.save_attachment)
+        # 画像と、文字の入っていない PDF は読み取りに回す（ADR-0027）
+        text = importer.to_markdown(
+            source, save_image=window.save_attachment, ocr=window.ocr_engine()
+        )
         if not text.strip():
             QMessageBox.warning(
                 window,
                 "読み込めませんでした",
                 f"「{source.name}」から文字を取り出せませんでした。\n"
-                "画像だけの資料や、保護されたファイルかもしれません。",
+                "設定の「文字の読み取り」を確かめてください"
+                "（保護されたファイルや、文字の無い絵かもしれません）。",
             )
             return None
 

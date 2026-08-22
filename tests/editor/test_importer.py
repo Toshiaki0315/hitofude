@@ -121,3 +121,76 @@ class TestToMarkdown:
         other = tmp_path / "資料.txt"
         other.write_text("本文", encoding="utf-8")
         assert to_markdown(other) == ""
+
+
+class FakeOcr:
+    """読み取ったことにする。**実物は動かさない。**"""
+
+    def __init__(self, text: str = "読み取った文字") -> None:
+        self.text = text
+        self.seen: list = []
+
+    def available(self) -> bool:
+        return True
+
+    def read(self, image) -> str:
+        self.seen.append(image)
+        return self.text
+
+
+class TestImages:
+    """画像を文字にして取り込む（ADR-0027）。"""
+
+    def image(self, tmp_path, name="写真.png"):
+        path = tmp_path / name
+        path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 32)
+        return path
+
+    def test_画像も読める(self, tmp_path) -> None:
+        from hitofude.editor import importer
+
+        found = importer.to_markdown(self.image(tmp_path), ocr=FakeOcr("会議メモ"))
+        assert "会議メモ" in found
+
+    def test_題名はファイル名(self, tmp_path) -> None:
+        from hitofude.editor import importer
+
+        found = importer.to_markdown(self.image(tmp_path, "予算表.jpg"), ocr=FakeOcr())
+        assert found.startswith("# 予算表")
+
+    def test_読み手が無ければ空(self, tmp_path) -> None:
+        """**読めないのに題名だけのノートを作らない**（今までと同じ作法）。"""
+        from hitofude.editor import importer
+
+        assert importer.to_markdown(self.image(tmp_path)) == ""
+
+    def test_選べる拡張子に画像がある(self) -> None:
+        from hitofude.editor import importer
+
+        assert "*.png" in importer.FILE_FILTER
+        assert "*.jpg" in importer.FILE_FILTER
+
+
+class TestScannedPdf:
+    """文字の無い PDF は絵から読む（ADR-0027）。"""
+
+    def test_文字が取れなければ読み取りに回す(self, tmp_path, monkeypatch) -> None:
+        from hitofude.editor import importer
+
+        monkeypatch.setattr(importer, "pdf_pages", lambda _path: ["", "  "])
+        monkeypatch.setattr(importer, "pdf_page_images", lambda _path, _dir: [tmp_path / "1.png"])
+        pdf = tmp_path / "スキャン.pdf"
+        pdf.write_bytes(b"%PDF-1.4")
+        found = importer.to_markdown(pdf, ocr=FakeOcr("読み取った本文"))
+        assert "読み取った本文" in found
+
+    def test_文字が取れるなら読み取らない(self, tmp_path, monkeypatch) -> None:
+        """**速くて正確なほうを黙って捨てない。**"""
+        from hitofude.editor import importer
+
+        monkeypatch.setattr(importer, "pdf_pages", lambda _path: ["ちゃんと文字がある"])
+        reader = FakeOcr()
+        pdf = tmp_path / "ふつう.pdf"
+        pdf.write_bytes(b"%PDF-1.4")
+        importer.to_markdown(pdf, ocr=reader)
+        assert reader.seen == []

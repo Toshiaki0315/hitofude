@@ -15,7 +15,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QSettings
 
-from hitofude.core import llm
+from hitofude.core import llm, ocr
 from hitofude.core.paths import relative_inside
 from hitofude.storage.index_db import SortOrder
 from hitofude.theme import ThemeMode
@@ -95,6 +95,7 @@ _ASSISTANT = "layout/assistant_visible"
 _LLM_MODEL = "llm/model"
 _LLM_PORT = "llm/port"
 _LLM_CONTEXT = "llm/context"
+_OCR_ENGINE = "ocr/engine"
 _TAB_WIDTH = "editor/tab_width"
 _SORT_ORDER = "list/sort_order"
 _GEOMETRY = "layout/geometry"
@@ -354,6 +355,22 @@ class Config:
     @llm_context.setter
     def llm_context(self, value: int) -> None:
         self.settings.setValue(_LLM_CONTEXT, int(value))
+
+    @property
+    def ocr_engine(self) -> ocr.Engine:
+        """画像を文字にする読み手（ADR-0027）。**既定は macOS**（速くて正確）。
+
+        知らない値は既定へ戻す（設定ファイルは手で編集できる）。
+        """
+        found = str(self.settings.value(_OCR_ENGINE, ocr.DEFAULT_ENGINE.value))
+        try:
+            return ocr.Engine(found)
+        except ValueError:
+            return ocr.DEFAULT_ENGINE
+
+    @ocr_engine.setter
+    def ocr_engine(self, value: ocr.Engine) -> None:
+        self.settings.setValue(_OCR_ENGINE, ocr.Engine(value).value)
 
     @property
     def toolbar_visible(self) -> bool:

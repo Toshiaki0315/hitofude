@@ -37,7 +37,7 @@ from hitofude.config import (
     MIN_POINT_SIZE,
     Config,
 )
-from hitofude.core import frontmatter, keywords, related, searchquery, textpos
+from hitofude.core import frontmatter, keywords, ocr, related, searchquery, textpos
 from hitofude.core import llm as llm_module
 from hitofude.core.activation import ALLOWED_SCHEMES
 from hitofude.core.document import Note
@@ -1221,6 +1221,16 @@ class MainWindow(QMainWindow):
         self._llm = self._llm_from_config()
         if not self._assistant.isHidden():
             self._assistant.set_available(self._llm.available())
+
+    def ocr_engine(self):
+        """画像を文字にする読み手（ADR-0027）。設定で切り替える。
+
+        **既定は macOS**（速くて正確）。手元の LLM は大きなモデルを積める
+        人向け。どちらも無ければ「使えない」と答える（呼ぶ側が知らせる）。
+        """
+        if self._config.ocr_engine is ocr.Engine.LLM:
+            return ocr.LlmEngine(client=self._llm)
+        return ocr.MacEngine(tool=ocr.tool_path())
 
     def _llm_from_config(self):
         return llm_module.LocalLLM(

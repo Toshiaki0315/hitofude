@@ -44,6 +44,7 @@ from hitofude.config import (
     LineSpacing,
 )
 from hitofude.core.llm import CONTEXT_CHOICES, CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PORT
+from hitofude.core.ocr import DEFAULT_ENGINE, Engine
 from hitofude.theme import ThemeMode
 
 THEME_LABELS = {
@@ -252,6 +253,14 @@ class PreferencesDialog(QDialog):
         self._context.setToolTip("一度に渡せる長さ。**広げるほどメモリを食います**。")
         llm_form.addRow("一度に渡す量", self._context)
 
+        # 画像を文字にする読み手（ADR-0027）。**選ぶ材料を画面に置く**
+        self._ocr = QComboBox(self)
+        self._ocr.addItem("macOS（速い・正確）", Engine.MAC)
+        self._ocr.addItem("手元の LLM（モデル次第）", Engine.LLM)
+        self._ocr.setCurrentIndex(self._ocr.findData(config.ocr_engine))
+        self._ocr.setToolTip("PDF や画像から文字を読み取るときに使うもの。")
+        llm_form.addRow("文字の読み取り", self._ocr)
+
         self._restart_note = QLabel("保管フォルダの変更は再起動後に反映されます。", self)
         self._restart_note.setVisible(False)
 
@@ -301,6 +310,10 @@ class PreferencesDialog(QDialog):
     @property
     def context_box(self) -> QComboBox:
         return self._context
+
+    @property
+    def ocr_box(self) -> QComboBox:
+        return self._ocr
 
     def llm_note_text(self) -> str:
         return self._llm_note.text()
@@ -404,6 +417,7 @@ class PreferencesDialog(QDialog):
         self._model.setCurrentText(DEFAULT_MODEL)
         self._port.setValue(DEFAULT_PORT)
         self._context.setCurrentIndex(self._context.findData(CONTEXT_TOKENS))
+        self._ocr.setCurrentIndex(self._ocr.findData(DEFAULT_ENGINE))
 
     def accept(self) -> None:
         """OK。**受け取れない場所なら閉じない。** 閉じると打ち直しからになる。"""
@@ -424,6 +438,7 @@ class PreferencesDialog(QDialog):
         self._config.llm_model = self._model.currentText()
         self._config.llm_port = self._port.value()
         self._config.llm_context = self._context.currentData()
+        self._config.ocr_engine = self._ocr.currentData()
         vault = self._accept_typed_vault()
         if vault is None:
             return False

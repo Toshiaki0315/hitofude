@@ -92,6 +92,9 @@ OPTIONS = {
         "PIL",
         "lxml",
     ],
+    # **文字の読み取りの道具を忘れない**（ADR-0027）。`make ocr-tool` が
+    # `resources/bin/hitofude-ocr` に作る。`packages` の "hitofude" ごと
+    # 入るが、**署名の対象が 1 つ増える**（`codesign` を実行ファイルにも当てる）
     "includes": ["sqlite3", "mdurl"],
     "excludes": EXCLUDES,
     "plist": {
