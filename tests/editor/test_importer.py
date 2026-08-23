@@ -179,7 +179,9 @@ class TestScannedPdf:
 
         monkeypatch.setattr(importer, "pdf_pages", lambda _path: ["", "  "])
         monkeypatch.setattr(
-            importer, "pdf_page_images", lambda _path, _dir, pages=None: [tmp_path / "1.png"]
+            importer,
+            "pdf_page_images",
+            lambda _path, _dir, pages=None: [(0, tmp_path / "page-1.png")],
         )
         pdf = tmp_path / "スキャン.pdf"
         pdf.write_bytes(b"%PDF-1.4")
@@ -220,8 +222,10 @@ class TestHybridPdf:
         asked: list[list[int]] = []
 
         def fake_images(_path, directory, pages=None):
-            asked.append(list(pages or []))
-            return [directory / "2.png"]
+            wanted = list(pages or [])
+            asked.append(wanted)
+            # 本物は (ページ番号, 絵) を返す（番号でページに結び付けるため）
+            return [(number, directory / f"page-{number + 1}.png") for number in wanted]
 
         monkeypatch.setattr(importer, "pdf_page_images", fake_images)
         found = importer.to_markdown(self.pdf(tmp_path), ocr=FakeOcr("絵から読んだ文字"))
@@ -254,7 +258,9 @@ class TestHybridPdf:
 
         monkeypatch.setattr(importer, "pdf_pages", lambda _p: ["第 2 章 予算について"])
         monkeypatch.setattr(
-            importer, "pdf_page_images", lambda _p, directory, pages=None: [directory / "1.png"]
+            importer,
+            "pdf_page_images",
+            lambda _p, directory, pages=None: [(0, directory / "page-1.png")],
         )
         found = importer.to_markdown(self.pdf(tmp_path), ocr=FakeOcr("第2章"))
         assert "第 2 章 予算について" in found
@@ -268,7 +274,9 @@ class TestHybridPdf:
             importer, "pdf_pages", lambda _p: ["ちゃんとした本文が入っている 1 ページ目です", "3"]
         )
         monkeypatch.setattr(
-            importer, "pdf_page_images", lambda _p, directory, pages=None: [directory / "2.png"]
+            importer,
+            "pdf_page_images",
+            lambda _p, directory, pages=None: [(1, directory / "page-2.png")],
         )
         found = importer.to_markdown(self.pdf(tmp_path), ocr=FakeOcr("絵から読んだ"))
         assert "絵から読んだ" in found
@@ -355,7 +363,9 @@ class TestPdfImages:
             lambda _p: ["", "文字のあるページです。読み取りに回らない長さにしてあります"],
         )
         monkeypatch.setattr(
-            importer, "pdf_page_images", lambda _p, directory, pages=None: [directory / "1.png"]
+            importer,
+            "pdf_page_images",
+            lambda _p, directory, pages=None: [(0, directory / "page-1.png")],
         )
         monkeypatch.setattr(
             importer,
@@ -388,3 +398,41 @@ class TestPdfImages:
         pdf.write_bytes(b"%PDF-1.4")
         importer.to_markdown(pdf)
         assert asked == []
+
+
+class TestOcrPagePairing:
+    """読み取った文字を**別のページに入れない**（回帰）。
+
+    書き出しに失敗したページがあると、`zip` で 1 つずつずれて
+    「5 ページ目の文字が 3 ページ目に入り、5 ページ目は空のまま」になる。
+    ページ番号はファイル名（`page-N.png`）に入っているので、それを正とする。
+    """
+
+    def test_書き出せないページがあってもずれない(self, tmp_path, monkeypatch) -> None:
+        from hitofude.editor import importer
+
+        pages = ["", "", "", "", ""]  # 5 ページとも文字なし
+        blanks = [0, 2, 4]
+
+        # 3 ページ目（page-3.png）の書き出しに失敗した想定で、
+        # 1 ページ目と 5 ページ目の絵だけが返る
+        made = []
+        for number in (0, 4):  # 3 ページ目（番号 2）は書き出しに失敗した想定
+            path = tmp_path / f"page-{number + 1}.png"
+            path.write_bytes(b"x")
+            made.append((number, path))
+        monkeypatch.setattr(importer, "pdf_page_images", lambda *a, **k: made)
+
+        class Reader:
+            def available(self) -> bool:
+                return True
+
+            def read(self, image) -> str:
+                return f"{image.stem} の中身"
+
+        found = importer._fill_blank_pages(
+            tmp_path / "見本.pdf", pages, set(blanks), reader=Reader()
+        )
+        assert found[0] == "page-1 の中身"
+        assert found[2] == ""  # 書き出せなかったページは空のまま
+        assert found[4] == "page-5 の中身", "5 ページ目の文字が別の場所へ入った"

@@ -57,7 +57,9 @@ def pdf_pages(path: Path) -> list[str]:
     return pages
 
 
-def pdf_page_images(path: Path, directory: Path, pages: list[int] | None = None) -> list[Path]:
+def pdf_page_images(
+    path: Path, directory: Path, pages: list[int] | None = None
+) -> list[tuple[int, Path]]:
     """PDF のページを絵にする（ADR-0027）。読めなければ空。
 
     文字が入っていない PDF（紙を取り込んだもの）を読むのに要る。
@@ -74,7 +76,7 @@ def pdf_page_images(path: Path, directory: Path, pages: list[int] | None = None)
         logger.warning("PDF を読めなかった: %s", path)
         return []
 
-    found: list[Path] = []
+    found: list[tuple[int, Path]] = []
     wanted = range(document.pageCount()) if pages is None else pages
     for number in wanted:
         size = document.pagePointSize(number)
@@ -82,7 +84,7 @@ def pdf_page_images(path: Path, directory: Path, pages: list[int] | None = None)
         image = document.render(number, QSize(PAGE_WIDTH, height))
         target = directory / f"page-{number + 1}.png"
         if image.save(str(target)):
-            found.append(target)
+            found.append((number, target))
     document.close()
     return found
 
@@ -187,8 +189,11 @@ def _fill_blank_pages(path: Path, pages: list[str], blank: set[int], *, reader) 
     logger.info("文字の無い %d ページを読み取りに回す: %s", len(blanks), path)
     filled = list(pages)
     with tempfile.TemporaryDirectory() as workspace:
-        images = pdf_page_images(path, Path(workspace), blanks)
-        for number, image in zip(blanks, images, strict=False):
+        # **番号は絵と一緒に受け取る。** 書き出しに失敗したページがあると
+        # 数が合わず、`zip` では 1 つずつずれて「5 ページ目の文字が
+        # 3 ページ目に入る」になる（読み取った中身が別のページのものに
+        # なるので、見ただけでは気づけない）
+        for number, image in pdf_page_images(path, Path(workspace), blanks):
             try:
                 found = reader.read(image)
             except Exception as error:  # 読み手の事情（道具が無い・モデルが違う）
