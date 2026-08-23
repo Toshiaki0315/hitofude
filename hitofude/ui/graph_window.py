@@ -12,7 +12,6 @@ BTRON の「あるファイルを起点としたリンク構造」。形と座�
 曖昧になる**。
 """
 
-import logging
 from collections.abc import Callable
 
 from PySide6.QtCore import QPoint, QSize, Qt, Signal
@@ -34,8 +33,6 @@ from hitofude.theme import LIGHT, ThemeColors
 from hitofude.ui.format_toolbar import BUTTON_RADIUS
 from hitofude.ui.icons import Glyph, glyph_icon
 from hitofude.ui.quick_open import CLOSE_ICON
-
-logger = logging.getLogger(__name__)
 
 NODE_RADIUS = 6
 """点の大きさ。押せる大きさと、200 点並べても潰れない大きさの折り合い。"""
