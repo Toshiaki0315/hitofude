@@ -11,6 +11,7 @@ import pytest
 from PySide6.QtCore import QPoint, Qt
 
 from hitofude.core import graph
+from hitofude.ui.graph_window import NODE_RADIUS
 
 pytestmark = pytest.mark.gui
 
@@ -499,6 +500,187 @@ class TestLabels:
             metrics=self.metrics(window),
         )
         assert len(found) == 3
+
+
+def overlaps(view) -> int:
+    """重なっている題名の組の数。**ここが見えていなかった**（レビュー指摘）。
+
+    直す前は「窓からはみ出さない」しか見ておらず、**ラベル同士の重なりを
+    誰も数えていなかった**。実測すると 200 点で 234 組が重なっていた。
+    """
+    from PySide6.QtGui import QFontMetrics
+
+    metrics = QFontMetrics(view.font())
+    height = metrics.height()
+    boxes = [
+        (label.x, label.y - height, label.x + metrics.horizontalAdvance(label.text), label.y)
+        for label in view.labels()
+    ]
+    return sum(
+        1
+        for i in range(len(boxes))
+        for j in range(i + 1, len(boxes))
+        if boxes[i][0] < boxes[j][2]
+        and boxes[j][0] < boxes[i][2]
+        and boxes[i][1] < boxes[j][3]
+        and boxes[j][1] < boxes[i][3]
+    )
+
+
+def crowd(window, count: int, *, fanout: int = 0):
+    """`count` 本のノートを作る。`fanout` が 0 なら 1 本から全部へ繋ぐ。"""
+    if fanout:
+        for i in range(count):
+            body = " ".join(f"[[ノート{(i * 7 + j * 11) % count:03d}]]" for j in range(fanout))
+            note = window._vault.create(f"ノート{i:03d}", f"# ノート{i:03d}\n\n{body}\n")
+            window._db.upsert_note(note, window._vault.root)
+        start = "ノート000"
+    else:
+        body = "".join(f"[[ノート{i:03d}]]\n" for i in range(count))
+        note = window._vault.create("目次", f"# 目次\n\n{body}")
+        window._db.upsert_note(note, window._vault.root)
+        for i in range(count):
+            other = window._vault.create(f"ノート{i:03d}", f"# ノート{i:03d}\n\n本文\n")
+            window._db.upsert_note(other, window._vault.root)
+        start = "目次"
+    window.refresh()
+    window.open_and_select(window._vault.root / f"{start}.md")
+    return window
+
+
+class TestNoOverlap:
+    """**題名同士が重ならない**（M-4 の本題。レビュー指摘で作り直した）。
+
+    切り詰めただけでは足りない——実測（直す前）:
+
+    | 形 | 点 | 重なった組 |
+    | --- | --- | --- |
+    | 1 本から 100 本へ | 101 | 29 |
+    | 1 本から 250 本へ（上限で 200） | 200 | **234** |
+    | 300 本の網・深さ 3 | 81 | 87 |
+    """
+
+    @pytest.mark.parametrize(("count", "fanout"), [(100, 0), (250, 0), (60, 3), (120, 3), (300, 3)])
+    def test_どれだけ混んでも重ならない(self, window, count: int, fanout: int) -> None:
+        crowd(window, count, fanout=fanout)
+        dialog = window.build_graph_window()
+        try:
+            dialog.set_depth(3)
+            dialog.resize(700, 460)
+            assert overlaps(dialog.view) == 0
+        finally:
+            dialog.close()
+
+    def test_起点の題名は必ず出す(self, window) -> None:
+        """**今どこを見ているかが消えない。** 混んでいても起点だけは残す。"""
+        crowd(window, 250)
+        dialog = window.build_graph_window()
+        try:
+            dialog.resize(700, 460)
+            assert any(label.number == 0 for label in dialog.view.labels())
+        finally:
+            dialog.close()
+
+    def test_混んでいなければ全部出す(self, linked) -> None:
+        """**間引きすぎない。** 空いているのに題名が消えたら図が読めない。"""
+        dialog = linked.build_graph_window()
+        try:
+            dialog.resize(700, 460)
+            assert len(dialog.view.labels()) == len(dialog.graph().nodes)
+        finally:
+            dialog.close()
+
+    def test_近いものを先に残す(self, window) -> None:
+        """残すなら**起点に近いほう**。遠いものより関係が強い。"""
+        crowd(window, 250)
+        dialog = window.build_graph_window()
+        try:
+            dialog.resize(700, 460)
+            shown = {label.number for label in dialog.view.labels()}
+            assert len(shown) < len(dialog.graph().nodes)
+            assert min(shown) == 0
+        finally:
+            dialog.close()
+
+    def test_上が塞がっていたら下に置く(self, window) -> None:
+        """**逃がさないと出せる数が減る。** 実測で 88 件 → 102 件に増えた
+        （200 点の図。上に置けないものを下へ回したぶん）。
+        """
+        crowd(window, 250)
+        dialog = window.build_graph_window()
+        try:
+            dialog.resize(700, 460)
+            view = dialog.view
+            assert [label for label in view.labels() if label.y > view.point_of(label.number).y()]
+        finally:
+            dialog.close()
+
+    def test_題名を丸に重ねない(self, window) -> None:
+        """下へ回したものが**点の上に乗らない**（読めなくなる）。"""
+        from PySide6.QtGui import QFontMetrics
+
+        crowd(window, 250)
+        dialog = window.build_graph_window()
+        try:
+            dialog.resize(700, 460)
+            view = dialog.view
+            metrics = QFontMetrics(view.font())
+            for label in view.labels():
+                center = view.point_of(label.number)
+                assert label.y <= center.y() - NODE_RADIUS or label.y - metrics.height() >= (
+                    center.y() + NODE_RADIUS
+                )
+        finally:
+            dialog.close()
+
+    def test_広いほど多く出せる(self, window) -> None:
+        """**場所があるなら出す。** 固定の上限で切っていない。
+
+        窓ではなく**描く場所そのもの**を広げる（`dialog.resize` は、表示して
+        いない窓では子までは届かない。実測で 37 件のまま変わらなかった）。
+        """
+        crowd(window, 250)
+        dialog = window.build_graph_window()
+        try:
+            dialog.view.resize(500, 400)
+            narrow = len(dialog.view.labels())
+            dialog.view.resize(1400, 900)
+            assert len(dialog.view.labels()) > narrow
+        finally:
+            dialog.close()
+
+
+class TestHover:
+    """隠した題名は**カーソルで出す**。混んだところで名前が分からなくなる。"""
+
+    def test_隠れた点にカーソルを乗せると出る(self, window) -> None:
+        crowd(window, 250)
+        dialog = window.build_graph_window()
+        try:
+            dialog.resize(700, 460)
+            hidden = next(
+                number
+                for number in range(len(dialog.graph().nodes))
+                if number not in {label.number for label in dialog.view.labels()}
+            )
+            dialog.view.hover(dialog.view.point_of(hidden))
+            assert hidden in {label.number for label in dialog.view.labels()}
+        finally:
+            dialog.close()
+
+    def test_離れれば戻る(self, window) -> None:
+        from PySide6.QtCore import QPoint
+
+        crowd(window, 250)
+        dialog = window.build_graph_window()
+        try:
+            dialog.resize(700, 460)
+            before = len(dialog.view.labels())
+            dialog.view.hover(dialog.view.point_of(5))
+            dialog.view.hover(QPoint(-50, -50))
+            assert len(dialog.view.labels()) == before
+        finally:
+            dialog.close()
 
 
 class TestNoClipping:

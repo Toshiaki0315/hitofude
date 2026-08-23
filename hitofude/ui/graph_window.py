@@ -63,6 +63,9 @@ ALL_RELATIONS = "すべての続柄"
 class Label:
     """題名の置き場。**描く前に決めておく**（`painter_overlay` と同じ作法）。"""
 
+    number: int
+    """どの点のものか。**隠すものがある**ので、並びだけでは辿れない。"""
+
     text: str
     """切り詰めたあとの文字。"""
 
@@ -78,6 +81,7 @@ def place_labels(
     *,
     width: int,
     metrics: QFontMetrics,
+    height: int | None = None,
 ) -> list[Label]:
     """点の題名をどこにどう描くか決める（M-4）。
 
@@ -85,24 +89,48 @@ def place_labels(
     ぶら下がる図で、9 点のうち 4 つの題名が窓からはみ出していた
     （左端で先頭が欠け、右端で末尾が欠ける）。
 
-    やることは 2 つだけ。**切り詰める**（`…` を付ける）と、**窓の中へ
-    押し込む**（縁の点は中央揃えをやめる）。題名を消す道は採らない——
-    34 点の図では題名があるほうが読めた。
+    やることは 3 つ。**切り詰める**（`…` を付ける）、**窓の中へ押し込む**
+    （縁の点は中央揃えをやめる）、**重なるものは上下に逃がし、それでも
+    重なるなら出さない**。
+
+    切り詰めるだけでは足りない（レビュー指摘。実測: 200 点で 234 組が
+    重なっていた）。**200 点ぶんの題名が入る場所は無い**ので、どこかで
+    諦めるしかない。諦める順は**起点から遠いほう**から——`nodes` は幅優先の
+    並び（`core/graph.build`）なので、前から詰めれば近いものが残る。
+
+    出さなかった題名は**カーソルを乗せれば出る**（`GraphView.hover`）。
     """
     limit = max(min(MAX_LABEL_WIDTH, width), 1)
+    line = metrics.height()
+    floor = height if height is not None else None
     found: list[Label] = []
-    for node, center in zip(nodes, points, strict=True):
+    taken: list[tuple[int, int, int, int]] = []
+    for number, (node, center) in enumerate(zip(nodes, points, strict=True)):
         # **真ん中で切る。** 末尾を落とすと、`…その30`〜`…その37` のように
         # **見分けが付く部分だけが消える**（実測: 8 本ぶら下げたら題名が
         # 全部同じに読めた）。日付や連番は末尾に来ることが多い
         text = metrics.elidedText(node.title, Qt.TextElideMode.ElideMiddle, limit)
         span = metrics.horizontalAdvance(text)
         # 中央揃えを基本に、**縁ではそちらへ寄せる**
-        left = center.x() - span // 2
-        left = max(0, min(left, width - span))
+        left = max(0, min(center.x() - span // 2, width - span))
         radius = START_RADIUS if node.depth == 0 else NODE_RADIUS
-        found.append(Label(text=text, x=max(0, left), y=center.y() - radius - LABEL_GAP))
+        # 上に置けなければ下へ逃がす。**丸には重ねない**
+        above = center.y() - radius - LABEL_GAP
+        below = center.y() + radius + LABEL_GAP + metrics.ascent()
+        for baseline in (above, below):
+            if floor is not None and not (line <= baseline <= floor):
+                continue
+            box = (left, baseline - line, left + span, baseline)
+            if any(_hits(box, other) for other in taken):
+                continue
+            taken.append(box)
+            found.append(Label(number=number, text=text, x=left, y=baseline))
+            break
     return found
+
+
+def _hits(one: tuple[int, int, int, int], other: tuple[int, int, int, int]) -> bool:
+    return one[0] < other[2] and other[0] < one[2] and one[1] < other[3] and other[1] < one[3]
 
 
 class GraphView(QWidget):
@@ -116,12 +144,14 @@ class GraphView(QWidget):
         self._theme = theme
         self._graph = graph.Graph()
         self.places: list[tuple[float, float]] = []
+        self._hovered: int | None = None
         self.setMinimumSize(QSize(360, 260))
         self.setMouseTracking(True)
 
     def set_graph(self, found: graph.Graph, places: list[tuple[float, float]]) -> None:
         self._graph = found
         self.places = places
+        self._hovered = None  # 図が変われば番号の意味も変わる
         self.update()
 
     def point_of(self, number: int) -> QPoint:
@@ -172,19 +202,61 @@ class GraphView(QWidget):
                 # **中抜き。** まだ無いノート（`[[…]]` の行き先が無い）
                 painter.setPen(QPen(QColor(self._theme.muted_foreground), 1))
                 painter.drawPath(path)
-            painter.setPen(QPen(QColor(self._theme.foreground)))
-            label = labels[number]
+        painter.setPen(QPen(QColor(self._theme.foreground)))
+        for label in labels:
             painter.drawText(label.x, label.y, label.text)
         painter.end()
 
+    def hover(self, where: QPoint) -> None:
+        """カーソルの下の点を覚える。**隠した題名をそこだけ出す。**
+
+        混んだ図では題名を出せない点が出る（200 点ぶんの場所は無い）。
+        名前が分からないままでは図として使えないので、指したものは出す。
+        """
+        number = self.node_at(where)
+        if number != self._hovered:
+            self._hovered = number
+            self.update()
+
+    def mouseMoveEvent(self, event) -> None:
+        self.hover(event.position().toPoint())
+
+    def leaveEvent(self, event) -> None:
+        self.hover(QPoint(-1, -1))
+
     def labels(self) -> list[Label]:
         """今の大きさでの題名の置き場。**描く式と試験で同じものを見る。**"""
-        return place_labels(
+        points = [self.point_of(number) for number in range(len(self.places))]
+        found = place_labels(
             self._graph.nodes,
-            [self.point_of(number) for number in range(len(self.places))],
+            points,
             width=self.width(),
+            height=self.height(),
             metrics=QFontMetrics(self.font()),
         )
+        if self._hovered is None or any(label.number == self._hovered for label in found):
+            return found
+        # **指したものは重ねてでも出す。** 隠れている名前を読むための操作
+        # なので、ここで遠慮すると何も起きないように見える
+        metrics = QFontMetrics(self.font())
+        node = self._graph.nodes[self._hovered]
+        center = points[self._hovered]
+        text = metrics.elidedText(
+            node.title,
+            Qt.TextElideMode.ElideMiddle,
+            max(min(MAX_LABEL_WIDTH, self.width()), 1),
+        )
+        span = metrics.horizontalAdvance(text)
+        left = max(0, min(center.x() - span // 2, self.width() - span))
+        return [
+            *found,
+            Label(
+                number=self._hovered,
+                text=text,
+                x=left,
+                y=center.y() - NODE_RADIUS - LABEL_GAP,
+            ),
+        ]
 
 
 class GraphWindow(QDialog):
