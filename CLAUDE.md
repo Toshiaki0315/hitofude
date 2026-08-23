@@ -5,6 +5,8 @@
 このファイルは Claude Code がセッション開始時に必ず読む作業規約。
 **設計の根拠と詳細仕様は [docs/spec.md](docs/spec.md) にある**（節番号は仕様書のもの）。
 実装タスクの一覧と進捗は [docs/TASKS.md](docs/TASKS.md)。
+**やると決めていないもの**は [docs/IDEAS.md](docs/IDEAS.md)（引き金が
+引かれたら TASKS.md へ戻す）。
 
 ---
 
