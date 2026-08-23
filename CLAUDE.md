@@ -146,7 +146,9 @@ uv sync --dry-run
 
 ### R7. 全体再ハイライトの禁止（§6.4, §6.6）
 
-`rehighlight()` は起動時とテーマ変更時のみ。
+`rehighlight()` は**表示の決まりごと自体が変わったとき**だけ（起動時・
+テーマ・等幅フォント・文字サイズ・Raw 切替・画像の読み直し）。
+**編集とカーソル移動では決して呼ばない。**
 カーソル移動では**旧/新の 2 ブロックだけ** `rehighlightBlock()` する。
 
 ### R8. インライン解析は自作スキャナ、ブロック解析は markdown-it-py（§3.4）
@@ -185,6 +187,8 @@ hitofude/
 │   ├── editor/               # エディタウィジェット層
 │   ├── ui/                   # アプリケーション UI 層
 │   └── resources/
+├── tools/
+│   └── ocr/                  # 文字の読み取りの道具（Swift。`make run` が resources/bin へ組む）
 ├── tests/
 │   ├── conftest.py           # offscreen 設定、共通フィクスチャ
 │   ├── test_architecture.py  # R3 の自動検査

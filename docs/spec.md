@@ -35,7 +35,7 @@ Claude Code 等のコーディングエージェントに渡す場合は、**§9
 - クラウド同期、マルチデバイス（ファイルは iCloud Drive 等のフォルダに置けば実質同期できるので v1 では OS 任せ）
 - 共同編集
 - Windows / Linux 対応（コードは移植可能に保つが、テストとビルドは macOS のみ）
-- WYSIWYG な表エディタ（**→ ADR-0003 で変更**。罫線は描くが、セル内の折り返しは行わない）
+- WYSIWYG な表エディタ（**→ ADR-0003 で罫線を描画**。セル内の折り返しは **ADR-0017 で実装**）
 
 ---
 
@@ -170,7 +170,7 @@ Qt の `QTextCharFormat` には CSS の `display:none` に相当する機能が�
 
 **注意点（実装時に必ず対処）**:
 
-- 極小フォントは行の高さ計算に影響しうる。**マーカーには本文と同じフォントファミリを指定した上でサイズのみ縮める**こと。行高が跳ねる場合は `QTextBlockFormat.setLineHeight()` で明示固定する。
+- 極小フォントは行の高さ計算に影響しうる。**マーカーには本文と同じフォントファミリを指定した上でサイズのみ縮める**こと。行高が跳ねる場合も `QTextBlockFormat` は使わない（**ADR-0002**。効かないうえ Undo を 1 段消費する）。
 - テキスト選択時、潰れたマーカーも選択範囲に含まれる（＝コピーすると `**` が付いてくる）。これは**仕様として正しい**（生 Markdown をコピーできる）。プレーンテキストとしてコピーしたい場合は `Cmd+Shift+C` を別途割り当てる。
 
 ##### 検証: ブロックレベルの装飾（余白・インデント・行高）
@@ -361,6 +361,21 @@ inline         | map=[0, 1]
 > → **2026-08-18 に現状化**: 実装が進んで増えたモジュールを反映した
 > （B〜G 群のタスクで追加されたもの）。`block_decorator.py` は ADR-0002 で
 > 廃止。`styles.qss` は使わない方針（QSS はネイティブな見た目を壊す）。
+>
+> → **2026-08-24 追補**: 下の木のあとに増えたもの（この節の全面書き直しは
+> していないので、**実物は `hitofude/` を見ること**）。
+>
+> - `core/`: `searchquery.py`（検索式）/ `notelink.py`・`code_langs.py`（補完）/
+>   `folding.py`（見出しの折りたたみ）/ `table.py` の折り返し（ADR-0017）/
+>   `llm.py`・`keywords.py`・`related.py`（ADR-0025）/ `ocr.py`（ADR-0027）/
+>   `extract.py`・`graph.py`（M-1 / M-2）
+> - `storage/`: `history.py`（版の履歴。ADR-0023）
+> - `editor/`: `math_cache.py`（ADR-0020）/ `mermaid_cache.py`（ADR-0021）/
+>   `importer.py` の PDF・OCR 経路
+> - `ui/`: `outline_pane.py`（ADR-0022）/ `history_dialog.py` /
+>   `assistant_pane.py`・`graph_window.py`。`sidebar.py` はタグに加えて
+>   **フォルダと保存した検索**も並べる
+> - ほか: `tools/ocr/ocr.swift`（`make run` が `resources/bin/` へ組む）
 
 ```
 hitofude/
@@ -584,7 +599,7 @@ QUOTE_SHIFT = 4  # 上位ビットに引用の深さを詰める
 - **インライン**は入力確定と同時に反映（`highlightBlock` が同期で走るので自然にこうなる）。
 - **ブロック**（`## `, `- [ ] `, `> `）は「キャレットがそのブロックを離れた時点」で確定。実装上は、リビール条件が「ブロック内にキャレットがあるか」なので、これは自動的に満たされる。
 
-**リビール時のちらつき対策**: フォントサイズが `0.5pt ↔ 15pt` に切り替わると行が横方向にガクッと動く。これは仕様として許容する（Obsidian / Typora も同じ挙動）。ただし**縦方向は動かしてはいけない**ので、`QTextBlockFormat.setLineHeight(value, QTextBlockFormat.FixedHeight)` で行高を固定すること。
+**リビール時のちらつき対策**: フォントサイズが `0.5pt ↔ 15pt` に切り替わると行が横方向にガクッと動く。これは仕様として許容する（Obsidian / Typora も同じ挙動）。ただし**縦方向は動かしてはいけない**（→ **ADR-0002 で方法を変更**。`QTextBlockFormat` は `QPlainTextDocumentLayout` が無視するうえ Undo を 1 段消費するので使わない。行の高さは R4 と同じ「文字の大きさ」で作る）。
 
 ### 6.5 インラインスキャナの仕様
 
@@ -632,7 +647,7 @@ def scan(text: str) -> list[InlineSpan]:
 
 | 施策 | 内容 |
 |---|---|
-| 差分ハイライト | `QSyntaxHighlighter` が変更ブロックのみ呼ぶ。`rehighlight()` は起動時とテーマ変更時のみ |
+| 差分ハイライト | `QSyntaxHighlighter` が変更ブロックのみ呼ぶ。`rehighlight()` は表示の決まりごとが変わったときだけ（起動・テーマ・フォント・文字サイズ・Raw 切替・画像の読み直し）。編集とカーソル移動では呼ばない |
 | リビールの局所化 | `cursorPositionChanged` では**旧/新の 2 ブロックだけ** `rehighlightBlock()` |
 | 正規表現のプリコンパイル | モジュールレベルで `re.compile`。ループ内でコンパイルしない |
 | ブロックパーサのデバウンス | ~~400ms。かつ**ダーティ行の前後 ±20 行だけ**を再パース~~ → ADR-0014 で廃止（ビットフラグ方式で不要になった） |
@@ -660,16 +675,23 @@ HitofudeNotes/
 ├── 読書メモ.md
 ├── attachments/                    ← 画像等の添付
 │   └── 2026-08-07-screenshot.png
-├── .trash/                         ← 削除したノート（30 日後に自動消去）
-│   └── 古いメモ.md
+├── templates/                      ← 雛形（E-4。ノートとしては読まない）
+│   └── 議事録.md
+├── .trash/                         ← 削除したノート（30 日後に自動消去。K-5 で階層を保つ）
+│   └── 仕事/古いメモ.md
 └── .hitofude/                          ← アプリの管理領域（ユーザーは触らない）
     ├── index.sqlite                ← 検索インデックス（キャッシュ。消えても再構築可能）
-    └── index.sqlite-wal
+    ├── index.sqlite-wal
+    └── history/                    ← 版の履歴（ADR-0023）。**これは作り直せない**
+        └── 01J.../2026-08-20T10-00-00.md
 ```
+
+> **`.hitofude` ごと消してよいのは索引だけ**（R9 / ADR-0023）。`history/` の
+> 版は `.md` から作り直せない。
 
 **設計判断**:
 
-- **フォルダ階層で分類しない**。分類はタグで行う（タグベースのノートアプリと同じ方針）。ユーザーが手でサブフォルダを作った場合は再帰的に読み込む。アプリからのフォルダ作成は「フォルダへ移動…」の副産物としてのみ許す（[ADR-0024](adr/0024-folders.md)。当初は「作らせない」だった）。
+- **フォルダ階層で分類しない**。分類はタグで行う（タグベースのノートアプリと同じ方針）。ユーザーが手でサブフォルダを作った場合は再帰的に読み込む。アプリからもフォルダを作れる（[ADR-0024](adr/0024-folders.md) と追記 1。サイドバーの右クリック「新しいフォルダ…」と「フォルダへ移動…」の両方から。当初は「作らせない」だった）。空になったフォルダは残す（追記 2）。
 - **`.hitofude/index.sqlite` は完全なキャッシュ**。削除しても `.md` から全再構築できること。真実は常にファイル側にある。これが G3 の担保。
 - ファイル名は `sanitize(タイトル) + .md`。重複時は `-2`, `-3` を付与。タイトル変更時はファイルをリネームする（旧名は `.trash` に残さない）。UI の「名前を変更」がどちらを変えるかは **ADR-0005 で補足**。
 
@@ -732,6 +754,18 @@ CREATE TABLE IF NOT EXISTS tags (
     PRIMARY KEY (note_id, tag)
 );
 CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag);
+
+-- ノート間リンク（E-6 のバックリンク、M-2 の図、M-3 の続柄が使う）。
+-- スキーマ 2 で追加、4 で relation を足した（`PRAGMA user_version` で移行）
+CREATE TABLE IF NOT EXISTS links (
+    note_id  TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    target   TEXT NOT NULL,             -- 行き先の題名（名前で解決。ADR-0011）
+    -- 続柄（M-3）。無印は空文字。**主キーに入れる** — 入れないと
+    -- 同じ相手を別の関係で指したときに片方が黙って消える
+    relation TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (note_id, target, relation)
+);
+CREATE INDEX IF NOT EXISTS idx_links_target ON links(target);
 
 -- 全文検索。日本語のため trigram を使う（unicode61 では日本語が 1 トークンになり検索不能）
 CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
@@ -799,7 +833,7 @@ def save_atomic(path: Path, text: str) -> None:
 - 削除は `.trash/` への移動（`os.replace`）。ファイル名衝突時はタイムスタンプを付与。
 - `.trash/` 内のノートは検索対象外（`notes.trashed = 1`）。
 - 起動時に 30 日以上経過したものを削除。日数は設定可能。
-- `Cmd+Shift+Delete` で完全削除（確認ダイアログ必須）。
+- 完全削除はゴミ箱の一覧の右クリック「完全に削除…」と、サイドバーの「ゴミ箱を空にする…」から（どちらも確認ダイアログ必須。**キーは割り当てない** — 押し間違いで戻せないため）。
 
 ---
 
