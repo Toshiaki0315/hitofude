@@ -1511,7 +1511,8 @@ class MainWindow(QMainWindow):
         dialog = GraphWindow(
             self,
             start=self._note.title,
-            links=self._db.link_map(),
+            links_for=lambda relation: self._db.link_map(relation=relation),
+            relations=self._db.relations(),
             depth=self._config.graph_depth,
             theme=self._theme_watcher.colors,
         )

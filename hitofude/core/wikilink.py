@@ -49,8 +49,20 @@ def links(text: str) -> list[str]:
     リンクが書かれる場所ではない。
     """
     found: dict[str, None] = {}
-    fence: str | None = None
+    for line in _body_lines(text):
+        for span in scan(line):
+            if span.type is SpanType.WIKI_LINK:
+                found.setdefault(normalize(span.payload), None)
+    return list(found)
 
+
+def _body_lines(text: str):
+    """本文の行を順に。**コードの中と front matter は出さない。**
+
+    `links()` と `relations()` で数え方がずれると、**図に出るのに索引には
+    無いリンク**ができる。同じところから読む。
+    """
+    fence: str | None = None
     for line in frontmatter.split(text).body.split("\n"):
         fence_match = _FENCE_RE.match(line)
         if fence_match is not None:
@@ -60,12 +72,54 @@ def links(text: str) -> list[str]:
             elif marker[0] == fence[0] and len(marker) >= len(fence):
                 fence = None
             continue
-        if fence is not None:
-            continue
+        if fence is None:
+            yield line
+
+
+MAX_RELATION = 12
+"""続柄の長さの上限（M-3）。**関係の名前は短い**（参考文献・元ネタ・前提）。
+長い一文は、たまたまコロンが入った地の文なので拾わない。"""
+
+# 箇条書きの印。**地の文は見ない** — 「今日は: [[…]]」を続柄にしないため。
+# チェックボックス（`- [ ] `）もここで一緒に落とす
+_BULLET_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?")
+
+# 続柄と本文の区切り。**半角のコロンは後ろに空白を要る** — 無いと `10:30` の
+# 「10」や `https://…` の「https」を続柄にしてしまう（実測しなくても分かる
+# 誤りだが、日本語のノートでは時刻がよく出る）。全角は日本語で使われる形
+# なので、後ろの空白を求めない
+_RELATION_RE = re.compile(r"^(?P<name>[^\[\]\n]*?)\s*(?::\s|：)")
+
+
+def _relation_of(line: str) -> str:
+    """その行が付けている続柄（M-3）。無ければ空。
+
+    **新しい記法は作らない。** 箇条書きの行の `:` より前を読むだけで、
+    これはただの Markdown——他のエディタで開いても意味が通る。
+    """
+    bullet = _BULLET_RE.match(line)
+    if bullet is None:
+        return ""
+    found = _RELATION_RE.match(line[bullet.end() :])
+    if found is None:
+        return ""
+    name = _WHITESPACE_RE.sub(" ", found.group("name")).strip()
+    return name if 0 < len(name) <= MAX_RELATION else ""
+
+
+def relations(text: str) -> list[tuple[str, str]]:
+    """指している先と、そこに付いた続柄の組（M-3）。続柄が無ければ空文字。
+
+    **同じ相手を別の続柄で指せる**ので、組で重複を除く（索引の主キーも
+    それに合わせてある）。数え方（コードの中は見ない・front matter は
+    見ない）は `links()` と同じ。
+    """
+    found: dict[tuple[str, str], None] = {}
+    for line in _body_lines(text):
+        relation = _relation_of(line)
         for span in scan(line):
             if span.type is SpanType.WIKI_LINK:
-                found.setdefault(normalize(span.payload), None)
-
+                found.setdefault((normalize(span.payload), relation), None)
     return list(found)
 
 

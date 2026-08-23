@@ -16,6 +16,94 @@ pytestmark = pytest.mark.gui
 
 
 @pytest.fixture
+def related(window):
+    """続柄の付いたリンク（M-3）。「参考文献」と「元ネタ」の 2 種類。"""
+    texts = {
+        "会議メモ": "# 会議メモ\n\n- 参考文献: [[本]]\n- 元ネタ: [[日報]]\n",
+        "本": "# 本\n\nBTRON の話\n",
+        "日報": "# 日報\n\n書いた\n",
+    }
+    for title, text in texts.items():
+        note = window._vault.create(title, text)
+        window._db.upsert_note(note, window._vault.root)
+    window.refresh()
+    window.open_and_select(window._vault.root / "会議メモ.md")
+    return window
+
+
+class TestRelationFilter:
+    """図を続柄で絞る（M-3 の使い道）。**BTRON の続柄はリンクに付く。**"""
+
+    def test_続柄が選べる(self, related) -> None:
+        dialog = related.build_graph_window()
+        try:
+            found = [dialog.relation_box.itemText(i) for i in range(dialog.relation_box.count())]
+            assert found == ["すべての続柄", "元ネタ", "参考文献"]
+        finally:
+            dialog.close()
+
+    def test_既定は絞らない(self, related) -> None:
+        dialog = related.build_graph_window()
+        try:
+            assert dialog.relation() is None
+            assert {node.title for node in dialog.graph().nodes} == {"会議メモ", "本", "日報"}
+        finally:
+            dialog.close()
+
+    def test_選ぶとその関係だけになる(self, related) -> None:
+        dialog = related.build_graph_window()
+        try:
+            dialog.set_relation("参考文献")
+            assert {node.title for node in dialog.graph().nodes} == {"会議メモ", "本"}
+        finally:
+            dialog.close()
+
+    def test_別の関係を選べば入れ替わる(self, related) -> None:
+        dialog = related.build_graph_window()
+        try:
+            dialog.set_relation("元ネタ")
+            assert {node.title for node in dialog.graph().nodes} == {"会議メモ", "日報"}
+        finally:
+            dialog.close()
+
+    def test_すべてに戻せる(self, related) -> None:
+        dialog = related.build_graph_window()
+        try:
+            dialog.set_relation("参考文献")
+            dialog.set_relation(None)
+            assert len(dialog.graph().nodes) == 3
+        finally:
+            dialog.close()
+
+    def test_絞っても起点は残る(self, related) -> None:
+        """**起点が消えると図が空になる。** 何を見ているか分からなくなる。"""
+        dialog = related.build_graph_window()
+        try:
+            dialog.set_relation("元ネタ")
+            assert dialog.graph().nodes[0].title == "会議メモ"
+        finally:
+            dialog.close()
+
+    def test_続柄が無ければ選択肢も出さない(self, linked) -> None:
+        """**要らないものを置かない。** 使っていない機能の枠が並ぶと邪魔。"""
+        dialog = linked.build_graph_window()
+        try:
+            assert not dialog.relation_box.isVisibleTo(dialog)
+        finally:
+            dialog.close()
+
+    def test_絞ったまま深さも変えられる(self, related) -> None:
+        dialog = related.build_graph_window()
+        try:
+            dialog.set_relation("参考文献")
+            dialog.set_depth(1)
+            assert {node.title for node in dialog.graph().nodes} == {"会議メモ", "本"}
+            assert dialog.relation() == "参考文献"
+        finally:
+            dialog.close()
+
+
+@pytest.fixture
 def linked(window):
     """会議メモ → 買い物リスト → 卵の店、日報 → 会議メモ の 4 本。"""
     texts = {

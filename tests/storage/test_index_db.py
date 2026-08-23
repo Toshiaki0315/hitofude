@@ -1061,3 +1061,66 @@ class TestLinkMap:
 
     def test_空なら空(self, db) -> None:
         assert db.link_map() == {}
+
+
+class TestRelations:
+    """リンクに付く続柄（M-3）。**同じ相手を別の関係で指せる。**"""
+
+    def test_続柄ごと索引に入る(self, vault, db) -> None:
+        add(vault, db, "会議メモ", "- 参考文献: [[本]]\n- 元ネタ: [[日報]]")
+        assert db.link_map()["会議メモ"] == ["日報", "本"]
+        assert sorted(db.relations()) == ["元ネタ", "参考文献"]
+
+    def test_続柄で絞れる(self, vault, db) -> None:
+        add(vault, db, "会議メモ", "- 参考文献: [[本]]\n- 元ネタ: [[日報]]")
+        assert db.link_map(relation="参考文献") == {"会議メモ": ["本"]}
+
+    def test_絞ってもノートは残す(self, vault, db) -> None:
+        """**図の起点が消えない。** 鍵ごと消えると起点を置く場所が無くなる。"""
+        add(vault, db, "ひとりごと", "何も指していない")
+        assert db.link_map(relation="参考文献") == {"ひとりごと": []}
+
+    def test_同じ相手を別の続柄で指せる(self, vault, db) -> None:
+        """主キーが `(note_id, target)` のままだと**片方が消える**。"""
+        add(vault, db, "会議メモ", "- 参考文献: [[本]]\n- 元ネタ: [[本]]")
+        assert db.link_map(relation="元ネタ") == {"会議メモ": ["本"]}
+        assert db.link_map(relation="参考文献") == {"会議メモ": ["本"]}
+
+    def test_無印のリンクは続柄に出てこない(self, vault, db) -> None:
+        """**それが普通。** 空の続柄が選択肢に並ぶと邪魔になる。"""
+        add(vault, db, "会議メモ", "[[本]] を見る")
+        assert db.relations() == []
+
+    def test_続柄の一覧は並べて重複を除く(self, vault, db) -> None:
+        add(vault, db, "あ", "- 参考文献: [[本]]")
+        add(vault, db, "い", "- 参考文献: [[別の本]]\n- 前提: [[土台]]")
+        assert db.relations() == ["前提", "参考文献"]
+
+    def test_ゴミ箱のノートの続柄は出さない(self, vault, db) -> None:
+        note = add(vault, db, "捨てる", "- 参考文献: [[本]]")
+        db.upsert_note(note, vault.root, trashed=True)
+        assert db.relations() == []
+
+    def test_指されている側も続柄で引ける(self, vault, db) -> None:
+        """「参考文献として指しているノート」を引く（M-3 の使い道）。"""
+        add(vault, db, "会議メモ", "- 参考文献: [[本]]")
+        add(vault, db, "日報", "- 元ネタ: [[本]]")
+        assert [row.title for row in db.backlinks("本", relation="参考文献")] == ["会議メモ"]
+
+    def test_続柄を指定しなければ今まで通り(self, vault, db) -> None:
+        add(vault, db, "会議メモ", "- 参考文献: [[本]]")
+        add(vault, db, "日報", "[[本]]")
+        assert {row.title for row in db.backlinks("本")} == {"会議メモ", "日報"}
+
+
+class TestSchemaVersion:
+    def test_版を上げてある(self) -> None:
+        """**上げないと古いノートの新しい列が黙って空のまま残る**（表の注記）。
+
+        `relation` を足したのに版が 3 のままだと、既にあるノートは触られる
+        まで読み直されず（`sync()` は mtime を見る）、続柄が付かない。
+        """
+        assert IndexDb.__module__  # 参照だけ（下の値がこのテストの本体）
+        from hitofude.storage.index_db import SCHEMA_VERSION
+
+        assert SCHEMA_VERSION >= 4

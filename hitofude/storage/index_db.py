@@ -34,8 +34,9 @@ HIGHLIGHT_END = "\x03"
 # 走査し直す（R9: 索引は捨ててよいキャッシュ）。表を足すだけでは、既にある
 # ノートは触られるまで読み直されず（`sync()` は mtime を見る）、新しい列が
 # 黙って空のままになる。**中身の作り方を変えたときも同じ**で、古い値が
-# 残り続ける。2 で `links`（E-6）を足し、3 でプレビューからマーカーを外した
-SCHEMA_VERSION = 3
+# 残り続ける。2 で `links`（E-6）を足し、3 でプレビューからマーカーを外し、
+# 4 で `links.relation`（M-3 の続柄）を足した
+SCHEMA_VERSION = 4
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS notes (
@@ -62,7 +63,10 @@ CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag);
 CREATE TABLE IF NOT EXISTS links (
     note_id  TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
     target   TEXT NOT NULL,
-    PRIMARY KEY (note_id, target)
+    -- 続柄（M-3）。無印は空文字。**主キーに入れる** — 入れないと
+    -- 同じ相手を別の関係で指したときに片方が黙って消える
+    relation TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (note_id, target, relation)
 );
 CREATE INDEX IF NOT EXISTS idx_links_target ON links(target);
 
@@ -285,8 +289,8 @@ class IndexDb:
         # まだ無いノートへのリンクも、作られた瞬間に繋がるべきもの
         self._connection.execute("DELETE FROM links WHERE note_id = ?", (note_id,))
         self._connection.executemany(
-            "INSERT OR IGNORE INTO links (note_id, target) VALUES (?, ?)",
-            [(note_id, target) for target in wikilink.links(note.text)],
+            "INSERT OR IGNORE INTO links (note_id, target, relation) VALUES (?, ?, ?)",
+            [(note_id, target, relation) for target, relation in wikilink.relations(note.text)],
         )
 
         self._connection.execute("DELETE FROM notes_fts WHERE note_id = ?", (note_id,))
@@ -437,7 +441,20 @@ class IndexDb:
         )
         return [row["target"] for row in rows]
 
-    def link_map(self) -> dict[str, list[str]]:
+    def relations(self) -> list[str]:
+        """使われている続柄の一覧（M-3）。**無印は出さない** — それが普通で、
+        空の選択肢が並ぶと邪魔になる。"""
+        rows = self._connection.execute(
+            """
+            SELECT DISTINCT links.relation AS relation
+            FROM links JOIN notes ON notes.id = links.note_id
+            WHERE links.relation <> '' AND notes.trashed = 0
+            ORDER BY links.relation
+            """
+        )
+        return [row["relation"] for row in rows]
+
+    def link_map(self, *, relation: str | None = None) -> dict[str, list[str]]:
         """題名 → その題名が指している先の一覧（M-2 の図が使う）。
 
         **1 本ずつ引かない。** 深さ 2 でも数十本になり、そのたびに問い合わせると
@@ -447,13 +464,19 @@ class IndexDb:
         ノート」との違いで、図はそこを見分けて中抜きに描く。
         """
         found: dict[str, list[str]] = {}
+        # **絞ってもノートは鍵に残す**（`LEFT JOIN` の条件側に置く）。
+        # `WHERE` で絞ると、その続柄を持たないノートが鍵ごと消え、
+        # 図の起点を置く場所が無くなる
         rows = self._connection.execute(
-            """
+            f"""
             SELECT notes.title AS title, links.target AS target
-            FROM notes LEFT JOIN links ON links.note_id = notes.id
+            FROM notes LEFT JOIN links
+              ON links.note_id = notes.id
+              {"AND links.relation = ?" if relation is not None else ""}
             WHERE notes.trashed = 0
             ORDER BY notes.title, links.target
-            """
+            """,
+            () if relation is None else (relation,),
         )
         for row in rows:
             targets = found.setdefault(row["title"], [])
@@ -486,7 +509,13 @@ class IndexDb:
         )
         return [_to_row(row) for row in rows]
 
-    def backlinks(self, title: str, *, order: "SortOrder" = SortOrder.MODIFIED) -> list[NoteRow]:
+    def backlinks(
+        self,
+        title: str,
+        *,
+        order: "SortOrder" = SortOrder.MODIFIED,
+        relation: str | None = None,
+    ) -> list[NoteRow]:
         """その題名を `[[...]]` で指しているノート（E-6）。
 
         **大小は無視する**（`COLLATE NOCASE`）。解決（`wikilink.resolve`）が
@@ -498,12 +527,13 @@ class IndexDb:
             return []
         rows = self._connection.execute(
             f"""
-            SELECT notes.* FROM notes
+            SELECT DISTINCT notes.* FROM notes
             JOIN links ON links.note_id = notes.id
             WHERE links.target = ? COLLATE NOCASE AND notes.trashed = 0
+              {"AND links.relation = ?" if relation is not None else ""}
             ORDER BY {_order_by(order, prefix="notes.")}
             """,
-            (target,),
+            (target,) if relation is None else (target, relation),
         )
         return [_to_row(row) for row in rows]
 

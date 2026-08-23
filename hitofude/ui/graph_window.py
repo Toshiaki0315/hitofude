@@ -13,10 +13,12 @@ BTRON の「あるファイルを起点としたリンク構造」。形と座�
 """
 
 import logging
+from collections.abc import Callable
 
 from PySide6.QtCore import QPoint, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -50,6 +52,9 @@ MARGIN = 40
 """枠の内側の余白。題名が窓の外へはみ出さないぶん。"""
 
 LABEL_GAP = 4
+
+ALL_RELATIONS = "すべての続柄"
+"""続柄で絞らないときの選択肢（M-3）。"""
 
 
 class GraphView(QWidget):
@@ -146,7 +151,8 @@ class GraphWindow(QDialog):
         parent: QWidget | None = None,
         *,
         start: str,
-        links: dict[str, list[str]],
+        links_for: Callable[[str | None], dict[str, list[str]]],
+        relations: list[str] | None = None,
         depth: int = graph.DEFAULT_DEPTH,
         theme: ThemeColors = LIGHT,
     ) -> None:
@@ -157,7 +163,10 @@ class GraphWindow(QDialog):
         self.setStyleSheet(f"QDialog {{ background: {theme.background}; }}")
 
         self._start = start
-        self._links = links
+        # **続柄で絞るたびに引き直す**（M-3）。絞った結果を持ち回ると、
+        # どの続柄で作った表なのかが分からなくなる
+        self._links_for = links_for
+        self._relation: str | None = None
         self._depth = depth
         self._limit = graph.MAX_NODES
         self._graph = graph.Graph()
@@ -170,6 +179,17 @@ class GraphWindow(QDialog):
         self._depth_box.setValue(depth)
         self._depth_box.setToolTip("起点から何段先まで辿るか")
         self._depth_box.valueChanged.connect(self.set_depth)
+
+        # 続柄で絞る（M-3）。**使っていなければ置かない** — 空の枠が並ぶと邪魔
+        self.relation_box = QComboBox(self)
+        self.relation_box.addItem(ALL_RELATIONS, None)
+        for name in relations or []:
+            self.relation_box.addItem(name, name)
+        self.relation_box.setToolTip("リンクに付けた続柄で絞る")
+        self.relation_box.currentIndexChanged.connect(
+            lambda _index: self.set_relation(self.relation_box.currentData())
+        )
+        self.relation_box.setVisible(bool(relations))
 
         self._notice = QLabel(self)
         self._notice.setStyleSheet(f"QLabel {{ color: {theme.muted_foreground}; }}")
@@ -193,6 +213,7 @@ class GraphWindow(QDialog):
         header.addWidget(QLabel(f"「{start}」から", self))
         header.addWidget(QLabel("深さ", self))
         header.addWidget(self._depth_box)
+        header.addWidget(self.relation_box)
         header.addWidget(self._notice, 1)
         header.addWidget(self.close_button)
 
@@ -210,6 +231,10 @@ class GraphWindow(QDialog):
     def depth(self) -> int:
         return self._depth
 
+    def relation(self) -> str | None:
+        """絞っている続柄。絞っていなければ `None`。"""
+        return self._relation
+
     def notice(self) -> str:
         return self._notice.text()
 
@@ -222,6 +247,14 @@ class GraphWindow(QDialog):
         self._rebuild()
         self.depth_changed.emit(depth)
 
+    def set_relation(self, relation: str | None) -> None:
+        """続柄で絞る（M-3）。`None` なら絞らない。"""
+        self._relation = relation
+        index = self.relation_box.findData(relation)
+        if index >= 0 and self.relation_box.currentIndex() != index:
+            self.relation_box.setCurrentIndex(index)
+        self._rebuild()
+
     def set_limit(self, limit: int) -> None:
         """描く点の上限。**試験と、狭い窓のためだけ**（ふだんは既定のまま）。"""
         self._limit = limit
@@ -230,7 +263,12 @@ class GraphWindow(QDialog):
     # ------------------------------------------------------------------ 内部
 
     def _rebuild(self) -> None:
-        self._graph = graph.build(self._start, self._links, depth=self._depth, limit=self._limit)
+        self._graph = graph.build(
+            self._start,
+            self._links_for(self._relation),
+            depth=self._depth,
+            limit=self._limit,
+        )
         # **座標も作り直す。** 使い回すと数が合わず、点がはみ出す
         self.view.set_graph(self._graph, graph.layout(self._graph))
         self._notice.setText(
