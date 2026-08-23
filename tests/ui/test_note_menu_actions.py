@@ -505,3 +505,24 @@ class TestMenuLook:
             assert menu.styleSheet() == ""
         finally:
             menu.deleteLater()
+
+
+class TestSelectionFollows:
+    """作ったノートには一覧の帯も付いてくる（回帰）。
+
+    `_open_created` の注記どおり、作成系で `open_note` を直に呼ぶと
+    「今どれを見ているか」が画面から読めなくなる。
+    """
+
+    def selected(self, window):
+        index = window._note_list.currentIndex()
+        row = window._note_list.model().note_at(index)
+        return row.title if row is not None else None
+
+    def test_複製したノートが選ばれる(self, window) -> None:
+        note = window.vault.create("元ノート", "# 元ノート\n\n本文\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+
+        window.duplicate_note(note.path)
+        assert self.selected(window) == window.current_note.title

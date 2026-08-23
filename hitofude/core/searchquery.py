@@ -11,9 +11,10 @@
 
 import re
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 
 from hitofude.core import tags as tag_rules
+from hitofude.core.template import strict_date
 
 # 絞り込みのタグは本文と**同じ規則・同じ正規表現**（`core/tags.py`）で拾う。
 # 判定を 2 箇所に書くと必ず片方だけ直されてずれる（tags.py 自身の警告）
@@ -22,8 +23,6 @@ _TAG_RE = tag_rules.TAG_RE
 # 期間の絞り込み（案 A）。`after:2026-08-01` / `before:2026-08-31`。
 # **日付として読めるものだけ**を絞り込みと見なす（下の `_read_date`）
 _DATE_RE = re.compile(r"(?:(?<=\s)|\A)(?P<edge>after|before):(?P<value>\S*)", re.IGNORECASE)
-
-DATE_FORMAT = "%Y-%m-%d"
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,12 +102,7 @@ def _read_date(value: str) -> date | None:
     0 件になった理由が画面から分からない。読めなければ言葉として扱い、
     「そう書いたものを探した」という結果になるほうが辿れる。
 
-    **書き戻して一致するものだけ**を認める（`2026-8-1` は通さない）。
-    `strptime` はゼロ詰めの無い形も通すが、書き方が 2 通りあると
-    説明が増える。
+    読み方は日誌の判定と**同じ 1 本**（`template.strict_date`）を使う。
+    別々に書くと、片方だけ緩めたときにずれる。
     """
-    try:
-        day = datetime.strptime(value, DATE_FORMAT).date()
-    except ValueError:
-        return None
-    return day if day.strftime(DATE_FORMAT) == value else None
+    return strict_date(value)

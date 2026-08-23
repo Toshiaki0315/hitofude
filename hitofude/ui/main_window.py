@@ -486,8 +486,7 @@ class MainWindow(QMainWindow):
         note = self._vault.seed_manual()
         if note is None:
             return
-        self._db.upsert_note(note, self._vault.root)
-        self.open_note(note.path)
+        self._open_created(note)  # 帯も付いてくる（open_note の直呼びを避ける）
         logger.info("使い方ノートを置いた: %s", note.path.name)
 
     def _reopen_last_note(self) -> None:

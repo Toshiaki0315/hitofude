@@ -83,21 +83,32 @@ def _value(name: str, fmt: str | None, *, now: datetime, title: str) -> str | No
             return None
 
 
+def strict_date(value: str) -> date | None:
+    """`2026-08-14` を日付として読む。その形でなければ `None`。
+
+    **書き戻して一致するものだけ**を認める。`strptime` はゼロ詰めの無い
+    `2026-8-14` も通すが、書き方が 2 通りあると説明が増えるし、アプリは
+    ゼロ詰めしか作らない（`daily_title`）。
+
+    日誌の判定（`parse_daily`）と検索の `after:` / `before:`
+    （`core/searchquery.py`）が**同じ規則を使う**ための 1 本。別々に
+    書くと、片方だけ緩めたときに「日誌には見えないのに検索では日付」の
+    ようなずれが出る。
+    """
+    try:
+        day = datetime.strptime(value, DATE_FORMAT).date()
+    except ValueError:
+        return None
+    return day if day.strftime(DATE_FORMAT) == value else None
+
+
 def parse_daily(title: str) -> date | None:
     """日次ノートの題名を日付として読む。日次でなければ `None`。
 
     **厳しく見る。** `2026-08-14 の記録` のように日付で始まるだけのノートを
     日誌に混ぜると、辿ったときに知らないノートへ飛ぶ。
-
-    **書き戻して一致するものだけ**を認める。`strptime` はゼロ詰めの無い
-    `2026-8-14` も通すが、この形はアプリが作らない（`daily_title` は必ず
-    ゼロ詰めする）。通すと、日誌の並びに別物が混ざる。
     """
-    try:
-        day = datetime.strptime(title, DATE_FORMAT).date()
-    except ValueError:
-        return None
-    return day if day.strftime(DATE_FORMAT) == title else None
+    return strict_date(title)
 
 
 def daily_neighbour(titles: list[str], reference: date, *, forward: bool) -> str | None:

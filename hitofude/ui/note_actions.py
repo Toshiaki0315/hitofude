@@ -578,9 +578,9 @@ class NoteActions:
         # 二重接尾や H1 とファイル名の乖離が起きる（コードレビュー指摘）
         target = unique_path(folder, sanitize_filename(path.stem), path.suffix)
         note = window._vault.create(target.stem, with_title(text, target.stem), folder=folder)
-        window._db.upsert_note(note, window._vault.root)
-        window.refresh()
-        window.open_note(note.path)
+        # **作成系の後始末は 1 か所に任せる**（`_open_created` の注記どおり。
+        # 直に開くと一覧の帯が前のノートに残る）
+        window._open_created(note)
         logger.info("複製した: %s -> %s", path.name, note.path.name)
         return note.path
 
