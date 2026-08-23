@@ -73,7 +73,7 @@ from hitofude.ui.index_sync import (
     IndexSyncTask,
     SyncReporter,
 )
-from hitofude.ui.menus import build_gear_menu, build_menus
+from hitofude.ui.menus import build_gear_menu, build_menus, sync_edit_actions
 from hitofude.ui.note_actions import NoteActions
 from hitofude.ui.note_list import NoteListView
 from hitofude.ui.note_list_pane import EMPTY_NOTICE, NoteListPane
@@ -1154,6 +1154,14 @@ class MainWindow(QMainWindow):
         self._open_created(note)
         logger.info("リンク先が無かったので作った: %s", note.path.name)
         return note.path
+
+    def extract_selection(self) -> Path | None:
+        """`Cmd+Shift+X`。選択範囲を別のノートにする（M-1 / 仮身化）。"""
+        return self._notes.extract_selection()
+
+    def sync_edit_actions(self) -> None:
+        """「編集」メニューの灰色を今の選択に合わせる（M-1）。"""
+        sync_edit_actions(self)
 
     def _link_folder(self) -> Path | None:
         """`[[…]]` から作るノートの置き場（ユーザー決定 2026-08-22）。

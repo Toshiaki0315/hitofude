@@ -61,7 +61,13 @@ def build_menus(window) -> None:
     add(file_menu, "ゴミ箱へ移動", "Ctrl+Backspace", window.trash_current)
     # 版の履歴（ADR-0023）。**ファイルの仲間**（保存・ゴミ箱と同じ、
     # ノートそのものの扱い）
-    add(file_menu, "版の履歴…", "Ctrl+Shift+H", window.show_history)
+    # **キーは付けない**（2026-08-23）。`Cmd+Shift+H` を割り当てていたが、
+    # そのキーはエディタが `keyPressEvent` でハイライトに使っており、
+    # **押すとハイライトになる**（実測）。`QAction` ではないので重複検査に
+    # 映らず、メニューには `⇧⌘H` と出たまま——**表示だけが嘘**だった。
+    # 版の履歴は急ぐ操作ではないので、キーを外してメニューに任せる
+    # （「テンプレートを削除…」と同じ理由）
+    add(file_menu, "版の履歴…", "", window.show_history)
     file_menu.addSeparator()
     # 取り込み（F-2）。**キーは付けない。** ファイルを選ぶ操作で急がない
     add(file_menu, "読み込む…", "", window.import_document)
@@ -115,6 +121,12 @@ def build_menus(window) -> None:
     # 文字合成に使われ、Cmd+Option+T は `†` を生む。ショートカットが
     # 発火せず、選択中だと選択範囲がその 1 文字に置き換わって消える
     add(edit_menu, "表を整形", "Ctrl+Shift+L", window._editor.format_table)
+    edit_menu.addSeparator()
+    # **選んでいないと押せない**ので、開く瞬間に灰色を決める（G-3 の作法）
+    edit_menu.aboutToShow.connect(lambda: sync_edit_actions(window))
+    # **`Cmd+K`（リンク）の仲間**なので Shift 付き。`Cmd+Shift+X` は
+    # エディタが打ち消し線に使っている（上の 版の履歴… と同じ罠）
+    add(edit_menu, "選択範囲をノートにする", "Ctrl+Shift+K", window.extract_selection)
 
     view_menu = window.menuBar().addMenu("表示")
     # 開くたびに今の状態をチェック印へ写す（ユーザー要望）。トグルの
@@ -151,6 +163,18 @@ def build_menus(window) -> None:
     add(help_menu, "使い方のノートを置き直す", "", window.place_manual)
     help_menu.addSeparator()
     add(help_menu, f"{APP_NAME} について", "", window.show_about)
+
+
+def sync_edit_actions(window) -> None:
+    """選んでいないと意味がない項目を灰色にする（M-1）。
+
+    **押してから断らない**（G-3 と同じ作法）。ショートカットのほうは
+    メニューを開かずに押せるので、`extract_selection` 側でも同じ条件を
+    見ている——こちらは見た目、あちらが本番。
+    """
+    window.menu_actions["選択範囲をノートにする"].setEnabled(
+        window.editor.textCursor().hasSelection()
+    )
 
 
 def sync_view_checks(window) -> None:

@@ -2,6 +2,7 @@
 
 import pytest
 from PySide6.QtCore import QSettings, Qt
+from PySide6.QtGui import QKeyEvent
 
 from hitofude.config import Config
 from hitofude.theme import DARK, LIGHT, ThemeMode
@@ -167,6 +168,11 @@ class TestTableFormatting:
         assert data.info.type is BlockType.PARAGRAPH
 
 
+# **同じ操作を 2 つの道から出しているもの。** メニューにも出しつつ、
+# エディタが本文で直接受けている（どちらを通っても結果は同じ）
+SHARED_WITH_EDITOR = frozenset({"Ctrl+Shift+D", "Ctrl+Shift+Y", "Ctrl+/"})
+
+
 class TestShortcutRegistration:
     """メニューとショートカットの登録漏れ・衝突を検出する（回帰テスト）。
 
@@ -219,6 +225,32 @@ class TestShortcutRegistration:
         ]
         duplicates = {text for text in texts if texts.count(text) > 1}
         assert not duplicates, f"重複: {duplicates}"
+
+    def test_エディタが受けるキーとメニューが衝突していない(self, window) -> None:
+        """**メニューの表示だけが嘘になる衝突**を見張る（M-1 で実際に起きた）。
+
+        `Cmd+Shift+X` を「選択範囲をノートにする」に割り当てたが、そのキーは
+        エディタが `keyPressEvent` で打ち消し線に使っていた。**`QAction` では
+        ないので上の重複検査に映らず**、押すと打ち消し線になる（実測）。
+        メニューには `⇧⌘X` と出るので、**表示だけが嘘**になる。
+        """
+        editor = window.editor
+        editor.setPlainText("")
+        clashes = []
+        for action in window.actions():
+            sequence = action.shortcut()
+            text = sequence.toString()
+            if not text or text in SHARED_WITH_EDITOR or sequence.count() != 1:
+                continue
+            combination = sequence[0]
+            event = QKeyEvent(
+                QKeyEvent.Type.KeyPress,
+                combination.key().value,
+                combination.keyboardModifiers(),
+            )
+            if editor._handle_shortcut(event):
+                clashes.append(f"{text} = 「{action.text()}」")
+        assert not clashes, f"エディタが先に受けてしまう: {clashes}"
 
     def test_Optionを含むショートカットを使わない(self, window) -> None:
         """macOS では Option が文字合成に使われ、ショートカットが発火しない。"""

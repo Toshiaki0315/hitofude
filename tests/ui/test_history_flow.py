@@ -125,11 +125,19 @@ class TestPrune:
 
 class TestOpenDialog:
     def test_メニューにある(self, window) -> None:
-        from PySide6.QtGui import QKeySequence
-
         found = {a.text(): a.shortcut().toString() for a in window.actions()}
         assert "版の履歴…" in found
-        assert found["版の履歴…"] == QKeySequence("Ctrl+Shift+H").toString()
+
+    def test_キーは付けない(self, window) -> None:
+        """**`Cmd+Shift+H` は取り下げた**（2026-08-23。M-1 の検査が見つけた）。
+
+        そのキーはエディタが `keyPressEvent` でハイライトに使っており、
+        押すとハイライトになる（実測）。`QAction` ではないので重複検査に
+        映らず、メニューには `⇧⌘H` と出たまま——**表示だけが嘘**だった。
+        急ぐ操作ではないので、キーを外してメニューに任せる。
+        """
+        found = {a.text(): a.shortcut().toString() for a in window.actions()}
+        assert found["版の履歴…"] == ""
 
     def test_開ける(self, window) -> None:
         window.new_note()

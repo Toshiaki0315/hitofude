@@ -14,7 +14,7 @@ from pathlib import Path
 from PySide6.QtGui import QAction, QIcon, QTextCursor
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QMessageBox
 
-from hitofude.core import template
+from hitofude.core import extract, template
 from hitofude.core.document import Note, with_title
 from hitofude.core.template import daily_title
 from hitofude.storage.index_db import ROOT_FOLDER, NoteRow
@@ -917,6 +917,52 @@ class NoteActions:
             if line.startswith("#"):
                 return line.lstrip("# ").strip()
         return ""
+
+    # ------------------------------------------------------------- 仮身化
+
+    def extract_selection(self) -> Path | None:
+        """選択範囲を別のノートに切り出し、跡に `[[題名]]` を残す（M-1）。
+
+        BTRON の仮身化。**リンクを打鍵ではなく操作にする**のが狙いで、
+        行き先の名前を覚えていなくても繋がる（TASKS.md の M を参照）。
+        """
+        window = self._window
+        editor = window.editor
+        # R6。プリエディットは本文に入っていないので、ここで切ると
+        # 変換中の文字が行方不明になる
+        if editor.is_composing():
+            return None
+        cursor = editor.textCursor()
+        if not cursor.hasSelection():
+            return None
+
+        # **`selectedText()` の改行は U+2029。** そのまま渡すと見出しも
+        # 箇条書きも 1 行に潰れる（Qt の古くからの落とし穴）
+        selection = cursor.selectedText().replace("\u2029", "\n")
+        found = extract.extract(selection, taken=window._db.titles())
+        if found is None:
+            return None
+
+        # **作ってから消す。** 先に本文を書き換えると、作成が失敗したときに
+        # 選んだ文がどこにも無くなる
+        try:
+            note = window._vault.create(found.title, found.text, folder=window._link_folder())
+        except OSError as error:
+            logger.warning("切り出せなかった: %s", error)
+            window.notify("切り出せませんでした（置き場を確かめてください）")
+            return None
+
+        # **1 回の編集で置き換える。** 消してから挿すと Undo が 2 段になり、
+        # `Cmd+Z` 1 回で戻らない（R5 / Phase 2 からの約束）
+        cursor.insertText(found.link)
+
+        window._db.upsert_note(note, window._vault.root)
+        window.flush()  # 元のノートも索引へ（切り出し先のバックリンクに要る）
+        window.refresh()
+        # **開かない。** 執筆の途中に呼ぶ操作なので、書いている流れを切らない
+        window.notify(f"「{found.title}」に切り出しました")
+        logger.info("切り出した: %s", note.path.name)
+        return note.path
 
     # ------------------------------------------------------------- 取り込み
 
