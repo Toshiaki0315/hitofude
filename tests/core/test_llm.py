@@ -259,3 +259,33 @@ class TestImages:
         transport = FakeTransport(responses("要点"))
         llm.LocalLLM(transport=transport).generate("まとめて", images=[])
         assert "images" not in transport.payloads[0]
+
+
+class TestLazyTransportFailure:
+    """**繋がらないことを、繋ぎに行った人が受け取る**（回帰）。
+
+    `_urlopen` はジェネレータなので、呼んだだけでは中身が走らない。
+    `_request` の try が空振りし、URLError が素のまま
+    `available()` / `models()` / `generate()` を突き抜けていた。
+    起動時（`_restore_layout`）や `Cmd+,` から呼ばれるため、
+    Ollama を止めているだけでアプリが落ちた。
+    """
+
+    def lazy_client(self):
+        """本物と同じ「呼んでも走らない」形の口（生成器）。"""
+
+        def transport(url, payload, timeout):
+            raise OSError(61, "Connection refused")
+            yield b""  # ここに来ないが、生成器にするために要る
+
+        return llm.LocalLLM(transport=transport)
+
+    def test_availableは偽を返す(self) -> None:
+        assert self.lazy_client().available() is False
+
+    def test_modelsは空を返す(self) -> None:
+        assert self.lazy_client().models() == []
+
+    def test_generateはNotRunningになる(self) -> None:
+        with pytest.raises(llm.NotRunning):
+            list(self.lazy_client().generate("こんにちは"))

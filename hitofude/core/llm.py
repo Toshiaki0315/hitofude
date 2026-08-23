@@ -16,6 +16,7 @@ import urllib.request
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from itertools import chain
 
 from hitofude.core import frontmatter
 
@@ -230,11 +231,22 @@ class LocalLLM:
         return {}
 
     def _request(self, path: str, payload: dict | None) -> Iterable[bytes]:
+        """行の並びを返す。繋がらなければ `NotRunning`。
+
+        **1 行目を読むまで待つ。** `_urlopen` は生成器なので、呼んだだけでは
+        中身が走らない。ここで `try` に包んでも空振りし、`URLError` が素の
+        まま `available()` を突き抜けていた（起動時と `Cmd+,` から呼ぶので、
+        Ollama を止めているだけでアプリが落ちた）。最初の 1 行を先に
+        取り出して、繋がらないことをこの場で確かめる。
+        """
+        url = f"{endpoint(self.port)}{path}"
         try:
-            return self.transport(f"{endpoint(self.port)}{path}", payload, TIMEOUT_SECONDS)
+            found = iter(self.transport(url, payload, TIMEOUT_SECONDS))
+            first = next(found, None)
         except (OSError, urllib.error.URLError) as error:
             logger.info("Ollama に繋がらない: %s", error)
             raise NotRunning(str(error)) from error
+        return found if first is None else chain([first], found)
 
 
 def _parse(line: bytes | str) -> dict | None:
