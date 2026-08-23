@@ -437,6 +437,32 @@ class IndexDb:
         )
         return [row["target"] for row in rows]
 
+    def link_map(self) -> dict[str, list[str]]:
+        """題名 → その題名が指している先の一覧（M-2 の図が使う）。
+
+        **1 本ずつ引かない。** 深さ 2 でも数十本になり、そのたびに問い合わせると
+        図を開くのが遅くなる（`titles()` を足したときと同じ理由）。
+
+        **リンクの無いノートも鍵にする。** 索引にあるかどうかが「まだ無い
+        ノート」との違いで、図はそこを見分けて中抜きに描く。
+        """
+        found: dict[str, list[str]] = {}
+        rows = self._connection.execute(
+            """
+            SELECT notes.title AS title, links.target AS target
+            FROM notes LEFT JOIN links ON links.note_id = notes.id
+            WHERE notes.trashed = 0
+            ORDER BY notes.title, links.target
+            """
+        )
+        for row in rows:
+            targets = found.setdefault(row["title"], [])
+            # **同じ題名のノートが 2 つ**あることがある（題名は本文から決まる）。
+            # 鍵は題名なので、両方の行き先を足し合わせる
+            if row["target"] is not None and row["target"] not in targets:
+                targets.append(row["target"])
+        return found
+
     def notes_sharing_tags(
         self, tags: list[str], *, order: "SortOrder" = SortOrder.MODIFIED
     ) -> list[NoteRow]:

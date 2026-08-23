@@ -65,6 +65,7 @@ from hitofude.ui.assistant_pane import AssistantPane
 from hitofude.ui.backlink_bar import Backlink
 from hitofude.ui.editor_pane import EditorPane
 from hitofude.ui.export_actions import ExportActions
+from hitofude.ui.graph_window import GraphWindow
 from hitofude.ui.history_dialog import HistoryDialog
 from hitofude.ui.icons import Glyph, glyph_icon
 from hitofude.ui.index_sync import (
@@ -1495,6 +1496,43 @@ class MainWindow(QMainWindow):
         dialog = HistoryDialog(self.note_versions(), self)
         dialog.restore_requested.connect(self.restore_version)
         return dialog
+
+    def build_graph_window(self) -> "GraphWindow | None":
+        """リンクの図を作る（M-2）。ノートを開いていなければ `None`。
+
+        **起点が無い図は描けない。** 何を見ているのか分からない絵になる。
+
+        **開く前に今の内容を書く。** 打ちかけの `[[…]]` は索引に入って
+        いないので、書かずに開くと「さっき書いたリンクが図に無い」になる。
+        """
+        if self._note is None:
+            return None
+        self.flush()
+        dialog = GraphWindow(
+            self,
+            start=self._note.title,
+            links=self._db.link_map(),
+            depth=self._config.graph_depth,
+            theme=self._theme_watcher.colors,
+        )
+        dialog.opened.connect(self.activate_note)
+        dialog.missed.connect(lambda title: self.notify(f"「{title}」はまだ無いノートです"))
+        # **選んだ深さを覚える。** 開くたびに選び直させない。**変えた時点で
+        # 書く** — 閉じ方によって覚えたり覚えなかったりすると理由が分からない
+        dialog.depth_changed.connect(self._remember_graph_depth)
+        return dialog
+
+    def _remember_graph_depth(self, depth: int) -> None:
+        self._config.graph_depth = depth
+
+    def show_graph(self) -> None:
+        """`Cmd+Shift+R`。リンクの図を開く（M-2 / 仮身ネットワーク）。"""
+        dialog = self.build_graph_window()
+        if dialog is None:
+            self.notify("ノートを開いてから使ってください")
+            return
+        dialog.exec()
+        dialog.deleteLater()
 
     def show_history(self) -> None:
         """`Cmd+Shift+H`。版の履歴を開く（ADR-0023）。"""

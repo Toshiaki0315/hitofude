@@ -43,3 +43,24 @@ def window(qtbot, config: Config) -> MainWindow:
     qtbot.addWidget(widget)
     yield widget
     widget.close()
+
+
+@pytest.fixture
+def activate(qtbot):
+    """窓を**活きた状態**にする。メニューのショートカットを押す試験に要る。
+
+    `QAction` の既定は `WindowShortcut` で、**活きていない窓には届かない**。
+    表示しただけでは活性にならないことがあり、実測で `fired: []`（押しても
+    何も起きない）になった。`Cmd+Shift+X` の取り違え（M-1）を見つけたのは
+    この経路の試験なので、**素通りさせない**。
+    """
+
+    def go(window):
+        window.show()
+        qtbot.waitExposed(window)
+        window.activateWindow()
+        window.raise_()
+        qtbot.waitUntil(window.isActiveWindow, timeout=2000)
+        return window
+
+    return go

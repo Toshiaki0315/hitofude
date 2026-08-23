@@ -146,10 +146,8 @@ class TestShortcut:
     """
 
     @pytest.fixture
-    def shown(self, opened, qtbot):
-        opened.show()
-        qtbot.waitExposed(opened)
-        return opened
+    def shown(self, opened, activate):
+        return activate(opened)
 
     def test_キーを押すと切り出される(self, shown, qtbot) -> None:
         opened = shown

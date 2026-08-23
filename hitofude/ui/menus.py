@@ -128,6 +128,11 @@ def build_menus(window) -> None:
     # エディタが打ち消し線に使っている（上の 版の履歴… と同じ罠）
     add(edit_menu, "選択範囲をノートにする", "Ctrl+Shift+K", window.extract_selection)
 
+    # **`Cmd+Shift+X` の轍を踏まない。** エディタが `keyPressEvent` で
+    # 受けている文字（X/H/T/C/D/Y）は避ける。R は空いている
+    # （`tests/ui/test_appearance.py` の衝突検査が見ている）
+    add(edit_menu, "リンクの図…", "Ctrl+Shift+R", window.show_graph)
+
     view_menu = window.menuBar().addMenu("表示")
     # 開くたびに今の状態をチェック印へ写す（ユーザー要望）。トグルの
     # たびに印を追いかけるより、見せる瞬間に読むほうが取りこぼさない

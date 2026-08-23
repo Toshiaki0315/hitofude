@@ -1023,3 +1023,41 @@ class TestRelatedSignals:
 
     def test_タグが無ければ空(self, db) -> None:
         assert db.notes_sharing_tags([]) == []
+
+
+class TestLinkMap:
+    """図（M-2）が要る「題名 → 指している先」の一覧。
+
+    **1 本ずつ引かない。** 深さ 2 でも数十本になり、そのたびに問い合わせると
+    開くのが遅くなる（`titles()` を足したときと同じ理由）。
+    """
+
+    def test_指している先が題名で引ける(self, vault, db) -> None:
+        add(vault, db, "会議メモ", "[[買い物リスト]] を見る")
+        add(vault, db, "買い物リスト", "卵と牛乳")
+        assert db.link_map() == {"会議メモ": ["買い物リスト"], "買い物リスト": []}
+
+    def test_リンクの無いノートも鍵になる(self, vault, db) -> None:
+        """**索引にあること**が「まだ無いノート」との違い。図はここで見分ける。"""
+        add(vault, db, "ひとりごと", "誰も指していない")
+        assert db.link_map() == {"ひとりごと": []}
+
+    def test_行き先が無くても載せる(self, vault, db) -> None:
+        add(vault, db, "会議メモ", "[[まだ無いノート]] と書いた")
+        assert db.link_map()["会議メモ"] == ["まだ無いノート"]
+
+    def test_ゴミ箱のノートは出さない(self, vault, db) -> None:
+        """**捨てたものは図に出さない**（一覧にも検索にも出ない）。"""
+        note = add(vault, db, "捨てる", "[[会議メモ]]")
+        db.upsert_note(note, vault.root, trashed=True)
+        assert "捨てる" not in db.link_map()
+
+    def test_同じ題名が_2_つあってもまとめる(self, vault, db) -> None:
+        """題名で引く図なので、鍵は題名。**片方が消えない**ようにする。"""
+        add(vault, db, "同じ名前", "[[あ]]")
+        second = vault.create("同じ名前", "# 同じ名前\n\n[[い]]\n")
+        db.upsert_note(second, vault.root)
+        assert sorted(db.link_map()["同じ名前"]) == ["あ", "い"]
+
+    def test_空なら空(self, db) -> None:
+        assert db.link_map() == {}

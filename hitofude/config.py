@@ -15,7 +15,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QSettings
 
-from hitofude.core import llm, ocr
+from hitofude.core import graph, llm, ocr
 from hitofude.core.paths import relative_inside
 from hitofude.storage.index_db import SortOrder
 from hitofude.theme import ThemeMode
@@ -69,6 +69,10 @@ DEFAULT_POINT_SIZE = 15.0
 DEFAULT_TRASH_DAYS = 30
 # タブ幅（文字数）。Markdown の世界では 4 が標準。Qt の既定は 80px 固定で、
 # 本文フォントだと 12 文字ぶんもあった（実測。ユーザーの違和感の元）
+MIN_GRAPH_DEPTH = 1
+MAX_GRAPH_DEPTH = 3
+"""図の深さの幅。**3 で一気に増える**（点の数の 2 乗で効く。TASKS.md の M-2）。"""
+
 DEFAULT_TAB_WIDTH = 4
 MIN_TAB_WIDTH = 1
 MAX_TAB_WIDTH = 8
@@ -96,6 +100,7 @@ _LLM_MODEL = "llm/model"
 _LLM_PORT = "llm/port"
 _LLM_CONTEXT = "llm/context"
 _OCR_ENGINE = "ocr/engine"
+_GRAPH_DEPTH = "graph/depth"
 _TAB_WIDTH = "editor/tab_width"
 _SORT_ORDER = "list/sort_order"
 _GEOMETRY = "layout/geometry"
@@ -371,6 +376,20 @@ class Config:
     @ocr_engine.setter
     def ocr_engine(self, value: ocr.Engine) -> None:
         self.settings.setValue(_OCR_ENGINE, ocr.Engine(value).value)
+
+    @property
+    def graph_depth(self) -> int:
+        """リンクの図で何段先まで辿るか（M-2）。
+
+        **毎回選び直させない。** 範囲の外は既定へ戻す（設定ファイルは手で
+        編集できるので、変な値でアプリが壊れてはいけない）。
+        """
+        found = self.settings.value(_GRAPH_DEPTH, graph.DEFAULT_DEPTH, type=int)
+        return found if MIN_GRAPH_DEPTH <= found <= MAX_GRAPH_DEPTH else graph.DEFAULT_DEPTH
+
+    @graph_depth.setter
+    def graph_depth(self, value: int) -> None:
+        self.settings.setValue(_GRAPH_DEPTH, max(MIN_GRAPH_DEPTH, min(MAX_GRAPH_DEPTH, int(value))))
 
     @property
     def toolbar_visible(self) -> bool:
