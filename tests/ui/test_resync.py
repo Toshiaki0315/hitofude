@@ -28,6 +28,9 @@ def seeded(window):
         note = window._vault.create(title, f"# {title}\n\n本文\n")
         window._db.upsert_note(note, window._vault.root)
     window.refresh()
+    # **起動時の走査を先に済ませる。** 残っていると resync() が
+    # 「話し中」で弾かれ、実行順しだいで落ちる（実際に落ちた）
+    window.wait_for_index_sync()
     return window
 
 

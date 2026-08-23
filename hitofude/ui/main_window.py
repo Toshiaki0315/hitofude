@@ -10,11 +10,12 @@
 """
 
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import cast
 
-from PySide6.QtCore import QSize, Qt, QThreadPool, QTimer, QUrl, Signal
+from PySide6.QtCore import QCoreApplication, QSize, Qt, QThreadPool, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QCloseEvent,
     QDesktopServices,
@@ -619,8 +620,19 @@ class MainWindow(QMainWindow):
         return True
 
     def wait_for_index_sync(self, timeout_ms: int = 30000) -> bool:
-        """走査の完了を待つ。テストと終了処理から使う。"""
-        return QThreadPool.globalInstance().waitForDone(timeout_ms)
+        """走査の完了を待つ。テストと終了処理から使う。
+
+        **スレッドの終了だけでは足りない。** 完了の合図（`_on_index_synced`）
+        はキュー経由で主スレッドへ戻るので、ここで受け取り切らないと
+        「待ったのにまだ同期中」に見え、直後の `resync()` が話し中で
+        弾かれる（テストの実行順で再現）。終了中は受け取らない
+        （`_on_index_synced` 側の `_closing` ガードと対）。
+        """
+        done = QThreadPool.globalInstance().waitForDone(timeout_ms)
+        deadline = time.monotonic() + timeout_ms / 1000
+        while not self._closing and self._syncing_index and time.monotonic() < deadline:
+            QCoreApplication.processEvents()
+        return done
 
     def _on_index_synced(self, result) -> None:
         self._syncing_index = False
