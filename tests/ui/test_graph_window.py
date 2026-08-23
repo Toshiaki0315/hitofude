@@ -358,3 +358,175 @@ class TestClose:
         dialog.show()
         qtbot.keyClick(dialog, Qt.Key.Key_Escape)
         assert not dialog.isVisible()
+
+
+class TestLabels:
+    """題名の置き場（M-4）。**描く前に計算を切り出して**単体で見る。
+
+    実測で見つけた不具合——長い題名のノートが 8 本ぶら下がる図で、
+    **9 点のうち 4 つの題名が窓からはみ出した**（左端で先頭、右端で末尾が
+    欠ける）。`painter_overlay` と同じく、置き場の計算と描画を分ける。
+    """
+
+    def metrics(self, window):
+        from PySide6.QtGui import QFontMetrics
+
+        return QFontMetrics(window.font())
+
+    def nodes(self, *titles):
+        return [
+            graph.Node(title=title, exists=True, depth=0 if index == 0 else 1)
+            for index, title in enumerate(titles)
+        ]
+
+    def test_短い題名はそのまま(self, window) -> None:
+        from PySide6.QtCore import QPoint
+
+        from hitofude.ui.graph_window import place_labels
+
+        found = place_labels(
+            self.nodes("会議メモ"), [QPoint(300, 200)], width=600, metrics=self.metrics(window)
+        )
+        assert found[0].text == "会議メモ"
+
+    def test_長い題名は切り詰める(self, window) -> None:
+        """**題名を消さない。** 34 点の図では、題名があるほうが読めた（実測）。"""
+        from PySide6.QtCore import QPoint
+
+        from hitofude.ui.graph_window import place_labels
+
+        long = "とても長い題名のノート2026年8月の議事録その3"
+        found = place_labels(
+            self.nodes(long), [QPoint(300, 200)], width=600, metrics=self.metrics(window)
+        )
+        assert found[0].text != long
+        assert "…" in found[0].text
+
+    def test_見分けが付く末尾を残す(self, window) -> None:
+        """**真ん中で切る。** 末尾を落とすと、連番や日付だけが消えて
+        題名が全部同じに読める（実測: 8 本ぶら下げたときにそうなった）。
+        """
+        from PySide6.QtCore import QPoint
+
+        from hitofude.ui.graph_window import place_labels
+
+        head = "とても長い題名のノート2026年8月の議事録その3"
+        metrics = self.metrics(window)
+        found = place_labels(
+            self.nodes(f"{head}0", f"{head}1"),
+            [QPoint(200, 100), QPoint(200, 300)],
+            width=600,
+            metrics=metrics,
+        )
+        assert found[0].text != found[1].text
+        assert found[0].text.endswith("0")
+        assert found[1].text.endswith("1")
+
+    def test_左端でもはみ出さない(self, window) -> None:
+        from PySide6.QtCore import QPoint
+
+        from hitofude.ui.graph_window import place_labels
+
+        metrics = self.metrics(window)
+        found = place_labels(self.nodes("会議メモ"), [QPoint(2, 200)], width=600, metrics=metrics)
+        assert found[0].x >= 0
+
+    def test_右端でもはみ出さない(self, window) -> None:
+        from PySide6.QtCore import QPoint
+
+        from hitofude.ui.graph_window import place_labels
+
+        metrics = self.metrics(window)
+        found = place_labels(self.nodes("会議メモ"), [QPoint(598, 200)], width=600, metrics=metrics)
+        assert found[0].x + metrics.horizontalAdvance(found[0].text) <= 600
+
+    @pytest.mark.parametrize("x", [0, 1, 60, 300, 540, 599, 600])
+    def test_どこに置いても枠の中(self, window, x: int) -> None:
+        from PySide6.QtCore import QPoint
+
+        from hitofude.ui.graph_window import place_labels
+
+        metrics = self.metrics(window)
+        found = place_labels(
+            self.nodes("会議メモとその続き"), [QPoint(x, 200)], width=600, metrics=metrics
+        )
+        assert found[0].x >= 0
+        assert found[0].x + metrics.horizontalAdvance(found[0].text) <= 600
+
+    def test_窓が題名より狭くても落ちない(self, window) -> None:
+        from PySide6.QtCore import QPoint
+
+        from hitofude.ui.graph_window import place_labels
+
+        found = place_labels(
+            self.nodes("題名"), [QPoint(5, 10)], width=10, metrics=self.metrics(window)
+        )
+        assert found[0].x >= 0
+
+    def test_題名は点の上に来る(self, window) -> None:
+        from PySide6.QtCore import QPoint
+
+        from hitofude.ui.graph_window import place_labels
+
+        found = place_labels(
+            self.nodes("会議メモ"), [QPoint(300, 200)], width=600, metrics=self.metrics(window)
+        )
+        assert found[0].y < 200
+
+    def test_起点は大きい丸のぶん上に置く(self, window) -> None:
+        """**丸に題名が乗らない。** 起点だけ丸が大きい（M-2）。"""
+        from PySide6.QtCore import QPoint
+
+        from hitofude.ui.graph_window import place_labels
+
+        found = place_labels(
+            self.nodes("起点", "隣"),
+            [QPoint(300, 200), QPoint(400, 200)],
+            width=600,
+            metrics=self.metrics(window),
+        )
+        assert found[0].y < found[1].y
+
+    def test_点の数だけ返す(self, window) -> None:
+        from PySide6.QtCore import QPoint
+
+        from hitofude.ui.graph_window import place_labels
+
+        found = place_labels(
+            self.nodes("あ", "い", "う"),
+            [QPoint(100, 100), QPoint(200, 200), QPoint(300, 300)],
+            width=600,
+            metrics=self.metrics(window),
+        )
+        assert len(found) == 3
+
+
+class TestNoClipping:
+    """**実際に描いて数える。** 見つけたときと同じ形で確かめる（M-4）。"""
+
+    @pytest.fixture
+    def crowded(self, window):
+        long = "とても長い題名のノート2026年8月の議事録その3"
+        body = "".join(f"[[{long}{i}]]\n" for i in range(8))
+        note = window._vault.create("中心", f"# 中心\n\n{body}")
+        window._db.upsert_note(note, window._vault.root)
+        for i in range(8):
+            other = window._vault.create(f"{long}{i}", f"# {long}{i}\n\n本文\n")
+            window._db.upsert_note(other, window._vault.root)
+        window.refresh()
+        window.open_and_select(window._vault.root / "中心.md")
+        return window
+
+    def test_はみ出す題名がない(self, crowded) -> None:
+        from PySide6.QtGui import QFontMetrics
+
+        dialog = crowded.build_graph_window()
+        try:
+            dialog.resize(700, 460)
+            view = dialog.view
+            metrics = QFontMetrics(view.font())
+            for label in view.labels():
+                assert label.x >= 0
+                assert label.x + metrics.horizontalAdvance(label.text) <= view.width()
+        finally:
+            dialog.close()

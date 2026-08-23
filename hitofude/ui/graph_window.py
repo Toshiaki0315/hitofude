@@ -13,6 +13,7 @@ BTRON の「あるファイルを起点としたリンク構造」。形と座�
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from PySide6.QtCore import QPoint, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen
@@ -50,8 +51,58 @@ MARGIN = 40
 
 LABEL_GAP = 4
 
+MAX_LABEL_WIDTH = 150
+"""題名の幅の上限。**切り詰めてでも出す** — 34 点の図を描いて見たところ、
+題名があるほうが読めた（M-4）。窓がこれより狭ければ窓に合わせる。"""
+
 ALL_RELATIONS = "すべての続柄"
 """続柄で絞らないときの選択肢（M-3）。"""
+
+
+@dataclass(frozen=True, slots=True)
+class Label:
+    """題名の置き場。**描く前に決めておく**（`painter_overlay` と同じ作法）。"""
+
+    text: str
+    """切り詰めたあとの文字。"""
+
+    x: int
+    """描き始めの左端。**窓の中に収まっている。**"""
+
+    y: int
+
+
+def place_labels(
+    nodes: list[graph.Node],
+    points: list[QPoint],
+    *,
+    width: int,
+    metrics: QFontMetrics,
+) -> list[Label]:
+    """点の題名をどこにどう描くか決める（M-4）。
+
+    **実測で見つけた不具合を直すためのもの。** 長い題名のノートが 8 本
+    ぶら下がる図で、9 点のうち 4 つの題名が窓からはみ出していた
+    （左端で先頭が欠け、右端で末尾が欠ける）。
+
+    やることは 2 つだけ。**切り詰める**（`…` を付ける）と、**窓の中へ
+    押し込む**（縁の点は中央揃えをやめる）。題名を消す道は採らない——
+    34 点の図では題名があるほうが読めた。
+    """
+    limit = max(min(MAX_LABEL_WIDTH, width), 1)
+    found: list[Label] = []
+    for node, center in zip(nodes, points, strict=True):
+        # **真ん中で切る。** 末尾を落とすと、`…その30`〜`…その37` のように
+        # **見分けが付く部分だけが消える**（実測: 8 本ぶら下げたら題名が
+        # 全部同じに読めた）。日付や連番は末尾に来ることが多い
+        text = metrics.elidedText(node.title, Qt.TextElideMode.ElideMiddle, limit)
+        span = metrics.horizontalAdvance(text)
+        # 中央揃えを基本に、**縁ではそちらへ寄せる**
+        left = center.x() - span // 2
+        left = max(0, min(left, width - span))
+        radius = START_RADIUS if node.depth == 0 else NODE_RADIUS
+        found.append(Label(text=text, x=max(0, left), y=center.y() - radius - LABEL_GAP))
+    return found
 
 
 class GraphView(QWidget):
@@ -107,7 +158,7 @@ class GraphView(QWidget):
         for source, target in self._graph.edges:
             painter.drawLine(self.point_of(source), self.point_of(target))
 
-        metrics = QFontMetrics(self.font())
+        labels = self.labels()
         for number, node in enumerate(self._graph.nodes):
             center = self.point_of(number)
             radius = START_RADIUS if node.depth == 0 else NODE_RADIUS
@@ -122,12 +173,18 @@ class GraphView(QWidget):
                 painter.setPen(QPen(QColor(self._theme.muted_foreground), 1))
                 painter.drawPath(path)
             painter.setPen(QPen(QColor(self._theme.foreground)))
-            painter.drawText(
-                center.x() - metrics.horizontalAdvance(node.title) // 2,
-                center.y() - radius - LABEL_GAP,
-                node.title,
-            )
+            label = labels[number]
+            painter.drawText(label.x, label.y, label.text)
         painter.end()
+
+    def labels(self) -> list[Label]:
+        """今の大きさでの題名の置き場。**描く式と試験で同じものを見る。**"""
+        return place_labels(
+            self._graph.nodes,
+            [self.point_of(number) for number in range(len(self.places))],
+            width=self.width(),
+            metrics=QFontMetrics(self.font()),
+        )
 
 
 class GraphWindow(QDialog):
