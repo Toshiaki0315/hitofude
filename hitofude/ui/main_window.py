@@ -574,9 +574,21 @@ class MainWindow(QMainWindow):
             self.refresh()
         self.index_synced.emit(result)
 
+    SYNC_FAILED_NOTICE = "ノートの一覧を読み込めませんでした（ファイルは無事です）"
+
     def _on_index_sync_failed(self, error: Exception) -> None:
+        """走査に失敗した。**黙って空の一覧を出さない。**
+
+        記録に残すだけだったので、索引の作りが古くて書き込みが失敗したとき、
+        画面には「ノートはありません」としか出なかった——**ノートが消えた
+        ようにしか見えない**（ユーザー報告 2026-08-23。ファイルは無事だった）。
+        """
         self._syncing_index = False
         logger.warning("索引の同期に失敗: %s", error)
+        if not self._closing:
+            # **長めに出す。** 一覧が空の理由を伝えるものなので、
+            # 目を離した隙に消えると「やっぱり消えた」になる
+            self.notify(self.SYNC_FAILED_NOTICE, NOTICE_MS * 3)
 
     # ------------------------------------------------------------------ 一覧
 

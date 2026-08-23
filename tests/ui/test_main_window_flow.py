@@ -823,6 +823,20 @@ class TestCloseRace:
 
         window._on_index_sync_failed(OSError("後から届いた"))
 
+    def test_走査に失敗したら知らせる(self, window) -> None:
+        """**黙って空の一覧を出さない**（ユーザー報告 2026-08-23）。
+
+        索引の作りが古くて書き込みが失敗し、一覧が空になった。記録に
+        残すだけだったので、画面には「ノートはありません」としか出ず、
+        **ノートが消えたようにしか見えなかった**（ファイルは無事）。
+        """
+        window._on_index_sync_failed(RuntimeError("だめだった"))
+        assert "一覧" in window.notice() or "読み込め" in window.notice()
+
+    def test_失敗を知らせても落ちない(self, window) -> None:
+        window._on_index_sync_failed(RuntimeError("だめだった"))
+        assert window.notice()
+
 
 class TestIndexSyncTask:
     """走査ワーカーそのもの（監査で被覆 67% と判明）。

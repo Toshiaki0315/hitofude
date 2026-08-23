@@ -8,6 +8,7 @@
 まるごと 1 トークンになり、部分一致で引けなくなる。
 """
 
+import functools
 import logging
 import sqlite3
 from collections.abc import Sequence
@@ -181,6 +182,17 @@ class SyncResult:
         return len(self.added) + len(self.updated) + len(self.removed)
 
 
+@functools.cache
+def _expected_definitions() -> dict[str, str]:
+    """`SCHEMA` どおりに作ったときの定義。**書き写さない**（ずれると気づけない）。"""
+    probe = sqlite3.connect(":memory:")
+    try:
+        probe.executescript(SCHEMA)
+        return IndexDb._definitions(probe)
+    finally:
+        probe.close()
+
+
 class IndexDb:
     """**1 接続 = 1 スレッド。** 別スレッドで使うなら `IndexDb` を作り直すこと。
 
@@ -207,13 +219,56 @@ class IndexDb:
     def _migrate(self) -> None:
         """古い作りの索引を捨てて作り直す。
 
-        **中身だけ消して表は残す。** 次の `sync()` が全ファイルを読み直して
-        埋める（R9）。真実はファイル側にあるので、ここで失うものは無い。
+        **表ごと作り直す。** 中身だけ消していたら列を足したときに直らなかった
+        （ユーザー報告 2026-08-23）——`CREATE TABLE IF NOT EXISTS` は既にある
+        表を作り変えないので、`links` が 2 列のまま残り、`relation` を書こうと
+        して毎回失敗し、**索引が空のままになった**（一覧からノートが全部
+        消えて見えた。ファイルは無事）。
+
+        **版だけでは足りない。** 版 4 を古い形のまま出してしまったので、
+        使っている人の索引は「版は 4、形は 3」になっている。形も見る。
+
+        次の `sync()` が全ファイルを読み直して埋める（R9）。真実はファイル側に
+        あるので、ここで失うものは無い。
         """
-        if self.schema_version() == SCHEMA_VERSION:
+        if self.schema_version() == SCHEMA_VERSION and self._shape_matches():
             return
-        self.reset()
+        logger.info("索引の作りが違うので作り直す（版 %s）", self.schema_version())
+        self._rebuild_schema()
         self._connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        self._connection.commit()
+
+    def _shape_matches(self) -> bool:
+        """表の形が今の作りと合っているか。**定義そのものを突き合わせる。**
+
+        列の一覧ではなく `sqlite_master.sql` を比べる——列が合っていても
+        **主キーが古い**ことがあり（M-3 で主キーを変えた）、それだと同じ
+        相手を別の続柄で指したときに片方が黙って消える。
+        """
+        return self._definitions(self._connection) == _expected_definitions()
+
+    @staticmethod
+    def _definitions(connection: sqlite3.Connection) -> dict[str, str]:
+        rows = connection.execute(
+            "SELECT name, sql FROM sqlite_master"
+            " WHERE type IN ('table', 'index') AND sql IS NOT NULL"
+            " AND name NOT LIKE 'sqlite_%'"
+        )
+        return {row[0]: " ".join(str(row[1]).split()) for row in rows}
+
+    def _rebuild_schema(self) -> None:
+        """表を捨てて作り直す。**形が変わっていても直る**（R9）。"""
+        names = [
+            row[0]
+            for row in self._connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+            )
+        ]
+        # 仮想表（`notes_fts`）を先に落とす。影の表（`notes_fts_data` など）も
+        # 一緒に消えるので、後から個別に落とそうとすると無いと言われる
+        for name in sorted(names, key=lambda found: found != "notes_fts"):
+            self._connection.execute(f'DROP TABLE IF EXISTS "{name}"')
+        self._connection.executescript(SCHEMA)
         self._connection.commit()
 
     def schema_version(self) -> int:

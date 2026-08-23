@@ -4,13 +4,14 @@
 そこから漏れる 2 文字クエリの扱いを重点的に見る。
 """
 
+import sqlite3
 from datetime import date
 from pathlib import Path
 
 import pytest
 
 from hitofude.core.document import Note
-from hitofude.storage.index_db import IndexDb, SortOrder, note_key, rebuild
+from hitofude.storage.index_db import SCHEMA_VERSION, IndexDb, SortOrder, note_key, rebuild
 from hitofude.storage.vault import Vault
 
 
@@ -1124,3 +1125,92 @@ class TestSchemaVersion:
         from hitofude.storage.index_db import SCHEMA_VERSION
 
         assert SCHEMA_VERSION >= 4
+
+
+# 版 3 の形（`links` に `relation` が無い）。**実際に出荷した形**で、
+# ここから上げられなければ、使っている人のノートが一覧から消える
+OLD_SCHEMA_V3 = """
+CREATE TABLE notes (
+    id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, title TEXT NOT NULL,
+    preview TEXT NOT NULL, created_at TEXT NOT NULL, modified_at TEXT NOT NULL,
+    mtime_ns INTEGER NOT NULL, size_bytes INTEGER NOT NULL,
+    pinned INTEGER NOT NULL DEFAULT 0, trashed INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE tags (note_id TEXT NOT NULL, tag TEXT NOT NULL, PRIMARY KEY (note_id, tag));
+CREATE TABLE links (note_id TEXT NOT NULL, target TEXT NOT NULL, PRIMARY KEY (note_id, target));
+CREATE VIRTUAL TABLE notes_fts USING fts5(
+    title, body, note_id UNINDEXED, tokenize = 'trigram'
+);
+"""
+
+
+def make_old_index(vault, *, version: int) -> Path:
+    """古い形の索引をその場に作る。"""
+    path = vault.managed_dir / "index.sqlite"
+    con = sqlite3.connect(path)
+    con.executescript(OLD_SCHEMA_V3)
+    con.execute(f"PRAGMA user_version = {version}")
+    con.commit()
+    con.close()
+    return path
+
+
+class TestUpgradeFromOldShape:
+    """**列を足したときに古い形を作り変える**（不具合。ユーザー報告 2026-08-23）。
+
+    `CREATE TABLE IF NOT EXISTS` は既にある表を作り変えない。`reset()` は
+    行を消すだけなので、`links` は 2 列のまま残った。そこへ `relation` を
+    書こうとして毎回失敗し、**索引が空のまま**——一覧からノートが全部
+    消えて見えた（ファイルは無事、ゴミ箱は別経路なので見えていた）。
+    """
+
+    def test_古い形でも取り込める(self, vault) -> None:
+        note = vault.create("会議メモ", "# 会議メモ\n\n- 参考文献: [[本]]\n")
+        with IndexDb(make_old_index(vault, version=3)) as db:
+            db.upsert_note(note, vault.root)
+            assert [row.title for row in db.notes()] == ["会議メモ"]
+            assert db.link_map()["会議メモ"] == ["本"]
+
+    def test_古い形でも走査できる(self, vault) -> None:
+        vault.create("会議メモ", "# 会議メモ\n\n- 参考文献: [[本]]\n")
+        with IndexDb(make_old_index(vault, version=3)) as db:
+            assert len(db.sync(vault).added) == 1
+            assert len(db.notes()) == 1
+
+    def test_版が今と同じでも形が古ければ作り直す(self, vault) -> None:
+        """**版だけ見ていると直らない。** 版 4 を古い形のまま出してしまった
+        ので、使っている人の索引は「版は 4、形は 3」になっている。
+        """
+        vault.create("会議メモ", "# 会議メモ\n\n- 参考文献: [[本]]\n")
+        with IndexDb(make_old_index(vault, version=SCHEMA_VERSION)) as db:
+            assert len(db.sync(vault).added) == 1
+            assert db.link_map()["会議メモ"] == ["本"]
+
+    def test_主キーの違いも作り直す(self, vault) -> None:
+        """列は合っていても**主キーが古い**と、同じ相手を別の続柄で指せない。"""
+        path = vault.managed_dir / "index.sqlite"
+        con = sqlite3.connect(path)
+        con.executescript(
+            OLD_SCHEMA_V3.replace(
+                "CREATE TABLE links (note_id TEXT NOT NULL, target TEXT NOT NULL,"
+                " PRIMARY KEY (note_id, target));",
+                "CREATE TABLE links (note_id TEXT NOT NULL, target TEXT NOT NULL,"
+                " relation TEXT NOT NULL DEFAULT '', PRIMARY KEY (note_id, target));",
+            )
+        )
+        con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        con.commit()
+        con.close()
+        note = vault.create("会議メモ", "# 会議メモ\n\n- 参考文献: [[本]]\n- 元ネタ: [[本]]\n")
+        with IndexDb(path) as db:
+            db.upsert_note(note, vault.root)
+            assert db.link_map(relation="参考文献") == {"会議メモ": ["本"]}
+            assert db.link_map(relation="元ネタ") == {"会議メモ": ["本"]}
+
+    def test_今の形は作り直さない(self, vault, db) -> None:
+        """**毎回作り直さない。** 起動のたびに全件読み直すことになる。"""
+        note = vault.create("会議メモ", "# 会議メモ\n\n本文\n")
+        db.upsert_note(note, vault.root)
+        assert len(db.notes()) == 1
+        db._migrate()  # 2 度目
+        assert len(db.notes()) == 1
