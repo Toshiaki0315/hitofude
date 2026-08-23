@@ -1214,3 +1214,64 @@ class TestUpgradeFromOldShape:
         assert len(db.notes()) == 1
         db._migrate()  # 2 度目
         assert len(db.notes()) == 1
+
+
+class TestRebuildInPlace:
+    """**開いたままの接続からも見える**ように作り直す（ユーザー要望の同期）。
+
+    `rebuild()` は索引のファイルを消して作り直す（R9 の担保）。それを
+    背景スレッドでやると、**UI 側が持っている接続は消えた実体を読み続ける**
+    ——作り直したのに一覧が空のまま、という壊れ方になる（実測）。
+    """
+
+    def test_持っている接続からも見える(self, vault, db) -> None:
+        for title in ("あ", "い", "う"):
+            vault.create(title, f"# {title}\n\n本文\n")
+        db.sync(vault)
+        db.reset()
+        assert db.notes() == []
+
+        # 背景スレッドの代わりに、別の接続から作り直す
+        with IndexDb(db.path) as worker:
+            assert len(worker.rebuild_in_place(vault).added) == 3
+        assert len(db.notes()) == 3
+
+    def test_ファイルは消さない(self, vault, db) -> None:
+        """R9。**捨ててよいのは索引だけ。**"""
+        vault.create("あ", "# あ\n\n本文\n")
+        db.rebuild_in_place(vault)
+        assert sorted(path.name for path in vault.root.glob("*.md")) == ["あ.md"]
+
+    def test_中身が狂っていても直る(self, vault, db) -> None:
+        """**差分だけでは直らない場面。** `sync()` は `mtime` と大きさで
+        飛ばすので、ファイルが変わっていなければ索引の中身が狂っていても
+        読み直さない。作り直しはそこを直せる（これが要る理由そのもの）。
+        """
+        note = vault.create("会議メモ", "# 会議メモ\n\n本文\n")
+        db.sync(vault)
+        # 索引の中だけ壊す（ファイルは触らない）
+        db._connection.execute("UPDATE notes SET title = 'でたらめ'")
+        db._connection.commit()
+        assert [row.title for row in db.notes()] == ["でたらめ"]
+
+        assert db.sync(vault).changed == 0  # 差分では気づけない
+        assert [row.title for row in db.notes()] == ["でたらめ"]
+
+        db.rebuild_in_place(vault)
+        assert [row.title for row in db.notes()] == ["会議メモ"]
+        assert note.path.exists()
+
+    def test_古い行は残さない(self, vault, db) -> None:
+        """作り直しなので、**外で消えたノートの行も消える**。"""
+        note = vault.create("消える", "# 消える\n\n本文\n")
+        db.sync(vault)
+        note.path.unlink()
+        db.rebuild_in_place(vault)
+        assert db.notes() == []
+
+    def test_形が古くても直る(self, vault) -> None:
+        """壊れた索引のための逃げ道なので、**形の違いも直せる**。"""
+        vault.create("あ", "# あ\n\n- 参考文献: [[本]]\n")
+        with IndexDb(make_old_index(vault, version=SCHEMA_VERSION)) as db:
+            db.rebuild_in_place(vault)
+            assert db.link_map()["あ"] == ["本"]

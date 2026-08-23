@@ -57,6 +57,13 @@ def build_menus(window) -> None:
     )
     add(file_menu, "保存", QKeySequence.StandardKey.Save, window.flush)
     file_menu.addSeparator()
+    # **Finder で直に触ることがある**（ユーザー要望）。監視は動いている間しか
+    # 効かないので、押せば必ず合う道を置く。**キーは付けない** — 急ぐ操作では
+    # ないし、増やせば衝突の種になる（`Cmd+Shift+X` の轍）
+    add(file_menu, "最新の情報に同期", "", window.resync)
+    # 索引そのものが疑わしいとき。**差分の 100 倍かかる**（実測 5,000 本で 19 秒）
+    add(file_menu, "索引を作り直す", "", window.rebuild_index)
+    file_menu.addSeparator()
     add(file_menu, "ピン留め", "Ctrl+Shift+P", window.toggle_pin_current)
     add(file_menu, "ゴミ箱へ移動", "Ctrl+Backspace", window.trash_current)
     # 版の履歴（ADR-0023）。**ファイルの仲間**（保存・ゴミ箱と同じ、

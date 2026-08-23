@@ -256,6 +256,20 @@ class IndexDb:
         )
         return {row[0]: " ".join(str(row[1]).split()) for row in rows}
 
+    def rebuild_in_place(self, vault) -> "SyncResult":
+        """索引を作り直す。**ファイルは同じまま**（ユーザー要望の「作り直す」）。
+
+        `rebuild()` はファイルを消して作り直すが、それを背景スレッドで
+        やると**UI 側が持っている接続は消えた実体を読み続ける**——作り直した
+        のに一覧が空のまま、という壊れ方になる（実測）。同じファイルの上で
+        表を作り直せば、開いたままの接続からも新しい中身が見える。
+
+        **捨てるのは索引だけ**（R9 / ADR-0023）。`.md` も
+        `.hitofude/history/` も触らない。
+        """
+        self._rebuild_schema()
+        return self.sync(vault)
+
     def _rebuild_schema(self) -> None:
         """表を捨てて作り直す。**形が変わっていても直る**（R9）。"""
         names = [

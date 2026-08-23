@@ -115,6 +115,30 @@ PINNED_NOTICE = "ピン留めしているノートは削除できません。先
 HUGE_NOTE_NOTICE = "大きなノートのため、装飾を無効にして開きました（編集と保存はできます）"
 NOTICE_MS = 5000
 
+BUSY_NOTICE = "いま同期しています。終わるまでお待ちください"
+
+
+def _sync_notice(result, *, full: bool) -> str:
+    """走査の結果を一言で。**「何も起きなかった」と「壊れている」を分ける。**
+
+    変わらなかったことをはっきり言わないと、押した人には失敗と区別が
+    付かない（ノートが消えて見えた件と同じ落とし穴）。
+    """
+    parts = [
+        f"{len(found)} 件{label}"
+        for label, found in (
+            ("増えました", result.added),
+            ("変わりました", result.updated),
+            ("消えました", result.removed),
+        )
+        if found
+    ]
+    head = "索引を作り直しました" if full else "最新の情報に同期しました"
+    if not parts:
+        return f"{head}（変わりはありません）"
+    return f"{head}（{'、'.join(parts)}）"
+
+
 # アウトラインを打鍵に追従させる間隔。即時だと 1 打ごとに全文スキャンになる
 OUTLINE_DELAY_MS = 300
 
@@ -190,6 +214,8 @@ class MainWindow(QMainWindow):
         self._sync_reporter.finished.connect(self._on_index_synced)
         self._sync_reporter.failed.connect(self._on_index_sync_failed)
         self._syncing_index = False
+        self._full_sync: bool | None = None
+        """押されて始めた走査かどうか（`None` なら起動時の走査）。"""
         self._closing = False
         # 開いたノートの履歴（C-8）。**今いるノートは入れない。**
         # 入れると「戻る」の 1 回目が今の場所になり、押しても何も起きない
@@ -550,14 +576,47 @@ class MainWindow(QMainWindow):
     index_synced = Signal(object)
     """走査が終わったときに `SyncResult` を載せて飛ぶ。"""
 
-    def start_index_sync(self) -> None:
-        """vault の走査を背景で始める。二重に走らせない。"""
+    def start_index_sync(self, *, full: bool = False) -> bool:
+        """vault の走査を背景で始める。二重に走らせない。始めたら True。"""
         if self._syncing_index:
-            return
+            return False
         self._syncing_index = True
         QThreadPool.globalInstance().start(
-            IndexSyncTask(self._db.path, self._vault, self._sync_reporter)
+            IndexSyncTask(self._db.path, self._vault, self._sync_reporter, full=full)
         )
+        return True
+
+    def resync(self) -> bool:
+        """「最新の情報に同期」。**Finder で触ったぶんを取り込む**（ユーザー要望）。
+
+        監視（`storage/watcher.py`）は動いている間しか効かず、閉じている間の
+        操作やネットワーク越しの変更は取りこぼす。**取りこぼしたことは画面
+        から分からない**ので、押せば必ず合う道を用意する。
+
+        差分だけなので速い（実測: 5,000 本で 144ms）。
+        """
+        self.flush()  # **打ちかけを先に書く。** 走査は保存済みのものを読む
+        if not self.start_index_sync():
+            self.notify(BUSY_NOTICE)  # **押しても無反応に見せない**
+            return False
+        self._full_sync = False
+        self.notify("最新の情報に同期しています…")
+        return True
+
+    def rebuild_index(self) -> bool:
+        """「索引を作り直す」。**索引そのものが疑わしいとき**（ユーザー要望）。
+
+        全部読み直すので時間がかかる（実測: 5,000 本で 19 秒。差分の 100 倍）。
+        **捨ててよいのは索引だけ**（R9 / ADR-0023）——`.md` も
+        `.hitofude/history/` も触らない。
+        """
+        self.flush()
+        if not self.start_index_sync(full=True):
+            self.notify(BUSY_NOTICE)
+            return False
+        self._full_sync = True
+        self.notify("索引を作り直しています…（ノートの数だけ時間がかかります）")
+        return True
 
     def wait_for_index_sync(self, timeout_ms: int = 30000) -> bool:
         """走査の完了を待つ。テストと終了処理から使う。"""
@@ -572,6 +631,11 @@ class MainWindow(QMainWindow):
             return
         if result.changed:
             self.refresh()
+        if self._full_sync is not None:
+            # **押した人にだけ結果を返す。** 起動時の走査では黙っている
+            # （毎回「変わりありません」と出ると、ただの雑音になる）
+            self.notify(_sync_notice(result, full=self._full_sync))
+            self._full_sync = None
         self.index_synced.emit(result)
 
     SYNC_FAILED_NOTICE = "ノートの一覧を読み込めませんでした（ファイルは無事です）"
@@ -584,6 +648,7 @@ class MainWindow(QMainWindow):
         ようにしか見えない**（ユーザー報告 2026-08-23。ファイルは無事だった）。
         """
         self._syncing_index = False
+        self._full_sync = None
         logger.warning("索引の同期に失敗: %s", error)
         if not self._closing:
             # **長めに出す。** 一覧が空の理由を伝えるものなので、
