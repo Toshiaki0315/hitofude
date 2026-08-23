@@ -49,6 +49,15 @@ CONTEXT_CHOICES = (4096, 8192, 16384, 32768)
 TIMEOUT_SECONDS = 120.0
 """12b 級に長いノートを読ませても届く長さ。"""
 
+PROBE_TIMEOUT_SECONDS = 3.0
+"""居るかどうかを確かめるだけの待ち時間。
+
+**生成と同じだけ待たない。** `available()` / `models()` は起動時・
+`Cmd+,`・`Cmd+6` から GUI スレッドで呼ばれる。繋がらない相手
+（docs/ollama.md の SSH トンネルが半分開いている等）で 120 秒待つと、
+窓がそのあいだ固まる。居るなら即答が返る問い合わせなので短くてよい。
+"""
+
 CHAR_LIMIT = 12000
 """本文をここまでにする。日本語 4,000 字 ≈ 2,000 トークンの実測から、
 8k の文脈に指示と答えのぶんを残して収まる量（ADR-0025）。"""
@@ -224,13 +233,15 @@ class LocalLLM:
     # ------------------------------------------------------------------ 内部
 
     def _tags(self) -> dict:
-        for line in self._request("/api/tags", None):
+        for line in self._request("/api/tags", None, timeout=PROBE_TIMEOUT_SECONDS):
             found = _parse(line)
             if found is not None:
                 return found
         return {}
 
-    def _request(self, path: str, payload: dict | None) -> Iterable[bytes]:
+    def _request(
+        self, path: str, payload: dict | None, *, timeout: float = TIMEOUT_SECONDS
+    ) -> Iterable[bytes]:
         """行の並びを返す。繋がらなければ `NotRunning`。
 
         **1 行目を読むまで待つ。** `_urlopen` は生成器なので、呼んだだけでは
@@ -241,7 +252,7 @@ class LocalLLM:
         """
         url = f"{endpoint(self.port)}{path}"
         try:
-            found = iter(self.transport(url, payload, TIMEOUT_SECONDS))
+            found = iter(self.transport(url, payload, timeout))
             first = next(found, None)
         except (OSError, urllib.error.URLError) as error:
             logger.info("Ollama に繋がらない: %s", error)

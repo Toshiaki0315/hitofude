@@ -289,3 +289,34 @@ class TestLazyTransportFailure:
     def test_generateはNotRunningになる(self) -> None:
         with pytest.raises(llm.NotRunning):
             list(self.lazy_client().generate("こんにちは"))
+
+
+class TestProbeTimeout:
+    """**居るかどうかの確認は待たない**（回帰）。
+
+    `available()` / `models()` は起動時・`Cmd+,`・`Cmd+6` から GUI
+    スレッドで呼ばれる。生成と同じ 120 秒を待つと、繋がらない相手
+    （docs/ollama.md の SSH トンネルが半分開いている等）で窓が 2 分固まる。
+    """
+
+    def timeouts(self, call) -> list[float]:
+        seen: list[float] = []
+
+        def transport(url, payload, timeout):
+            seen.append(timeout)
+            yield b'{"models": []}'
+
+        call(llm.LocalLLM(transport=transport))
+        return seen
+
+    def test_確認は短く待つ(self) -> None:
+        assert self.timeouts(lambda client: client.available()) == [llm.PROBE_TIMEOUT_SECONDS]
+        assert llm.PROBE_TIMEOUT_SECONDS < llm.TIMEOUT_SECONDS
+
+    def test_一覧も短く待つ(self) -> None:
+        assert self.timeouts(lambda client: client.models()) == [llm.PROBE_TIMEOUT_SECONDS]
+
+    def test_生成は今まで通り待つ(self) -> None:
+        """長いノートを読ませるので、こちらは短くしない。"""
+        seen = self.timeouts(lambda client: list(client.generate("こんにちは")))
+        assert seen == [llm.TIMEOUT_SECONDS]

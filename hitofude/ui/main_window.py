@@ -1369,7 +1369,13 @@ class MainWindow(QMainWindow):
         self._assistant_run += 1
         run = self._assistant_run
         self._assistant.begin(keep_notes=keep_notes)
-        reporter = AssistantReporter(self)
+        # **親を付けず、こちらで参照を持つ**（索引の SyncReporter と同じ
+        # 作法）。窓の子にすると、ワーカーが返す前に窓ごと壊れて
+        # "Signal source has been deleted" で落ちる。逆に参照を捨てると
+        # 知らせが届く前に消える。1 回ぶんだけ持てばよいので、次の回で
+        # 置き換わる（前の回の繋ぎ先も一緒に落ちる）
+        reporter = AssistantReporter()
+        self._assistant_reporter = reporter
         # **遅れて届いた前の回の言葉を出さない。** 閉じたあとにも触らない
         reporter.chunk.connect(lambda chunk: self._if_current(run, self._assistant.append, chunk))
         reporter.finished.connect(lambda: self._if_current(run, self._assistant.finish))

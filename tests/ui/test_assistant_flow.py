@@ -421,3 +421,38 @@ class TestGenerationLifecycle:
         self.ask(window, llm, Task.SUMMARY)
         window.close()
         assert llm.resume(0, "閉じたあとの続き") is False
+
+
+class TestReporterLifetime:
+    """**知らせ役に親を付けない**（回帰）。
+
+    ウィンドウの子にすると、ワーカーが返す前に窓ごと壊れて
+    "Signal source has been deleted" で落ちる。索引の SyncReporter は
+    最初からそうしてあり（main_window の注記）、あとから足した
+    アシスタント側だけ親付きだった。
+    """
+
+    def test_親を付けない(self, window) -> None:
+        from hitofude.ui.index_sync import AssistantReporter
+
+        made: list[AssistantReporter] = []
+        original = AssistantReporter
+
+        class Spy(original):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                made.append(self)
+
+        import hitofude.ui.main_window as module
+
+        module.AssistantReporter = Spy
+        try:
+            window.set_llm(FakeLLM())
+            opened(window)
+            run_assistant(window, Task.SUMMARY)
+        finally:
+            module.AssistantReporter = original
+
+        assert made, "知らせ役が作られていない"
+        assert made[0].parent() is None
+        assert window._sync_reporter.parent() is None  # 索引側も同じ作法
