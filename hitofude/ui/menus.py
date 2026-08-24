@@ -25,6 +25,19 @@ def build_menus(window) -> None:
     # 別のアクションを作ると、ショートカット表示や状態が二重管理になる
     window.menu_actions = {}
 
+    # メニュー自体の台帳。**Python 側で参照を持ち続けるために要る。**
+    # `addMenu()` の返り値を捨てると、PySide は `QAction.menu()` で作り直した
+    # ラッパを Python 所有と見なし、それが回収された拍子に C++ の `QMenu` を
+    # 消す（`Internal C++ object already deleted`。テストで踏んだ）
+    window.menus = {}
+
+    def add_menu(parent, title: str):
+        menu = parent.addMenu(title)
+        window.menus[title] = menu
+        return menu
+
+    bar = window.menuBar()
+
     def add(menu, label: str, shortcut, slot) -> QAction:
         action = QAction(label, window)
         action.setShortcut(QKeySequence(shortcut))
@@ -34,7 +47,7 @@ def build_menus(window) -> None:
         window.menu_actions[label] = action
         return action
 
-    file_menu = window.menuBar().addMenu("ファイル")
+    file_menu = add_menu(bar, "ファイル")
     add(file_menu, "新規ノート", QKeySequence.StandardKey.New, window.new_note)
     add(file_menu, "テンプレートから新規…", "Ctrl+Shift+N", window.new_from_template)
     # **キーは付けない。** 消す操作で急がない（読み込む… と同じ理由）
@@ -84,12 +97,16 @@ def build_menus(window) -> None:
     # 取り込み（F-2）。**キーは付けない。** ファイルを選ぶ操作で急がない
     add(file_menu, "読み込む…", "", window.import_document)
     file_menu.addSeparator()
-    add(file_menu, "Markdown で書き出す…", "Ctrl+Shift+M", window.export_markdown)
-    add(file_menu, "HTML で書き出す…", "Ctrl+Shift+E", window.export_html)
+    # **書き出しは 2 段階**（ユーザー要望 2026-08-24）。形式が 4 つ直下に
+    # 並ぶとメニューが伸びる。用事は「書き出す」の 1 つなので畳む。
+    # 畳んでもショートカットは効く（`add` がウィンドウにも登録する）
+    export_menu = add_menu(file_menu, "書き出す")
+    add(export_menu, "Markdown…", "Ctrl+Shift+M", window.export_markdown)
+    add(export_menu, "HTML…", "Ctrl+Shift+E", window.export_html)
     # **`Cmd+P` は印刷に譲る（C-9）。** macOS では印刷が慣習で、その
     # パネルから「PDF として保存」も選べる。書き出しの入口はここに残す
-    add(file_menu, "PDF で書き出す…", "", window.export_pdf)
-    add(file_menu, "PowerPoint で書き出す…", "", window.export_pptx)
+    add(export_menu, "PDF…", "", window.export_pdf)
+    add(export_menu, "PowerPoint…", "", window.export_pptx)
     file_menu.addSeparator()
     add(file_menu, "印刷…", QKeySequence.StandardKey.Print, window.print_note)
     file_menu.addSeparator()
@@ -104,7 +121,7 @@ def build_menus(window) -> None:
 
     add(file_menu, "設定…", "Ctrl+,", window.open_preferences)
 
-    search_menu = window.menuBar().addMenu("検索")
+    search_menu = add_menu(bar, "検索")
     add(search_menu, "クイックオープン", "Ctrl+O", window.quick_open)
     add(search_menu, "全文検索", "Ctrl+Shift+F", window.full_text_search)
     add(search_menu, "見出しへ飛ぶ", "Ctrl+R", window.open_outline)
@@ -115,7 +132,7 @@ def build_menus(window) -> None:
     add(search_menu, "次を検索", "Ctrl+G", window._pane.find_again)
     add(search_menu, "前を検索", "Ctrl+Shift+G", lambda: window._pane.find_again(backward=True))
 
-    edit_menu = window.menuBar().addMenu("編集")
+    edit_menu = add_menu(bar, "編集")
     # **フォーカスのあるウィジェットへ渡す。** ここで登録した
     # ショートカットはウィンドウ全体に効くので、素通しにすると
     # 検索欄で Cmd+A を押したのに本文が全選択される
@@ -145,7 +162,7 @@ def build_menus(window) -> None:
     # （`tests/ui/test_appearance.py` の衝突検査が見ている）
     add(edit_menu, "リンクの図…", "Ctrl+Shift+R", window.show_graph)
 
-    view_menu = window.menuBar().addMenu("表示")
+    view_menu = add_menu(bar, "表示")
     # 開くたびに今の状態をチェック印へ写す（ユーザー要望）。トグルの
     # たびに印を追いかけるより、見せる瞬間に読むほうが取りこぼさない
     view_menu.aboutToShow.connect(lambda: sync_view_checks(window))
@@ -175,7 +192,7 @@ def build_menus(window) -> None:
     ):
         add(view_menu, label, key, slot).setCheckable(True)
 
-    help_menu = window.menuBar().addMenu("ヘルプ")
+    help_menu = add_menu(bar, "ヘルプ")
     add(help_menu, "ショートカット一覧", "Ctrl+?", window.show_shortcuts)
     add(help_menu, "使い方のノートを置き直す", "", window.place_manual)
     help_menu.addSeparator()

@@ -204,8 +204,8 @@ class TestShortcutRegistration:
             ("Ctrl+Shift+G", "前を検索"),
             ("Ctrl+Shift+L", "表を整形"),
             ("Ctrl+Shift+P", "ピン留め"),
-            ("Ctrl+Shift+M", "Markdown で書き出す…"),
-            ("Ctrl+Shift+E", "HTML で書き出す…"),
+            ("Ctrl+Shift+M", "Markdown…"),
+            ("Ctrl+Shift+E", "HTML…"),
             # macOS の慣習に合わせて印刷へ譲った（C-9）。PDF はそこからも出せる
             ("Ctrl+P", "印刷…"),
             ("Ctrl+,", "設定…"),
@@ -466,3 +466,45 @@ class TestNestedThemeChange:
             LIGHT.background.lower()
         ), "本文だけ古い配色のまま残っている"
         assert window.editor_pane.toolbar.rule_color() == LIGHT.rule
+
+
+class TestExportSubmenu:
+    """書き出しは 2 段階（ユーザー要望 2026-08-24）。
+
+    ファイルメニューが 23 項目まで伸びていた。**同じ用事は畳む。** 形式が
+    4 つ並ぶのは「書き出す」という 1 つの用事なので、そこだけサブメニューに
+    する（印刷とブラウザで確認は用事が違うので直下に残す）。
+
+    メニュー自体は `window.menus` から取る。`QAction.menu()` で辿ると、
+    PySide が作り直したラッパを Python 所有と見なし、回収の拍子に C++ の
+    `QMenu` を消す（`Internal C++ object already deleted`）。
+    """
+
+    LABELS = ("Markdown…", "HTML…", "PDF…", "PowerPoint…")
+
+    def labels(self, window, title: str) -> list[str]:
+        return [action.text() for action in window.menus[title].actions()]
+
+    def test_書き出すサブメニューがある(self, window) -> None:
+        assert "書き出す" in window.menus
+
+    def test_形式が4つ入っている(self, window) -> None:
+        assert [label for label in self.labels(window, "書き出す") if label] == list(self.LABELS)
+
+    def test_ファイルの直下からは消えている(self, window) -> None:
+        top = self.labels(window, "ファイル")
+        assert [label for label in top if "書き出す" in label] == ["書き出す"]
+
+    def test_ショートカットは効いたまま(self, window) -> None:
+        """サブメニューへ移しても、閉じたままキーで押せる。"""
+        from PySide6.QtGui import QKeySequence
+
+        found = {action.text(): action for action in window.actions()}
+        assert found["Markdown…"].shortcut() == QKeySequence("Ctrl+Shift+M")
+        assert found["HTML…"].shortcut() == QKeySequence("Ctrl+Shift+E")
+
+    def test_印刷とブラウザは直下に残す(self, window) -> None:
+        """用事が違う（書き出しではない）。"""
+        top = self.labels(window, "ファイル")
+        assert "印刷…" in top
+        assert "ブラウザで確認" in top

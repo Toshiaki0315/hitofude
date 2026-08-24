@@ -120,11 +120,11 @@ class TestMenu:
     def test_PDF書き出しは残っている(self, window) -> None:
         """入口を消すわけではない。キーを譲っただけ。"""
         labels = [action.text() for action in window.actions()]
-        assert "PDF で書き出す…" in labels
+        assert "PDF…" in labels
 
     def test_PDF書き出しはCmdPを取らない(self, window) -> None:
         for action in window.actions():
-            if action.text() == "PDF で書き出す…":
+            if action.text() == "PDF…":
                 assert action.shortcut().toString() != "Ctrl+P"
 
     def _shortcut(self, window, keys: str) -> str:

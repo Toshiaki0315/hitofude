@@ -209,7 +209,7 @@ class TestMenu:
         window = MainWindow(config)
         qtbot.addWidget(window)
         try:
-            assert "PowerPoint で書き出す…" in [a.text() for a in window.actions()]
+            assert "PowerPoint…" in [a.text() for a in window.actions()]
         finally:
             window.close()
 
