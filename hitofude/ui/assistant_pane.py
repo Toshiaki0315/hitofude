@@ -328,6 +328,13 @@ class AssistantPane(QWidget):
         self._status.setText(STOPPED)
         self._refresh_buttons()
 
+    def set_status(self, text: str) -> None:
+        """待っている間の一言を差し替える（「読み込んでいます…」など）。
+
+        **答えそのものではない。** 届いた言葉（`append`）は別に出る。
+        """
+        self._status.setText(text)
+
     def fail(self, reason: str) -> None:
         """うまくいかなかった。**黙って何も出さないのがいちばん分かりにくい。**"""
         self._running = False

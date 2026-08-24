@@ -80,6 +80,12 @@ MAX_TAB_WIDTH = 8
 # spec §5.1: サイドバー 180px / ノートリスト 280px / エディタ（可変）
 DEFAULT_SPLITTER_SIZES = [180, 280, 640]
 
+# 答えを待つ長さ（分）。**読み込みを含めて待つ。** 12b で 8 秒、26b で
+# 392 秒（実測）と桁が違うので、既定は大きめに取って設定で詰められるようにする
+DEFAULT_LLM_TIMEOUT_MINUTES = 10
+MIN_LLM_TIMEOUT_MINUTES = 1
+MAX_LLM_TIMEOUT_MINUTES = 60
+
 MIN_POINT_SIZE = 8.0
 MAX_POINT_SIZE = 72.0
 
@@ -99,6 +105,7 @@ _ASSISTANT = "layout/assistant_visible"
 _LLM_MODEL = "llm/model"
 _LLM_PORT = "llm/port"
 _LLM_CONTEXT = "llm/context"
+_LLM_TIMEOUT = "llm/timeout_minutes"
 _OCR_ENGINE = "ocr/engine"
 _GRAPH_DEPTH = "graph/depth"
 _TAB_WIDTH = "editor/tab_width"
@@ -360,6 +367,24 @@ class Config:
     @llm_context.setter
     def llm_context(self, value: int) -> None:
         self.settings.setValue(_LLM_CONTEXT, int(value))
+
+    @property
+    def llm_timeout_minutes(self) -> int:
+        """答えを待つ長さ（分）。
+
+        **大きいモデルは読み込みだけで数分かかる**（実測: gemma4:26b で
+        最初の 1 行まで 391.9 秒）。既定のままだと切れてしまうので、
+        手元のモデルに合わせて延ばせるようにする（ユーザー要望）。
+        知らない値・短すぎる値は既定へ戻す（設定ファイルは手で編集できる）。
+        """
+        found = self.settings.value(_LLM_TIMEOUT, DEFAULT_LLM_TIMEOUT_MINUTES, type=int)
+        if found < MIN_LLM_TIMEOUT_MINUTES or found > MAX_LLM_TIMEOUT_MINUTES:
+            return DEFAULT_LLM_TIMEOUT_MINUTES
+        return found
+
+    @llm_timeout_minutes.setter
+    def llm_timeout_minutes(self, value: int) -> None:
+        self.settings.setValue(_LLM_TIMEOUT, int(value))
 
     @property
     def ocr_engine(self) -> ocr.Engine:

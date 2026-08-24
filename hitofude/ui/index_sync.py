@@ -126,8 +126,10 @@ class AssistantTask(QRunnable):
                 on_chunk=self._reporter.chunk.emit,
                 should_stop=self._should_stop,
             )
-        except Exception as error:  # NotRunning も、途中で落ちた場合も
+        except Exception as error:  # NotRunning も、時間切れも、途中で落ちた場合も
             logger.info("ローカルLLM に読ませられなかった: %s", error)
-            self._reporter.failed.emit(str(error))
+            # **種別を渡す。** 受け手は生の英語を出さないので、これが無いと
+            # 「繋がらない」と「時間切れ」を見分けられない（ユーザー報告）
+            self._reporter.failed.emit(type(error).__name__)
             return
         self._reporter.finished.emit()

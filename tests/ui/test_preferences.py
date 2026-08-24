@@ -723,3 +723,39 @@ class TestOcrSetting:
         dialog.reset_to_defaults()
         dialog.apply()
         assert config.ocr_engine is DEFAULT_ENGINE
+
+
+class TestLlmTimeoutSetting:
+    """答えを待つ長さを設定に出す（ユーザー要望 2026-08-24）。"""
+
+    def dialog(self, qtbot, tmp_path):
+        from PySide6.QtCore import QSettings
+
+        from hitofude.config import Config
+        from hitofude.ui.preferences import PreferencesDialog
+
+        config = Config(QSettings(str(tmp_path / "t.ini"), QSettings.Format.IniFormat))
+        config.vault_path = tmp_path / "V"
+        found = PreferencesDialog(config)
+        qtbot.addWidget(found)
+        return found, config
+
+    def test_今の値が出る(self, qtbot, tmp_path) -> None:
+        from hitofude.config import DEFAULT_LLM_TIMEOUT_MINUTES
+
+        dialog, _config = self.dialog(qtbot, tmp_path)
+        assert dialog.timeout_box.value() == DEFAULT_LLM_TIMEOUT_MINUTES
+
+    def test_変えられる(self, qtbot, tmp_path) -> None:
+        dialog, config = self.dialog(qtbot, tmp_path)
+        dialog.timeout_box.setValue(20)
+        dialog.apply()
+        assert config.llm_timeout_minutes == 20
+
+    def test_初期設定に戻すで戻る(self, qtbot, tmp_path) -> None:
+        from hitofude.config import DEFAULT_LLM_TIMEOUT_MINUTES
+
+        dialog, _config = self.dialog(qtbot, tmp_path)
+        dialog.timeout_box.setValue(30)
+        dialog.reset_to_defaults()
+        assert dialog.timeout_box.value() == DEFAULT_LLM_TIMEOUT_MINUTES

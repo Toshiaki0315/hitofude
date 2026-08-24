@@ -320,3 +320,74 @@ class TestProbeTimeout:
         """長いノートを読ませるので、こちらは短くしない。"""
         seen = self.timeouts(lambda client: list(client.generate("こんにちは")))
         assert seen == [llm.TIMEOUT_SECONDS]
+
+
+class TestTimedOut:
+    """**時間切れと「繋がらない」を分ける**（ユーザー報告 2026-08-24）。
+
+    大きいモデルは読み込みだけで数分かかる（実測: gemma4:26b で最初の
+    1 行まで 391.9 秒）。待ちきれずに切ったのを「Ollama に繋がりません
+    でした。動いているか確かめてください」と出すと、動いているのに
+    動いていないと言われて原因に辿り着けない。
+    """
+
+    def timing_out(self, seconds: float = 600.0):
+        def transport(url, payload, timeout):
+            raise TimeoutError("timed out")
+            yield b""  # 生成器にするために要る（本物と同じ形）
+
+        return llm.LocalLLM(transport=transport, timeout=seconds)
+
+    def test_時間切れは別の例外(self) -> None:
+        with pytest.raises(llm.TimedOut):
+            list(self.timing_out().generate("こんにちは"))
+
+    def test_時間切れは繋がらないとは別物(self) -> None:
+        """どちらも RuntimeError だが、混ぜると案内が嘘になる。"""
+        assert not issubclass(llm.TimedOut, llm.NotRunning)
+        assert not issubclass(llm.NotRunning, llm.TimedOut)
+
+    def test_待ち時間を渡せる(self) -> None:
+        seen: list[float] = []
+
+        def transport(url, payload, timeout):
+            seen.append(timeout)
+            yield json.dumps({"response": "はい", "done": True}).encode("utf-8")
+
+        llm.LocalLLM(transport=transport, timeout=900.0).generate("こんにちは")
+        assert seen == [900.0]
+
+    def test_確認の待ちは延ばさない(self) -> None:
+        """居るかどうかの確認は即答が返る。生成の待ちに引きずられない。"""
+        seen: list[float] = []
+
+        def transport(url, payload, timeout):
+            seen.append(timeout)
+            yield b'{"models": []}'
+
+        llm.LocalLLM(transport=transport, timeout=900.0).available()
+        assert seen == [llm.PROBE_TIMEOUT_SECONDS]
+
+
+class TestLoadedModels:
+    """読み込み済みかを見る（「読み込んでいます…」と出すため）。"""
+
+    def client(self, payload: bytes):
+        def transport(url, payload_in, timeout):
+            assert url.endswith("/api/ps"), url
+            yield payload
+
+        return llm.LocalLLM(model="gemma4:26b", transport=transport)
+
+    def test_載っていれば真(self) -> None:
+        assert self.client(b'{"models": [{"name": "gemma4:26b"}]}').is_loaded() is True
+
+    def test_載っていなければ偽(self) -> None:
+        assert self.client(b'{"models": [{"name": "gemma3:12b"}]}').is_loaded() is False
+
+    def test_繋がらなければ偽(self) -> None:
+        def transport(url, payload, timeout):
+            raise OSError(61, "Connection refused")
+            yield b""
+
+        assert llm.LocalLLM(transport=transport).is_loaded() is False

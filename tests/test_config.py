@@ -335,3 +335,32 @@ class TestOcrEngine:
 
         config.settings.setValue("ocr/engine", "呪文")
         assert config.ocr_engine is Engine.MAC
+
+
+class TestLlmTimeout:
+    """答えを待つ長さ（ユーザー要望 2026-08-24）。
+
+    大きいモデルは読み込みだけで数分かかる（実測: gemma4:26b で 391.9 秒）。
+    既定のままでは切れてしまうので、設定で延ばせるようにする。
+    """
+
+    def test_既定は10分(self) -> None:
+        from hitofude.config import DEFAULT_LLM_TIMEOUT_MINUTES
+
+        assert DEFAULT_LLM_TIMEOUT_MINUTES == 10
+
+    def test_変えられる(self, config) -> None:
+        config.llm_timeout_minutes = 20
+        assert config.llm_timeout_minutes == 20
+
+    def test_壊れた値は既定に戻す(self, config) -> None:
+        from hitofude.config import DEFAULT_LLM_TIMEOUT_MINUTES
+
+        config.settings.setValue("llm/timeout_minutes", "ながい")
+        assert config.llm_timeout_minutes == DEFAULT_LLM_TIMEOUT_MINUTES
+
+    def test_短すぎる値は既定に戻す(self, config) -> None:
+        from hitofude.config import DEFAULT_LLM_TIMEOUT_MINUTES
+
+        config.settings.setValue("llm/timeout_minutes", 0)
+        assert config.llm_timeout_minutes == DEFAULT_LLM_TIMEOUT_MINUTES

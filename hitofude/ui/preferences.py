@@ -31,12 +31,15 @@ from PySide6.QtWidgets import (
 
 from hitofude.config import (
     DEFAULT_FONT_FAMILY,
+    DEFAULT_LLM_TIMEOUT_MINUTES,
     DEFAULT_MONO_FAMILY,
     DEFAULT_POINT_SIZE,
     DEFAULT_TAB_WIDTH,
     DEFAULT_TRASH_DAYS,
+    MAX_LLM_TIMEOUT_MINUTES,
     MAX_POINT_SIZE,
     MAX_TAB_WIDTH,
+    MIN_LLM_TIMEOUT_MINUTES,
     MIN_POINT_SIZE,
     MIN_TAB_WIDTH,
     Config,
@@ -253,6 +256,23 @@ class PreferencesDialog(QDialog):
         self._context.setToolTip("一度に渡せる長さ。**広げるほどメモリを食います**。")
         llm_form.addRow("一度に渡す量", self._context)
 
+        # 答えを待つ長さ（ユーザー要望 2026-08-24）。**読み込みも含めて待つ。**
+        # 12b で 8 秒、26b で 392 秒（実測）と桁が違うので、手元のモデルに
+        # 合わせて延ばせるようにする
+        self._timeout = QSpinBox(self)
+        self._timeout.setRange(MIN_LLM_TIMEOUT_MINUTES, MAX_LLM_TIMEOUT_MINUTES)
+        self._timeout.setValue(config.llm_timeout_minutes)
+        self._timeout.setMaximumWidth(TAB_WIDTH_FIELD)
+        self._timeout.setToolTip(
+            "答えを待つ長さ。**大きいモデルは読み込みだけで数分かかります**"
+            "（実測: 26b で 6 分半）。短いと途中で切れます。"
+        )
+        timeout_row = QHBoxLayout()
+        timeout_row.addWidget(self._timeout)
+        timeout_row.addWidget(QLabel("分", self))
+        timeout_row.addStretch(1)
+        llm_form.addRow("答えを待つ長さ", timeout_row)
+
         # 画像を文字にする読み手（ADR-0027）。**選ぶ材料を画面に置く**
         self._ocr = QComboBox(self)
         self._ocr.addItem("macOS（デフォルト）", Engine.MAC)
@@ -310,6 +330,10 @@ class PreferencesDialog(QDialog):
     @property
     def context_box(self) -> QComboBox:
         return self._context
+
+    @property
+    def timeout_box(self) -> QSpinBox:
+        return self._timeout
 
     @property
     def ocr_box(self) -> QComboBox:
@@ -417,6 +441,7 @@ class PreferencesDialog(QDialog):
         self._model.setCurrentText(DEFAULT_MODEL)
         self._port.setValue(DEFAULT_PORT)
         self._context.setCurrentIndex(self._context.findData(CONTEXT_TOKENS))
+        self._timeout.setValue(DEFAULT_LLM_TIMEOUT_MINUTES)
         self._ocr.setCurrentIndex(self._ocr.findData(DEFAULT_ENGINE))
 
     def accept(self) -> None:
@@ -438,6 +463,7 @@ class PreferencesDialog(QDialog):
         self._config.llm_model = self._model.currentText()
         self._config.llm_port = self._port.value()
         self._config.llm_context = self._context.currentData()
+        self._config.llm_timeout_minutes = self._timeout.value()
         self._config.ocr_engine = self._ocr.currentData()
         vault = self._accept_typed_vault()
         if vault is None:

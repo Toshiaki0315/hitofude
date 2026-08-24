@@ -456,3 +456,85 @@ class TestReporterLifetime:
         assert made, "知らせ役が作られていない"
         assert made[0].parent() is None
         assert window._sync_reporter.parent() is None  # 索引側も同じ作法
+
+
+class TestFailureMessages:
+    """**何が起きたかで案内を変える**（ユーザー報告 2026-08-24）。
+
+    大きいモデルは読み込みだけで数分かかる（実測: gemma4:26b で 391.9 秒）。
+    待ちきれずに切ったのを「動いているか確かめてください」と出すと、
+    動いているのに動いていないと言われて原因に辿り着けない。
+    """
+
+    class Failing:
+        """決めた例外を投げる LLM。"""
+
+        model = "gemma4:26b"
+
+        def __init__(self, error: Exception) -> None:
+            self._error = error
+
+        def available(self) -> bool:
+            return True
+
+        def models(self) -> list[str]:
+            return [self.model]
+
+        def is_loaded(self) -> bool:
+            return False
+
+        def generate(self, prompt, *, on_chunk=None, should_stop=None):
+            raise self._error
+
+    def failed_text(self, window, error: Exception) -> str:
+        window.set_llm(self.Failing(error))
+        opened(window)
+        run_assistant(window, Task.SUMMARY)
+        return window.assistant_pane.status_text()
+
+    def test_時間切れは待ち時間の話だと分かる(self, window) -> None:
+        from hitofude.core.llm import TimedOut
+
+        found = self.failed_text(window, TimedOut("timed out"))
+        assert "時間" in found
+        assert "繋がりません" not in found, "時間切れを「繋がらない」と案内している"
+
+    def test_時間切れは設定の場所を教える(self, window) -> None:
+        from hitofude.core.llm import TimedOut
+
+        found = self.failed_text(window, TimedOut("timed out"))
+        assert "設定" in found
+
+    def test_繋がらないときは今まで通り(self, window) -> None:
+        from hitofude.core.llm import NotRunning
+
+        found = self.failed_text(window, NotRunning("Connection refused"))
+        assert "繋がりません" in found
+
+
+class TestLoadingNotice:
+    """読み込み中は**そう言う**（6 分の沈黙を「壊れている」に見せない）。"""
+
+    class Cold(FakeLLM):
+        model = "gemma4:26b"
+
+        def is_loaded(self) -> bool:
+            return False
+
+    class Warm(FakeLLM):
+        model = "gemma3:12b"
+
+        def is_loaded(self) -> bool:
+            return True
+
+    def test_載っていなければ読み込み中と出す(self, window) -> None:
+        window.set_llm(self.Cold())
+        opened(window)
+        window.ask_assistant(Task.SUMMARY)
+        assert "読み込" in window.assistant_pane.status_text()
+
+    def test_載っていれば余計なことを言わない(self, window) -> None:
+        window.set_llm(self.Warm())
+        opened(window)
+        window.ask_assistant(Task.SUMMARY)
+        assert "読み込" not in window.assistant_pane.status_text()

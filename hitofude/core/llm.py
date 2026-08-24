@@ -84,6 +84,16 @@ class NotRunning(RuntimeError):
     """Ollama が動いていない。**押してから断らない**ための合図でもある。"""
 
 
+class TimedOut(RuntimeError):
+    """待ち時間の内に返ってこなかった（ユーザー報告 2026-08-24）。
+
+    **「繋がらない」と混ぜない。** 大きいモデルは読み込みだけで数分
+    かかる（実測: gemma4:26b で最初の 1 行まで 391.9 秒）。切ったのを
+    「動いているか確かめてください」と案内すると、動いているのに
+    動いていないと言われて原因に辿り着けない。
+    """
+
+
 # **渡したものだけを見させる。** 知らないことを足されると、どこまでが
 # ノートに書いてあった話か分からなくなる（NotebookLM 的な使い方の肝）
 _COMMON = (
@@ -171,21 +181,43 @@ class LocalLLM:
     model: str = DEFAULT_MODEL
     port: int = DEFAULT_PORT
     context: int = CONTEXT_TOKENS
+    timeout: float = TIMEOUT_SECONDS
+    """答えを待つ長さ（秒）。設定で変えられる（大きいモデルほど要る）。"""
+
     transport: Transport = field(default=_urlopen)
 
     def available(self) -> bool:
         """使える状態か。**押す前に分かる**ようにするための口（G-3 と同じ作法）。"""
         try:
             self._tags()
-        except NotRunning:
+        except (NotRunning, TimedOut):
             return False
         return True
+
+    def is_loaded(self) -> bool:
+        """今そのモデルがメモリに載っているか（読み込み中かを知らせるため）。
+
+        載っていなければ、最初の 1 行まで数分かかることがある。
+        分からないとき（繋がらない・答えが読めない）は False。
+        """
+        try:
+            found = self._ps()
+        except (NotRunning, TimedOut):
+            return False
+        return any(str(entry.get("name", "")) == self.model for entry in found.get("models", []))
+
+    def _ps(self) -> dict:
+        for line in self._request("/api/ps", None, timeout=PROBE_TIMEOUT_SECONDS):
+            found = _parse(line)
+            if found is not None:
+                return found
+        return {}
 
     def models(self) -> list[str]:
         """入っているモデルの名前。動いていなければ空。"""
         try:
             found = self._tags()
-        except NotRunning:
+        except (NotRunning, TimedOut):
             return []
         return [str(entry.get("name", "")) for entry in found.get("models", [])]
 
@@ -240,7 +272,7 @@ class LocalLLM:
         return {}
 
     def _request(
-        self, path: str, payload: dict | None, *, timeout: float = TIMEOUT_SECONDS
+        self, path: str, payload: dict | None, *, timeout: float | None = None
     ) -> Iterable[bytes]:
         """行の並びを返す。繋がらなければ `NotRunning`。
 
@@ -251,9 +283,15 @@ class LocalLLM:
         取り出して、繋がらないことをこの場で確かめる。
         """
         url = f"{endpoint(self.port)}{path}"
+        timeout = self.timeout if timeout is None else timeout
         try:
             found = iter(self.transport(url, payload, timeout))
             first = next(found, None)
+        except TimeoutError as error:
+            # **時間切れは「繋がらない」ではない。** TimeoutError は
+            # OSError の子なので、下の except より先に見る
+            logger.info("Ollama が %s 秒で返さなかった: %s", timeout, error)
+            raise TimedOut(str(error)) from error
         except (OSError, urllib.error.URLError) as error:
             logger.info("Ollama に繋がらない: %s", error)
             raise NotRunning(str(error)) from error

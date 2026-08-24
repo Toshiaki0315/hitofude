@@ -1334,6 +1334,7 @@ class MainWindow(QMainWindow):
             model=self._config.llm_model,
             port=self._config.llm_port,
             context=self._config.llm_context,
+            timeout=self._config.llm_timeout_minutes * 60,
         )
 
     def toggle_assistant(self) -> None:
@@ -1368,6 +1369,14 @@ class MainWindow(QMainWindow):
         self._assistant_run += 1
         run = self._assistant_run
         self._assistant.begin(keep_notes=keep_notes)
+        # **読み込み中はそう言う**（ユーザー報告 2026-08-24）。26b で最初の
+        # 1 行まで 6 分半かかる（実測）。何も言わないと壊れたように見える
+        # `is_loaded` を持たない相手（試験の偽物・古い実装）は「載っている」
+        # 扱いにする。案内が出ないだけで、動きは変わらない
+        if not getattr(self._llm, "is_loaded", lambda: True)():
+            self._assistant.set_status(
+                f"「{self._llm.model}」を読み込んでいます…（初回は数分かかります）"
+            )
         # **親を付けず、こちらで参照を持つ**（索引の SyncReporter と同じ
         # 作法）。窓の子にすると、ワーカーが返す前に窓ごと壊れて
         # "Signal source has been deleted" で落ちる。逆に参照を捨てると
@@ -1519,8 +1528,22 @@ class MainWindow(QMainWindow):
         self._assistant.cancel()
 
     def _on_assistant_failed(self, reason: str) -> None:
-        del reason  # 生の英語（Connection refused など）は画面に出さない
-        self._assistant.fail("Ollama に繋がりませんでした。動いているか確かめてください。")
+        """うまくいかなかった理由を**日本語で**出す。
+
+        生の英語（Connection refused など）は出さないが、**何が起きたかで
+        言うことは変える**。時間切れを「動いているか確かめてください」と
+        案内すると、動いているのに動いていないと言われて辿り着けない
+        （ユーザー報告 2026-08-24）。
+        """
+        if reason == llm_module.TimedOut.__name__:
+            minutes = self._config.llm_timeout_minutes
+            self._assistant.fail(
+                f"{minutes} 分待っても答えが返りませんでした。"
+                "大きいモデルは読み込みだけで数分かかります"
+                "（設定の「アシスタント」で待ち時間を延ばせます）。"
+            )
+        else:
+            self._assistant.fail("Ollama に繋がりませんでした。動いているか確かめてください。")
         self._assistant.set_available(self._llm.available())
 
     def history_root(self) -> Path:
