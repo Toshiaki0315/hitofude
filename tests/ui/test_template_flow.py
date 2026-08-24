@@ -84,6 +84,20 @@ class TestFromTemplate:
         text = window.editor.toPlainText()
         assert text[window.editor.textCursor().position() :] == "\n"
 
+    def test_絵文字があってもキャレットの位置がずれない(self, window) -> None:
+        """`{{cursor}}` の位置は Python 単位、`setPosition` は UTF-16 単位。
+
+        **比べる単位を揃える。** キャレット位置（UTF-16）を Python 文字列の
+        添字に使うと、絵文字ぶんの誤差が両側で打ち消し合って通ってしまう。
+        """
+        from hitofude.core.textpos import utf16_to_py
+
+        put_template(window, "絵文字.md", "# 印\n\n🍎ここ{{cursor}}\n")
+        window.create_from_template(window.vault.templates_dir / "絵文字.md")
+        text = window.editor.toPlainText()
+        at = utf16_to_py(text, window.editor.textCursor().position())
+        assert text[at:] == "\n"
+
     def test_印が無ければ本文の先頭(self, window) -> None:
         """ふつうにノートを開いたときと同じ。front matter の前には行かない。"""
         from hitofude.core import frontmatter

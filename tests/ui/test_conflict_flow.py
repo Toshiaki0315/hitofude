@@ -261,3 +261,48 @@ class TestRecoveryPrompt:
         window.offer_recovery()
 
         assert window.pending_recovery() == []
+
+
+class TestWriteFailure:
+    """書けなかったときに**書いた内容を捨てない**。
+
+    `flush()` は保存の前に待ちを解除する（再入を防ぐため）。書き込みが
+    例外で終わると、待ちは解けたまま何も書かれない。退避（`_maybe_stash`）
+    も待ちを見ているので保険まで止まり、終了時の `flush()` も
+    「待ちが無い」で素通りする。
+    """
+
+    def failing_write(self, monkeypatch, window: MainWindow) -> None:
+        def refuse(*_args, **_kwargs):
+            raise OSError("書けない（ディスクや権限）")
+
+        monkeypatch.setattr(window.vault, "write", refuse)
+
+    def test_例外で落ちない(self, window: MainWindow, monkeypatch) -> None:
+        opened_note(window)
+        window.editor.insertPlainText("追記\n")
+        self.failing_write(monkeypatch, window)
+        window.flush()  # 例外が漏れると QTimer のスロットから飛び出す
+
+    def test_待ちを解かない(self, window: MainWindow, monkeypatch) -> None:
+        """次のチックでもう一度試し、退避も続くようにする。"""
+        opened_note(window)
+        window.editor.insertPlainText("追記\n")
+        self.failing_write(monkeypatch, window)
+        window.flush()
+        assert window._debouncer.pending
+
+    def test_書けなかったことを知らせる(self, window: MainWindow, monkeypatch) -> None:
+        """黙って失敗すると、書いたつもりで閉じてしまう。"""
+        opened_note(window)
+        window.editor.insertPlainText("追記\n")
+        self.failing_write(monkeypatch, window)
+        window.flush()
+        assert "保存" in window.notice()
+
+    def test_保存済みの時刻を出さない(self, window: MainWindow, monkeypatch) -> None:
+        opened_note(window)
+        window.editor.insertPlainText("追記\n")
+        self.failing_write(monkeypatch, window)
+        window.flush()
+        assert window.saved_text() == ""

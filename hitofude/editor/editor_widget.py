@@ -835,9 +835,12 @@ class MarkdownEditor(QPlainTextEdit):
         closing = commands.AUTO_PAIRS[character]
         selected = cursor.selectedText()
         start = cursor.selectionStart()
+        # 選び直す長さは **UTF-16 単位**。`len()`（Python 単位）だと、
+        # 選択に絵文字が入っているぶんだけ右端が足りない
+        length = py_to_utf16(selected, len(selected))
         cursor.insertText(f"{character}{selected}{closing}")
         cursor.setPosition(start + len(character))
-        cursor.setPosition(start + len(character) + len(selected), QTextCursor.MoveMode.KeepAnchor)
+        cursor.setPosition(start + len(character) + length, QTextCursor.MoveMode.KeepAnchor)
         self.setTextCursor(cursor)
         return True
 
@@ -1192,8 +1195,14 @@ class MarkdownEditor(QPlainTextEdit):
         cursor = self.textCursor()
         text = source.text() if source.hasText() else ""
         if cursor.hasSelection() and commands.is_url(text):
+            # 選択位置は UTF-16 単位、`commands` は Python 文字列を切り貼りする
+            # （`Cmd+K` の経路と同じ。ここが漏れていて絵文字でずれた）
+            plain = self.toPlainText()
             replacement = commands.insert_link(
-                self.toPlainText(), cursor.selectionStart(), cursor.selectionEnd(), text.strip()
+                plain,
+                utf16_to_py(plain, cursor.selectionStart()),
+                utf16_to_py(plain, cursor.selectionEnd()),
+                text.strip(),
             )
             self._apply(replacement)
             return

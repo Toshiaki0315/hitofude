@@ -227,7 +227,12 @@ class Note:
 
     @property
     def tags(self) -> list[str]:
-        return tags.extract(self.text)
+        """本文に書かれたタグ（§7.2）。
+
+        **front matter は見ない。** タグは本文が真実で、YAML のコメントや
+        値に出てくる `#…` はタグではない（コードレビュー指摘）。
+        """
+        return tags.extract(_body_of(self.text))
 
     @property
     def digest(self) -> str:

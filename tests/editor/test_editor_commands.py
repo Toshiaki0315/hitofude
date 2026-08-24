@@ -116,6 +116,18 @@ class TestPasteAsLink:
         editor.insertFromMimeData(data)
         assert editor.toPlainText() == "[Qt](https://doc.qt.io/) のドキュメント"
 
+    def test_絵文字より後ろを選んでもずれない(self, editor) -> None:
+        """選択位置は UTF-16 単位。**Python 単位の `commands` にそのまま渡すと
+        ずれる**（`Cmd+K` は直してあるが、貼り付けの経路が漏れていた）。"""
+        from PySide6.QtCore import QMimeData
+
+        editor.setPlainText("🌊 Qt のドキュメント")
+        select(editor, 3, 5)  # 🌊 が 2 単位ぶんなので「Qt」は 3..5
+        data = QMimeData()
+        data.setText("https://doc.qt.io/")
+        editor.insertFromMimeData(data)
+        assert editor.toPlainText() == "🌊 [Qt](https://doc.qt.io/) のドキュメント"
+
     def test_URLでなければ普通に貼る(self, editor) -> None:
         from PySide6.QtCore import QMimeData
 
@@ -430,3 +442,12 @@ class TestBMP外の文字:
         select(editor, 5, 7)
         qtbot.keyClick(editor, Qt.Key.Key_B, CMD)
         assert editor.textCursor().selectedText() == "強調"
+
+    def test_絵文字を含む選択を打鍵で囲んでもずれない(self, editor, qtbot) -> None:
+        """`selectedText()` の長さは Python 単位。UTF-16 の位置に足すと、
+        選択の右端が絵文字のぶん足りない（`Cmd+B` とは別の経路）。"""
+        editor.setPlainText("これは🍎です")
+        select(editor, 3, 6)  # 🍎 が 2 単位ぶんなので「🍎で」は 3..6
+        qtbot.keyClicks(editor, "*")
+        assert editor.toPlainText() == "これは*🍎で*す"
+        assert editor.textCursor().selectedText() == "🍎で"

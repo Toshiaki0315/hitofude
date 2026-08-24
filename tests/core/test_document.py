@@ -1,9 +1,11 @@
 """ノートのモデルのテスト（spec §7.2, §7.3）。"""
 
+import pathlib
 from pathlib import Path
 
 import pytest
 
+from hitofude.core import frontmatter
 from hitofude.core.document import Note, new_id, preview_of, title_of, with_title
 
 
@@ -282,3 +284,42 @@ class TestWithTitle:
     def test_2回かけても同じ(self) -> None:
         once = with_title("ただの段落です。\n", "題")
         assert with_title(once, "題") == once
+
+
+class TestReadNormalizesNewlines:
+    """読み込みで改行を LF に揃える（`frontmatter` がそれを前提にしている）。
+
+    `body_offset()` / `split()` は**正規化後**の位置を返す。CRLF を残した
+    テキストに同じ位置を当てると、front matter の途中を指す。
+    """
+
+    def test_CRLFはLFになる(self, tmp_path) -> None:
+        path = tmp_path / "crlf.md"
+        path.write_bytes("---\r\nid: ABC\r\n---\r\n本文\r\n".encode())
+        note = Note.read(path)
+        assert "\r" not in note.text
+
+    def test_本文の位置が原文と一致する(self, tmp_path) -> None:
+        path = tmp_path / "crlf.md"
+        path.write_bytes("---\r\nid: ABC\r\n---\r\n本文\r\n".encode())
+        note = Note.read(path)
+        assert frontmatter.body_offset(note.text) == note.text.index("本文")
+
+
+class TestTagsAreBodyOnly:
+    """タグは front matter ではなく**本文が真実**（spec §7.2）。
+
+    `wikilink` は本文だけを見るのに、タグは全文を見ていた。YAML の
+    コメントに書いた `#…` がサイドバーのタグに出る。
+    """
+
+    def note(self, text: str) -> Note:
+        return Note.from_text(pathlib.Path("a.md"), text, mtime_ns=0, size_bytes=0)
+
+    def test_front_matterは見ない(self) -> None:
+        found = self.note("---\nid: 1\n# 覚書: #work/secret\n---\n本文 #public\n")
+        assert found.tags == ["public"]
+
+    def test_本文のタグは拾う(self) -> None:
+        found = self.note("---\nid: 1\n---\n#work/会議 の記録\n")
+        assert found.tags == ["work/会議"]

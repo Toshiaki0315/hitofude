@@ -117,6 +117,10 @@ PINNED_NOTICE = "ピン留めしているノートは削除できません。先
 HUGE_NOTE_NOTICE = "大きなノートのため、装飾を無効にして開きました（編集と保存はできます）"
 NOTICE_MS = 5000
 
+# 終了時に索引の走査を待つ上限。索引は捨ててよいキャッシュ（R9）なので、
+# ここで粘るより窓が閉じるほうが大事
+CLOSE_INDEX_WAIT_MS = 3000
+
 BUSY_NOTICE = "いま同期しています。終わるまでお待ちください"
 
 
@@ -997,7 +1001,7 @@ class MainWindow(QMainWindow):
         """作った / 取り込んだノートを索引へ入れ、一覧を更新して開く。
 
         「upsert → refresh → open → select」の 4 連は作成系の全入口
-        （新規・雛形・今日のノート・wikilink・取り込み・マニュアル設置）で
+        （新規・テンプレート・今日のノート・wikilink・取り込み・マニュアル設置）で
         同じ並びになる。ばらばらに書くと select 漏れが起きる
         （place_manual で実際に漏れていた）。
         """
@@ -1030,11 +1034,14 @@ class MainWindow(QMainWindow):
         """`{{cursor}}` の位置へキャレットを置く（E-4）。
 
         文字は隠していても実在するので、ソースの位置がそのまま使える（R4）。
+        ただし**単位は揃える**。`Vault` が数えた位置は Python 単位で、
+        `setPosition` は UTF-16 単位（絵文字を挟むとずれる）。
         """
         if position is None:
             return
+        text = self._editor.toPlainText()
         cursor = self._editor.textCursor()
-        cursor.setPosition(min(position, len(self._editor.toPlainText())))
+        cursor.setPosition(textpos.py_to_utf16(text, min(position, len(text))))
         self._editor.setTextCursor(cursor)
         self._editor.setFocus()
 
@@ -1958,6 +1965,12 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ 終了
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if self._closing:
+            # **2 度目は何もしない。** `close()` は明示にも Qt からも来る
+            # （テストの後片付けで実際に 2 回来た）。索引を閉じたあとに
+            # 保存へ入ると、閉じた DB を触って落ちる
+            super().closeEvent(event)
+            return
         self._closing = True
         # 終了時は競合してもダイアログを出さない。ここでモーダルを開くと
         # アプリが終了できなくなる
@@ -1977,7 +1990,10 @@ class MainWindow(QMainWindow):
         # **閉じるのを待たせない。** 生成は最長 120 秒かかる（ADR-0025）。
         # 番号を進めておけば、次の 1 行で自分から降りる
         self._assistant_run += 1
-        # ワーカーが自分の接続で書いている最中に落とさない
-        self.wait_for_index_sync()
+        # ワーカーが自分の接続で書いている最中に落とさない。
+        # **ただし待ちすぎない**（コードレビュー指摘）。既定の 30 秒だと、
+        # 大きな vault の走査中に閉じると終わらない窓に見える。索引は
+        # 捨ててよいキャッシュ（R9）なので、待ちを打ち切っても作り直せる
+        self.wait_for_index_sync(CLOSE_INDEX_WAIT_MS)
         self._db.close()
         super().closeEvent(event)

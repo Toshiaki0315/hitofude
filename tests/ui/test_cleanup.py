@@ -122,3 +122,28 @@ class TestMenu:
 class TestWiring:
     def test_呼び出し口が繋がっている(self, window) -> None:
         assert hasattr(main_window_module.MainWindow, "cleanup_attachments")
+
+
+class TestClosingTwice:
+    """`close()` は 2 回来ることがある（明示 + Qt の後片付け）。
+
+    1 度目で索引を閉じているので、2 度目に保存へ入ると閉じた DB を触る。
+    **2 度目は何もしない。**
+    """
+
+    def test_二度閉じても落ちない(self, window: MainWindow) -> None:
+        note = window.vault.create("二度閉じ", "# 二度閉じ\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.open_note(note.path)
+        window.editor.insertPlainText("追記\n")
+        window.close()
+        window.close()
+
+    def test_終了時に索引を待ちすぎない(self, window: MainWindow, monkeypatch) -> None:
+        """大きな vault の走査中に閉じても、窓が固まったままにならない。"""
+        seen: list[int] = []
+        monkeypatch.setattr(
+            MainWindow, "wait_for_index_sync", lambda self, ms=30000: (seen.append(ms), True)[1]
+        )
+        window.close()
+        assert seen and seen[0] <= 5000

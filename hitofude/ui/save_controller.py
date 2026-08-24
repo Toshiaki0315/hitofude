@@ -107,7 +107,8 @@ class SaveController:
 
         payload = window._vault.touch_modified(text)
         window._watcher.suppress(note.path)
-        window._vault.write(note.path, payload)
+        if not self._write(note.path, payload):
+            return
         # **書けたあとに残す**（ADR-0023）。書けなかった内容を版にすると、
         # ファイルに無いものが履歴に出る
         window.keep_version(payload)
@@ -126,6 +127,27 @@ class SaveController:
         window._update_title()
         window._show_saved(datetime.now())
         window._remember_note(window._note.path)
+
+    def _write(self, path: Path, payload: str) -> bool:
+        """ファイルへ書く。書けたら True。
+
+        **書けなかったことを黙って飲まない**（コードレビュー指摘）。
+        `flush()` は再入を防ぐために保存の前に待ちを解いているので、
+        ここで例外が抜けると「保存済み」の顔をしたまま何も書かれない。
+        退避（`_maybe_stash`）も待ちを見ているため、保険まで止まる。
+
+        待ちに戻せば次のチックでもう一度試し、退避も続く。ディスクが
+        戻れば自然に保存される。
+        """
+        window = self._window
+        try:
+            window._vault.write(path, payload)
+        except OSError:
+            logger.warning("保存できなかった: %s", path, exc_info=True)
+            self.debouncer.touch()
+            window.notify("保存できませんでした。書き込み先を確かめてください")
+            return False
+        return True
 
     def _rename_if_title_changed(self, previous: Note, current: Note) -> Note:
         """タイトルが変わったらファイル名も合わせる（spec §7.1）。
@@ -160,7 +182,9 @@ class SaveController:
 
         match dialog.resolution:
             case Resolution.KEEP_BOTH:
-                window.open_note(self._keep_both(note, text))
+                kept = self._keep_both(note, text)
+                if kept is not None:
+                    window.open_note(kept)
                 return False
             case Resolution.TAKE_EXTERNAL:
                 window.open_note(note.path)
@@ -176,12 +200,16 @@ class SaveController:
                 self.debouncer.touch()
                 return False
 
-    def _keep_both(self, note: Note, text: str) -> Path:
-        """自分の版を別名で保存する（spec §7.5）。書いたものを失わない道。"""
+    def _keep_both(self, note: Note, text: str) -> Path | None:
+        """自分の版を別名で保存する（spec §7.5）。書いたものを失わない道。
+
+        書けなければ `None`。ここも待ちに戻して次の機会に試す。
+        """
         window = self._window
         target = keep_both_path(note.path)
         window._watcher.suppress(target)
-        window._vault.write(target, text)
+        if not self._write(target, text):
+            return None
         window._db.upsert_note(window._vault.read(target), window._vault.root)
         logger.info("競合したため別名で保存した: %s", target.name)
         window.refresh()
