@@ -19,7 +19,7 @@ from pathlib import Path
 
 from hitofude.core import tags as tag_utils
 from hitofude.core import wikilink
-from hitofude.core.document import Note, searchable_text
+from hitofude.core.document import Note, note_key, searchable_text
 
 logger = logging.getLogger(__name__)
 
@@ -920,18 +920,6 @@ def merge_folders(counts: list[FolderCount], folders: list[str]) -> list[FolderC
         FolderCount(folder=folder, count=known.get(folder, 0)) for folder in sorted(folders)
     )
     return found
-
-
-def note_key(note: Note, root: Path) -> str:
-    """front matter に `id` があればそれ、無ければ相対パスから作る。
-
-    外部エディタで作られたノートには front matter が無い。索引の主キーは
-    必ず要るので、パスから安定した ID を合成する。
-
-    **版の履歴（ADR-0023）も同じ鍵を使う。** 別々に決めると、索引と履歴で
-    「同じノート」の判定がずれる。
-    """
-    return note.id or f"path:{note.relative_to(root)}"
 
 
 # 旧名。索引の中からはこちらで呼ばれている

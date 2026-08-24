@@ -1166,3 +1166,79 @@ class TestWritableFolder:
         vault.ensure_layout()
         with pytest.raises(ValueError):
             vault.writable_folder(tmp_path / "よそ")
+
+
+class TestHistoryFollowsThePath:
+    """front matter の無いノートの版が、移動・改名についていく。
+
+    外部エディタで作ったノートには ULID が無く、版の鍵はパスから
+    合成される（`note_key`）。動かしたときに置き場の名前も変えないと、
+    それまでの版が「別のノートのもの」になって見えなくなる
+    （コードレビュー指摘 2026-08-24。実測で 1 件 → 0 件）。
+    """
+
+    def kept(self, vault: Vault, note_path: Path) -> int:
+        from hitofude.core.document import note_key
+        from hitofude.storage import history
+
+        return len(
+            history.versions(
+                vault.managed_dir / "history", note_key(vault.read(note_path), vault.root)
+            )
+        )
+
+    def with_version(self, vault: Vault, name: str, folder: str = "") -> Path:
+        """front matter の無いノートを置き、版を 1 つ残す。"""
+        from datetime import datetime
+
+        from hitofude.core.document import note_key
+        from hitofude.storage import history
+
+        vault.ensure_layout()
+        if folder:
+            vault.create_folder(folder)
+        target = (vault.root / folder / name) if folder else (vault.root / name)
+        target.write_text(f"# {name}\n\n本文\n", encoding="utf-8")
+        note = vault.read(target)
+        history.keep(
+            vault.managed_dir / "history",
+            note_key(note, vault.root),
+            note.text,
+            now=datetime(2026, 8, 24, 10, 0),
+        )
+        return target
+
+    def test_フォルダへ移しても版が見える(self, vault: Vault) -> None:
+        path = self.with_version(vault, "外から.md")
+        vault.create_folder("作業")
+        moved = vault.move_note(path, "作業")
+        assert self.kept(vault, moved) == 1
+
+    def test_改名しても版が見える(self, vault: Vault) -> None:
+        path = self.with_version(vault, "外から.md")
+        renamed = vault.rename(path, "新しい題名")
+        assert self.kept(vault, renamed) == 1
+
+    def test_フォルダの名前を変えても版が見える(self, vault: Vault) -> None:
+        """フォルダ名もパスの一部。中のノートの鍵が変わる。"""
+        self.with_version(vault, "中のノート.md", folder="旧")
+        vault.rename_folder("旧", "新")
+        assert self.kept(vault, vault.root / "新" / "中のノート.md") == 1
+
+    def test_ULIDのノートは置き場を動かさない(self, vault: Vault) -> None:
+        """id があれば鍵は変わらない。触る必要が無い。"""
+        from datetime import datetime
+
+        from hitofude.core.document import note_key
+        from hitofude.storage import history
+
+        note = vault.create("ULID のノート", "# ULID のノート\n")
+        history.keep(
+            vault.managed_dir / "history",
+            note_key(note, vault.root),
+            note.text,
+            now=datetime(2026, 8, 24, 10, 0),
+        )
+        vault.create_folder("作業")
+        moved = vault.move_note(note.path, "作業")
+        assert self.kept(vault, moved) == 1

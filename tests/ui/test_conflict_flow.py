@@ -306,3 +306,78 @@ class TestWriteFailure:
         self.failing_write(monkeypatch, window)
         window.flush()
         assert window.saved_text() == ""
+
+
+class TestWriteRetry:
+    """書けないまま繰り返し叩かない（コードレビュー指摘 2026-08-24）。
+
+    失敗したら待ちに戻すので、恒久的な失敗（権限・容量）では 0.8 秒ごとに
+    書き込みと記録と通知が延々と繰り返される。**間を置く。**
+    """
+
+    def failing(self, monkeypatch, window: MainWindow) -> list[int]:
+        tried: list[int] = []
+
+        def refuse(*_args, **_kwargs):
+            tried.append(1)
+            raise OSError("書けない")
+
+        monkeypatch.setattr(window.vault, "write", refuse)
+        return tried
+
+    def ready(self, window: MainWindow) -> None:
+        """打ちかけがあり、いつでも保存に入れる状態にする。"""
+        opened_note(window)
+        window.editor.insertPlainText("追記\n")
+        window._saver.debouncer.delay = 0  # 待たずに due にする
+
+    def test_すぐには再試行しない(self, window: MainWindow, monkeypatch) -> None:
+        self.ready(window)
+        tried = self.failing(monkeypatch, window)
+        window.flush()
+        window._saver.on_tick()
+        window._saver.on_tick()
+        assert len(tried) == 1
+
+    def test_間を置いたら試す(self, window: MainWindow, monkeypatch) -> None:
+        self.ready(window)
+        tried = self.failing(monkeypatch, window)
+        window.flush()
+        from hitofude.ui.save_controller import WRITE_RETRY_SECONDS
+
+        base = window._saver.clock()
+        window._saver.clock = lambda: base + WRITE_RETRY_SECONDS + 1
+        window._saver.on_tick()
+        assert len(tried) == 2
+
+    def test_自分で保存したときは待たせない(self, window: MainWindow, monkeypatch) -> None:
+        """`Cmd+S` は「今すぐ書け」。間を置く相手ではない。"""
+        self.ready(window)
+        tried = self.failing(monkeypatch, window)
+        window.flush()
+        window.flush(explicit=True)
+        assert len(tried) == 2
+
+    def test_知らせは繰り返さない(self, window: MainWindow, monkeypatch) -> None:
+        told: list[str] = []
+        self.ready(window)
+        tried = self.failing(monkeypatch, window)
+        monkeypatch.setattr(window, "notify", lambda text, *args, **kwargs: told.append(text))
+        window.flush()
+        window.flush(explicit=True)
+        assert len(tried) == 2
+        assert len(told) == 1
+
+    def test_書けたら知らせ直す(self, window: MainWindow, monkeypatch) -> None:
+        """一度直ったあとに再び失敗したら、また知らせる。"""
+        self.ready(window)
+        self.failing(monkeypatch, window)
+        window.flush()
+        monkeypatch.undo()
+        window.flush(explicit=True)  # 書けた
+        told: list[str] = []
+        monkeypatch.setattr(window, "notify", lambda text, *args, **kwargs: told.append(text))
+        self.failing(monkeypatch, window)
+        window.editor.insertPlainText("さらに追記\n")
+        window.flush(explicit=True)
+        assert told

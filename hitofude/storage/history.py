@@ -131,6 +131,34 @@ def keep(
     return target
 
 
+def rekey(root: Path, before: str, after: str) -> Path | None:
+    """版の置き場を別の鍵へ移す。移したら場所を、動かすものが無ければ `None`。
+
+    front matter の無いノートは鍵がパスなので、移動・改名・フォルダの
+    改名で鍵が変わる。置き場を付け替えないと、それまでの版が見えなくなる
+    （コードレビュー指摘 2026-08-24）。
+    """
+    if before == after:
+        return None
+    source = root / folder_name(before)
+    if not source.is_dir():
+        return None
+
+    target = root / folder_name(after)
+    if not target.exists():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source.replace(target)
+        return target
+
+    # 行き先にも版がある（同じ名前のノートを消して作り直した等）。
+    # **どちらも捨てない。** 同じ時刻のものは中身も同じなので上書きでよい
+    for path in source.glob("*.md"):
+        path.replace(target / path.name)
+    if not any(source.iterdir()):
+        source.rmdir()
+    return target
+
+
 def versions(root: Path, key: str) -> list[Version]:
     """残っている版を**新しい順**に返す。読めないものは飛ばす。"""
     folder = root / folder_name(key)

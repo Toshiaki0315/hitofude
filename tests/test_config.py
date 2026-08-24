@@ -384,6 +384,16 @@ class TestHistoryInterval:
         config.history_interval_minutes = 0
         assert config.history_interval_minutes == 0
 
+    def test_数字でない値も既定に戻す(self, config) -> None:
+        """**`type=int` に頼れない。** 数字でない文字列を 0 に変えてしまい、
+        0 は妥当な選択肢（なし）なので検証を素通りする（実測）。
+        履歴が黙って止まるのがいちばん困る。"""
+        from hitofude.storage.history import DEFAULT_INTERVAL_MINUTES
+
+        for broken in ("こわれた", "", "60分"):
+            config.settings.setValue("history/interval_minutes", broken)
+            assert config.history_interval_minutes == DEFAULT_INTERVAL_MINUTES, broken
+
     def test_選べない値は既定に戻す(self, config) -> None:
         """設定ファイルは手で編集できる。壊れた値で履歴を止めない。"""
         from hitofude.storage.history import DEFAULT_INTERVAL_MINUTES

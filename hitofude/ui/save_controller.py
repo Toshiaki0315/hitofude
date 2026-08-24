@@ -28,6 +28,14 @@ logger = logging.getLogger(__name__)
 SAVE_TICK_MS = 200
 STASH_INTERVAL_SECONDS = 2.0
 
+WRITE_RETRY_SECONDS = 30.0
+"""書けなかったあと、自動の保存を次に試すまでの間（コードレビュー指摘）。
+
+失敗しても待ちには戻す（退避と終了時の保存に要る）ので、間を置かないと
+0.8 秒ごとに書き込み・記録・通知が延々と繰り返される。**人が押したとき
+（`Cmd+S`・切り替え・終了）は待たせない。**
+"""
+
 
 class SaveController:
     """保存のタイミングと競合の裁き。`MainWindow` が薄く委譲する。"""
@@ -37,6 +45,10 @@ class SaveController:
         self.debouncer = Debouncer()
         self.recovery_root = autosave.recovery_root(window._vault.root)
         self._last_stash = 0.0
+        # 書けなかったときの間合い。**テストが差し替える**ので 1 か所にまとめる
+        self.clock = time.monotonic
+        self._retry_after = 0.0
+        self._told_failure = False
 
         self.timer = QTimer(window)
         self.timer.setInterval(SAVE_TICK_MS)
@@ -47,6 +59,10 @@ class SaveController:
 
     def on_tick(self) -> None:
         if self.debouncer.due():
+            if self.clock() < self._retry_after:
+                # 書けない状態が続いている。**退避だけ続ける**（保険は要る）
+                self._maybe_stash()
+                return
             self.flush()
             return
         if self.debouncer.pending:
@@ -60,7 +76,7 @@ class SaveController:
         保存できない状態（競合の未解決など）が続いたときの保険になる。
         """
         window = self._window
-        now = time.monotonic()
+        now = self.clock()
         if window._note is None or now - self._last_stash < STASH_INTERVAL_SECONDS:
             return
         self._last_stash = now
@@ -145,10 +161,16 @@ class SaveController:
         try:
             window._vault.write(path, payload)
         except OSError:
-            logger.warning("保存できなかった: %s", path, exc_info=True)
+            # **同じ失敗を繰り返し記録しない。** 最初の 1 回だけ経緯を残す
+            logger.warning("保存できなかった: %s", path, exc_info=not self._told_failure)
             self.debouncer.touch()
-            window.notify("保存できませんでした。書き込み先を確かめてください")
+            self._retry_after = self.clock() + WRITE_RETRY_SECONDS
+            if not self._told_failure:
+                self._told_failure = True
+                window.notify("保存できませんでした。書き込み先を確かめてください")
             return False
+        self._retry_after = 0.0
+        self._told_failure = False
         return True
 
     def _rename_if_title_changed(self, previous: Note, current: Note) -> Note:

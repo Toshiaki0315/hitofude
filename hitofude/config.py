@@ -207,8 +207,15 @@ class Config:
 
         **選べる値だけを返す。** ini は手で編集できるので、途中の値
         （7 分など）が入っていたら既定に戻す。履歴が黙って止まるのは困る。
+
+        **`type=int` に頼らない**（コードレビュー指摘）。数字でない文字列を
+        0 に変えてしまい、0 は妥当な選択肢（なし）なので検証を素通りする。
         """
-        found = self.settings.value(_HISTORY_INTERVAL, DEFAULT_HISTORY_INTERVAL, type=int)
+        raw = self.settings.value(_HISTORY_INTERVAL, DEFAULT_HISTORY_INTERVAL)
+        try:
+            found = int(raw)
+        except (TypeError, ValueError):
+            return DEFAULT_HISTORY_INTERVAL
         return found if found in HISTORY_INTERVAL_CHOICES else DEFAULT_HISTORY_INTERVAL
 
     @history_interval_minutes.setter

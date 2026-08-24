@@ -203,3 +203,32 @@ class TestChosenInterval:
 
     def test_選べる間隔は5つ(self) -> None:
         assert history.INTERVAL_CHOICES == (0, 15, 30, 60, 120)
+
+
+class TestRekey:
+    """鍵が変わったときに置き場を付け替える（コードレビュー指摘 2026-08-24）。
+
+    front matter の無いノートは鍵がパスなので、移動・改名で鍵が変わる。
+    """
+
+    def test_置き場を移す(self, root) -> None:
+        history.keep(root, "path:外から.md", "# 外から\n", now=NOW)
+        moved = history.rekey(root, "path:外から.md", "path:作業/外から.md")
+        assert moved is not None
+        assert len(history.versions(root, "path:作業/外から.md")) == 1
+        assert history.versions(root, "path:外から.md") == []
+
+    def test_同じ鍵なら何もしない(self, root) -> None:
+        history.keep(root, "path:同じ.md", "# 同じ\n", now=NOW)
+        assert history.rekey(root, "path:同じ.md", "path:同じ.md") is None
+
+    def test_版が無ければ何もしない(self, root) -> None:
+        assert history.rekey(root, "path:無い.md", "path:先.md") is None
+
+    def test_行き先にも版があれば混ぜる(self, root) -> None:
+        """**どちらも捨てない。** 同じ名前のノートを消して作り直した後など。"""
+        history.keep(root, "path:元.md", "# 元\n", now=NOW)
+        history.keep(root, "path:先.md", "# 先\n", now=NOW + timedelta(hours=2))
+        history.rekey(root, "path:元.md", "path:先.md")
+        assert len(history.versions(root, "path:先.md")) == 2
+        assert history.versions(root, "path:元.md") == []

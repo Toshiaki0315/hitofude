@@ -30,10 +30,11 @@ from enum import Enum, auto
 from pathlib import Path
 
 from hitofude.core import frontmatter
-from hitofude.core.document import UNTITLED, Note, new_id, with_title
+from hitofude.core.document import UNTITLED, Note, new_id, path_key, with_title
 from hitofude.core.references import attachment_names
 from hitofude.core.table import find_table, format_table
 from hitofude.core.template import Expanded, daily_title, expand
+from hitofude.storage import history
 from hitofude.storage.autosave import save_atomic, save_bytes_atomic
 
 logger = logging.getLogger(__name__)
@@ -407,6 +408,13 @@ class Vault:
             raise FileExistsError(target)
         self._writable_folder(target)  # 予約フォルダの名前は使わせない
         source.rename(target)
+        # **フォルダ名もパスの一部。** 中のノートのうち id を持たないものは
+        # 鍵が変わるので、版の置き場も一緒に付け替える
+        before = source.relative_to(self.root).as_posix()
+        after = target.relative_to(self.root).as_posix()
+        for note_path in sorted(target.rglob("*.md")):
+            moved = note_path.relative_to(self.root).as_posix()
+            self._follow_history(before + moved[len(after) :], note_path)
         return target
 
     def delete_folder(self, folder: str) -> Path:
@@ -494,7 +502,9 @@ class Vault:
         target = unique_path(destination, path.stem, path.suffix)
         if target.parent == path.parent:
             return path  # 同じ場所。動かす意味が無い
+        before = path.relative_to(self.root).as_posix()
         path.rename(target)
+        self._follow_history(before, target)
         # **空になっても元のフォルダは残す**（ユーザー決定 / ADR-0024 追記 2）。
         # フォルダは作るもの・管理するものなので、最後のノートを移した
         # だけで消えると「勝手に無くなった」になる。消すのは
@@ -547,8 +557,35 @@ class Vault:
         if target == path:
             return path
         target = unique_path(folder, sanitize_filename(title))
+        before = path.relative_to(self.root).as_posix()
         path.replace(target)
+        self._follow_history(before, target)
         return target
+
+    def _follow_history(self, before: str, after: Path) -> None:
+        """版の置き場を新しいパスへ付け替える（コードレビュー指摘 2026-08-24）。
+
+        `id` を持つノートは動いても鍵が変わらない（ADR-0023）。**パスから
+        鍵を作っているノートだけ**が対象で、置き場の名前を変えないと
+        それまでの版が「別のノートのもの」になって見えなくなる。
+
+        `before` は動かす前の vault からの相対パス。失敗しても保存や移動は
+        止めない（版は付随物。ADR-0023 の扱いと同じ）。
+        """
+        try:
+            note = self.read(after)
+        except OSError:
+            return
+        if note.id is not None:
+            return
+        try:
+            history.rekey(
+                self.managed_dir / "history",
+                path_key(before),
+                path_key(note.relative_to(self.root)),
+            )
+        except OSError:
+            logger.warning("版の置き場を移せなかった: %s", after, exc_info=True)
 
     def _writable_folder(self, folder: Path) -> Path:
         """ノートを作ってよいフォルダとして受け取る。駄目なら `ValueError`。

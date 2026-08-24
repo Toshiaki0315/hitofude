@@ -231,8 +231,12 @@ class Note:
 
         **front matter は見ない。** タグは本文が真実で、YAML のコメントや
         値に出てくる `#…` はタグではない（コードレビュー指摘）。
+
+        **YAML は読まない**（コードレビュー指摘）。要るのは切る位置だけで、
+        `split()` を通すと索引の全走査で 1 ノートにつき 2 回 `yaml.load`
+        することになる（実測 0.147ms → 0.086ms／回）。
         """
-        return tags.extract(_body_of(self.text))
+        return tags.extract(self.text[frontmatter.body_offset(self.text) :])
 
     @property
     def digest(self) -> str:
@@ -248,6 +252,24 @@ class Note:
 
     def relative_to(self, root: Path) -> str:
         return os.fspath(self.path.relative_to(root))
+
+
+def path_key(relative: str) -> str:
+    """パスから作るノートの鍵。front matter に `id` が無いノート用。"""
+    return f"path:{relative}"
+
+
+def note_key(note: Note, root: Path) -> str:
+    """front matter に `id` があればそれ、無ければ相対パスから作る。
+
+    外部エディタで作られたノートには front matter が無い。索引の主キーは
+    必ず要るので、パスから安定した ID を合成する。
+
+    **版の履歴（ADR-0023）も同じ鍵を使う。** 別々に決めると、索引と履歴で
+    「同じノート」の判定がずれる。だから置き場も `core` に 1 つだけ置く
+    （索引・履歴・保管フォルダの 3 つが同じ関数を見る）。
+    """
+    return note.id or path_key(note.relative_to(root))
 
 
 def strip_markers(line: str, info: BlockInfo, *, drop_urls: bool = False) -> str:
