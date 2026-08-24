@@ -118,6 +118,7 @@ _LINE_SPACING = "layout/line_spacing"
 _CONTENT_WIDTH = "editor/content_width"
 _SAVED_SEARCHES = "sidebar/saved_searches"
 _HISTORY_INTERVAL = "history/interval_minutes"
+_LLM_KEEP_ALIVE = "llm/keep_alive_minutes"
 
 
 class Config:
@@ -200,6 +201,26 @@ class Config:
     @content_width.setter
     def content_width(self, value: ContentWidth) -> None:
         self.settings.setValue(_CONTENT_WIDTH, value.value)
+
+    @property
+    def llm_keep_alive_minutes(self) -> int:
+        """答えたあとモデルを残す長さ（分）。`0` はすぐ降ろす。
+
+        ユーザー報告 2026-08-24: 12b でも `llama-server` が 8.0GB を抱え、
+        既定の 5 分は machine が厳しいときには長い。
+
+        **選べる値だけを返す**（`history_interval_minutes` と同じ理由）。
+        """
+        raw = self.settings.value(_LLM_KEEP_ALIVE, llm.KEEP_ALIVE_MINUTES)
+        try:
+            found = int(raw)
+        except (TypeError, ValueError):
+            return llm.KEEP_ALIVE_MINUTES
+        return found if found in llm.KEEP_ALIVE_CHOICES else llm.KEEP_ALIVE_MINUTES
+
+    @llm_keep_alive_minutes.setter
+    def llm_keep_alive_minutes(self, value: int) -> None:
+        self.settings.setValue(_LLM_KEEP_ALIVE, value)
 
     @property
     def history_interval_minutes(self) -> int:

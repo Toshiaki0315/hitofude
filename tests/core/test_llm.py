@@ -391,3 +391,43 @@ class TestLoadedModels:
             yield b""
 
         assert llm.LocalLLM(transport=transport).is_loaded() is False
+
+
+class TestKeepAlive:
+    """答えたあとモデルを残す長さ（ユーザー報告 2026-08-24）。
+
+    指定しないと Ollama の既定（5 分）で、12b でも `llama-server` が
+    8.0GB を抱え続ける（実測）。**送る payload で決める。**
+    """
+
+    def test_保持時間を渡す(self) -> None:
+        transport = FakeTransport(responses("はい"))
+        llm.LocalLLM(transport=transport, keep_alive=5).generate("読んで")
+        assert transport.payloads[0]["keep_alive"] == "5m"
+
+    def test_ゼロなら答えたらすぐ降ろす(self) -> None:
+        transport = FakeTransport(responses("はい"))
+        llm.LocalLLM(transport=transport, keep_alive=0).generate("読んで")
+        assert transport.payloads[0]["keep_alive"] == 0
+
+    def test_選べる長さは4つ(self) -> None:
+        assert llm.KEEP_ALIVE_CHOICES == (0, 1, 5, 30)
+
+
+class TestUnload:
+    """手で降ろす（ユーザー要望 2026-08-24）。"""
+
+    def test_降ろす要求を送る(self) -> None:
+        transport = FakeTransport(responses(""))
+        assert llm.LocalLLM(transport=transport, model="gemma3:12b").unload() is True
+        assert transport.payloads[0] == {"model": "gemma3:12b", "keep_alive": 0}
+
+    def test_本文は送らない(self) -> None:
+        """**答えを作らせない。** 中身の無い生成が「降ろす」の合図。"""
+        transport = FakeTransport(responses(""))
+        llm.LocalLLM(transport=transport).unload()
+        assert "prompt" not in transport.payloads[0]
+
+    def test_繋がらなければFalse(self) -> None:
+        """降ろす操作で例外を上げても打つ手が無い。"""
+        assert llm.LocalLLM(transport=Unreachable()).unload() is False

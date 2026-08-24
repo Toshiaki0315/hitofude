@@ -50,7 +50,14 @@ from hitofude.config import (
     ContentWidth,
     LineSpacing,
 )
-from hitofude.core.llm import CONTEXT_CHOICES, CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PORT
+from hitofude.core.llm import (
+    CONTEXT_CHOICES,
+    CONTEXT_TOKENS,
+    DEFAULT_MODEL,
+    DEFAULT_PORT,
+    KEEP_ALIVE_CHOICES,
+    KEEP_ALIVE_MINUTES,
+)
 from hitofude.core.ocr import DEFAULT_ENGINE, Engine
 from hitofude.theme import ThemeMode
 
@@ -391,6 +398,20 @@ class PreferencesDialog(QDialog):
         )
         llm_form.addRow(_label("応答待ち時間"), _with_unit(self._timeout, "分", self))
 
+        # モデルを残す時間（ユーザー報告 2026-08-24）。**抱えたままにさせない。**
+        # 12b でも `llama-server` が 8.0GB を抱える（実測）
+        self._keep_alive = QComboBox(self)
+        self._keep_alive.setMinimumWidth(FIELD_WIDTH)
+        for minutes in KEEP_ALIVE_CHOICES:
+            label = "答えたらすぐ降ろす" if minutes == 0 else f"{minutes} 分"
+            self._keep_alive.addItem(label, minutes)
+        self._keep_alive.setCurrentIndex(self._keep_alive.findData(config.llm_keep_alive_minutes))
+        self._keep_alive.setToolTip(
+            "答えたあとモデルをメモリに残す長さ。**残すと次が速く、"
+            "降ろすとメモリが空きます**（実測: 12b で 8.0GB、読み込み直しに 8 秒）。"
+        )
+        llm_form.addRow(_label("モデルを残す時間"), self._keep_alive)
+
         # ------------------------------------------------------ 画像とPDF
         # 画像を文字にする読み手（ADR-0027）。**選ぶ材料を画面に置く**
         ocr_form = _form()
@@ -493,6 +514,11 @@ class PreferencesDialog(QDialog):
     def history_box(self) -> QComboBox:
         """版を残す間隔。**本文の保存の間隔ではない**（§7.4 は変えない）。"""
         return self._history
+
+    @property
+    def keep_alive_box(self) -> QComboBox:
+        """答えたあとモデルを残す長さ。**メモリと速さの綱引き**。"""
+        return self._keep_alive
 
     @property
     def ocr_box(self) -> QComboBox:
@@ -602,6 +628,7 @@ class PreferencesDialog(QDialog):
         self._port.setValue(DEFAULT_PORT)
         self._context.setCurrentIndex(self._context.findData(CONTEXT_TOKENS))
         self._timeout.setValue(DEFAULT_LLM_TIMEOUT_MINUTES)
+        self._keep_alive.setCurrentIndex(self._keep_alive.findData(KEEP_ALIVE_MINUTES))
         self._ocr.setCurrentIndex(self._ocr.findData(DEFAULT_ENGINE))
 
     def accept(self) -> None:
@@ -625,6 +652,7 @@ class PreferencesDialog(QDialog):
         self._config.llm_port = self._port.value()
         self._config.llm_context = self._context.currentData()
         self._config.llm_timeout_minutes = self._timeout.value()
+        self._config.llm_keep_alive_minutes = self._keep_alive.currentData()
         self._config.ocr_engine = self._ocr.currentData()
         vault = self._accept_typed_vault()
         if vault is None:

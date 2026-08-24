@@ -50,6 +50,17 @@ TIMEOUT_SECONDS = 120.0
 """12b 級に長いノートを読ませても届く長さ。"""
 
 PROBE_TIMEOUT_SECONDS = 3.0
+
+KEEP_ALIVE_MINUTES = 5
+"""答えたあとモデルをメモリに残す長さ（分）。Ollama の既定と同じ。
+
+**降ろすと次が遅い。** 読み込みだけで 12b が 8 秒、26b が 6 分半かかる
+（実測）ので、続けて聞くなら残しておくほうが速い。一方で 12b でも
+8.0GB を抱えたままになる（実測。`llama-server` の RSS）。
+"""
+
+KEEP_ALIVE_CHOICES = (0, 1, 5, 30)
+"""設定で選べる長さ（分）。`0` は「答えたらすぐ降ろす」。"""
 """居るかどうかを確かめるだけの待ち時間。
 
 **生成と同じだけ待たない。** `available()` / `models()` は起動時・
@@ -184,6 +195,9 @@ class LocalLLM:
     timeout: float = TIMEOUT_SECONDS
     """応答待ち時間（秒）。設定で変えられる（大きいモデルほど要る）。"""
 
+    keep_alive: int = KEEP_ALIVE_MINUTES
+    """答えたあとモデルを残す長さ（分）。`0` は答えたらすぐ降ろす。"""
+
     transport: Transport = field(default=_urlopen)
 
     def available(self) -> bool:
@@ -193,6 +207,30 @@ class LocalLLM:
         except (NotRunning, TimedOut):
             return False
         return True
+
+    def _keep_alive(self) -> int | str:
+        """Ollama に渡す保持時間。`0` は「答えたらすぐ降ろす」。"""
+        return 0 if self.keep_alive <= 0 else f"{self.keep_alive}m"
+
+    def unload(self) -> bool:
+        """モデルをメモリから降ろす（ユーザー要望 2026-08-24）。降ろせたら True。
+
+        中身の無い生成に `keep_alive: 0` を付けると、Ollama は答えずに
+        降ろす（実測: `done_reason: unload` が返り、`llama-server` が終了して
+        8.0GB がその場で空く）。
+
+        **載っていなくても同じ返事が来る**ので、ここでは区別しない
+        （知らせ分けは `is_loaded()` を見る呼び出し側の仕事）。
+        繋がらないときは False。降ろす操作で例外を上げても打つ手が無い。
+        """
+        payload = {"model": self.model, "keep_alive": 0}
+        try:
+            for line in self._request("/api/generate", payload, timeout=PROBE_TIMEOUT_SECONDS):
+                if _parse(line) is not None:
+                    return True
+        except (NotRunning, TimedOut):
+            return False
+        return False
 
     def is_loaded(self) -> bool:
         """今そのモデルがメモリに載っているか（読み込み中かを知らせるため）。
@@ -242,6 +280,9 @@ class LocalLLM:
             "model": self.model,
             "prompt": prompt,
             "stream": True,
+            # **抱えたままにさせない**（ユーザー報告 2026-08-24）。指定しないと
+            # Ollama の既定（5 分）で、12b でも 8.0GB を抱え続ける
+            "keep_alive": self._keep_alive(),
             "options": {"num_ctx": self.context},
         }
         if images:

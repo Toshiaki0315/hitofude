@@ -65,6 +65,9 @@ def build_menus(window) -> None:
     add(file_menu, "最新の情報に同期", "", window.resync)
     # 索引そのものが疑わしいとき。**差分の 100 倍かかる**（実測 5,000 本で 19 秒）
     add(file_menu, "索引を作り直す", "", window.rebuild_index)
+    # **今すぐメモリを空ける道**（ユーザー要望 2026-08-24）。索引の作り直しと
+    # 同じ「手で走らせる片づけ」なので隣に置く
+    add(file_menu, "モデルを降ろす", "", window.unload_model)
     file_menu.addSeparator()
     add(file_menu, "ピン留め", "Ctrl+Shift+P", window.toggle_pin_current)
     add(file_menu, "ゴミ箱へ移動", "Ctrl+Backspace", window.trash_current)

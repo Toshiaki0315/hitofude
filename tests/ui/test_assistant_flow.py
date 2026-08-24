@@ -538,3 +538,81 @@ class TestLoadingNotice:
         opened(window)
         window.ask_assistant(Task.SUMMARY)
         assert "読み込" not in window.assistant_pane.status_text()
+
+
+class UnloadableLLM(FakeLLM):
+    """降ろした回数を覚える。"""
+
+    def __init__(self, loaded: bool = True) -> None:
+        super().__init__()
+        self.loaded = loaded
+        self.unloads = 0
+
+    def is_loaded(self) -> bool:
+        return self.loaded
+
+    def unload(self) -> bool:
+        self.unloads += 1
+        was = self.loaded
+        self.loaded = False
+        return was
+
+
+class TestUnload:
+    """モデルをメモリから降ろす（ユーザー報告 2026-08-24）。
+
+    答えたあともモデルは載ったままで、12b でも `llama-server` が 8.0GB を
+    抱える（実測）。**降ろす道を 3 つ用意する**——メニュー、アシスタントを
+    閉じたとき、アプリを終了するとき。
+    """
+
+    def test_メニューから降ろせる(self, window) -> None:
+        found = UnloadableLLM()
+        window.set_llm(found)
+        assert window.unload_model() is True
+        assert found.unloads == 1
+
+    def test_降ろしたことを知らせる(self, window) -> None:
+        window.set_llm(UnloadableLLM())
+        window.unload_model()
+        assert "降ろしました" in window.notice()
+
+    def test_載っていなければ何もしない(self, window) -> None:
+        """**押しても無駄打ちにならない。** 何が起きたか言う。"""
+        found = UnloadableLLM(loaded=False)
+        window.set_llm(found)
+        assert window.unload_model() is False
+        assert found.unloads == 0
+        assert window.notice()
+
+    def test_答えを待っている間は降ろさない(self, window) -> None:
+        found = UnloadableLLM()
+        window.set_llm(found)
+        opened(window)
+        window.assistant_pane.begin()  # 走っている状態にする
+        assert window.unload_model() is False
+        assert found.unloads == 0
+
+    def test_アシスタントを閉じたら降ろす(self, window) -> None:
+        found = UnloadableLLM()
+        window.set_llm(found)
+        window.show_assistant(True)
+        window.show_assistant(False)
+        assert found.unloads == 1
+
+    def test_閉じたままなら降ろしに行かない(self, window) -> None:
+        """起動時の復元（隠したまま）で通信させない。"""
+        found = UnloadableLLM()
+        window.set_llm(found)
+        window.show_assistant(False)
+        window.show_assistant(False)
+        assert found.unloads == 0
+
+    def test_終了するときに降ろす(self, window) -> None:
+        found = UnloadableLLM()
+        window.set_llm(found)
+        window.close()
+        assert found.unloads == 1
+
+    def test_メニューに項目がある(self, window) -> None:
+        assert "モデルを降ろす" in window.menu_actions

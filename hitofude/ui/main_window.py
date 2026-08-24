@@ -1347,6 +1347,7 @@ class MainWindow(QMainWindow):
             port=self._config.llm_port,
             context=self._config.llm_context,
             timeout=self._config.llm_timeout_minutes * 60,
+            keep_alive=self._config.llm_keep_alive_minutes,
         )
 
     def toggle_assistant(self) -> None:
@@ -1354,12 +1355,50 @@ class MainWindow(QMainWindow):
         self.show_assistant(self._assistant.isHidden())
 
     def show_assistant(self, showing: bool) -> None:
+        was_visible = not self._assistant.isHidden()
         # スプリッタ経由で出し入れする（幅の退避・復元込み。アウトラインと同じ）
         self._splitter.set_pane_visible(self._splitter.indexOf(self._assistant), showing)
         self._config.assistant_visible = showing
         if showing:
             # **押してから断らない。** 開いた時点で動いているか見る
             self._assistant.set_available(self._llm.available())
+        elif was_visible:
+            # **閉じるのは「もう使わない」の合図**（ユーザー要望 2026-08-24）。
+            # 出したままのモデルは 8.0GB を抱える。開いていなかったとき
+            # （起動時の復元）は通信しない
+            self._release_model()
+
+    def unload_model(self) -> bool:
+        """モデルをメモリから降ろす（ユーザー要望 2026-08-24）。降ろせたら True。
+
+        答えたあともモデルは載ったままで、12b でも `llama-server` が
+        8.0GB を抱える（実測）。設定の「モデルを残す時間」で自動でも
+        降りるが、**今すぐ空けたいときの道**をメニューにも置く。
+        """
+        if self._assistant.is_running():
+            self.notify("答えを待っている間は降ろせません")
+            return False
+        if not getattr(self._llm, "is_loaded", lambda: False)():
+            self.notify("モデルは読み込まれていません")
+            return False
+        if not self._llm.unload():
+            self.notify("モデルを降ろせませんでした")
+            return False
+        self.notify("モデルを降ろしました")
+        return True
+
+    def _release_model(self) -> None:
+        """黙って降ろす（閉じたとき・終わるとき）。
+
+        **答えの途中では降ろさない。** 走っている生成を壊す。
+        載っていなければ何もしない（無駄な通信をしない）。
+        """
+        if self._assistant.is_running():
+            return
+        release = getattr(self._llm, "unload", None)
+        if release is None or not getattr(self._llm, "is_loaded", lambda: False)():
+            return
+        release()
 
     def ask_assistant(self, task: llm_module.Task) -> None:
         """今開いているノートを読ませる（L-1）。
@@ -1995,6 +2034,8 @@ class MainWindow(QMainWindow):
         # **閉じるのを待たせない。** 生成は最長 120 秒かかる（ADR-0025）。
         # 番号を進めておけば、次の 1 行で自分から降りる
         self._assistant_run += 1
+        # 閉じたあとに 8.0GB を抱えたままにしない（ユーザー要望 2026-08-24）
+        self._release_model()
         # ワーカーが自分の接続で書いている最中に落とさない。
         # **ただし待ちすぎない**（コードレビュー指摘）。既定の 30 秒だと、
         # 大きな vault の走査中に閉じると終わらない窓に見える。索引は

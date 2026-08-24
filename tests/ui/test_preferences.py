@@ -932,3 +932,50 @@ class TestHistoryInterval:
         dialog.history_box.setCurrentIndex(dialog.history_box.findData(120))
         dialog.reset_to_defaults()
         assert dialog.history_box.currentData() == DEFAULT_INTERVAL_MINUTES
+
+
+class TestKeepAlive:
+    """モデルを残す時間（ユーザー報告 2026-08-24）。
+
+    答えたあとも `llama-server` が 8.0GB を抱える（実測）。どれだけ残すかを
+    選べるようにする。既定は Ollama と同じ 5 分。
+    """
+
+    def dialog(self, qtbot, tmp_path):
+        from PySide6.QtCore import QSettings
+
+        from hitofude.config import Config
+        from hitofude.ui.preferences import PreferencesDialog
+
+        config = Config(QSettings(str(tmp_path / "t.ini"), QSettings.Format.IniFormat))
+        found = PreferencesDialog(config)
+        qtbot.addWidget(found)
+        return found, config
+
+    def test_選択肢は4つ(self, qtbot, tmp_path) -> None:
+        dialog, _config = self.dialog(qtbot, tmp_path)
+        box = dialog.keep_alive_box
+        labels = [box.itemText(i) for i in range(box.count())]
+        assert labels == ["答えたらすぐ降ろす", "1 分", "5 分", "30 分"]
+
+    def test_今の値が出る(self, qtbot, tmp_path) -> None:
+        dialog, config = self.dialog(qtbot, tmp_path)
+        assert dialog.keep_alive_box.currentData() == config.llm_keep_alive_minutes
+
+    def test_変えると書き込まれる(self, qtbot, tmp_path) -> None:
+        dialog, config = self.dialog(qtbot, tmp_path)
+        dialog.keep_alive_box.setCurrentIndex(dialog.keep_alive_box.findData(0))
+        dialog.apply()
+        assert config.llm_keep_alive_minutes == 0
+
+    def test_アシスタントのページにある(self, qtbot, tmp_path) -> None:
+        dialog, _config = self.dialog(qtbot, tmp_path)
+        assert dialog.tabs.indexOf(dialog.keep_alive_box.parentWidget()) == 1
+
+    def test_デフォルトに戻すで戻る(self, qtbot, tmp_path) -> None:
+        from hitofude.core.llm import KEEP_ALIVE_MINUTES
+
+        dialog, _config = self.dialog(qtbot, tmp_path)
+        dialog.keep_alive_box.setCurrentIndex(dialog.keep_alive_box.findData(30))
+        dialog.reset_to_defaults()
+        assert dialog.keep_alive_box.currentData() == KEEP_ALIVE_MINUTES

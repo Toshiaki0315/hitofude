@@ -400,3 +400,19 @@ class TestHistoryInterval:
 
         config.settings.setValue("history/interval_minutes", 5)
         assert config.history_interval_minutes == DEFAULT_INTERVAL_MINUTES
+
+
+class TestKeepAlive:
+    """答えたあとモデルを残す長さ（ユーザー報告 2026-08-24）。"""
+
+    def test_既定はOllamaと同じ5分(self, config) -> None:
+        assert config.llm_keep_alive_minutes == 5
+
+    def test_変えられる(self, config) -> None:
+        config.llm_keep_alive_minutes = 0
+        assert config.llm_keep_alive_minutes == 0
+
+    def test_選べない値は既定に戻す(self, config) -> None:
+        for broken in (7, "こわれた", ""):
+            config.settings.setValue("llm/keep_alive_minutes", broken)
+            assert config.llm_keep_alive_minutes == 5, broken
