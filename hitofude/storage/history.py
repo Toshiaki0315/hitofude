@@ -24,14 +24,20 @@ from hitofude.core.document import title_of
 
 logger = logging.getLogger(__name__)
 
-MIN_INTERVAL_MINUTES = 5
-"""前の版からこれだけ経っていなければ残さない（ADR-0023）。既定。"""
+DEFAULT_INTERVAL_MINUTES = 60
+"""前の版からこれだけ経っていなければ残さない（ADR-0023）。既定。
 
-INTERVAL_CHOICES = (0, 5, 15, 30, 60)
+**細かくすると遡れる範囲が縮む。** 版は 1 ノート `MAX_VERSIONS` までで、
+古いものから消える。5 分おきだと 50 版＝約 4 時間ぶんの編集しか遡れず、
+「先週の状態に戻す」が効かなくなる。60 分なら約 50 時間ぶん持つ。
+細かい取り消しは `Cmd+Z`、区切りを自分で決めたいときは `Cmd+S`
+（押すと間隔に関係なく 1 版残る）。
+"""
+
+INTERVAL_CHOICES = (0, 15, 30, 60, 120)
 """設定で選べる間隔（分）。`0` は「なし」（ユーザー要望 2026-08-24）。
 
-**細かさの好みは人による。** 打つたびに残っていてほしい人と、
-版が増えるのを嫌う人がいる。`0` は自分で保存したときだけ残す。
+`0` は自分で保存したときだけ残す。
 """
 
 MAX_VERSIONS = 50
@@ -88,7 +94,7 @@ def keep(
     *,
     now: datetime,
     force: bool = False,
-    interval_minutes: int = MIN_INTERVAL_MINUTES,
+    interval_minutes: int = DEFAULT_INTERVAL_MINUTES,
 ) -> Path | None:
     """今の全文を 1 版として残す。残したら場所を、残さなければ `None`。
 

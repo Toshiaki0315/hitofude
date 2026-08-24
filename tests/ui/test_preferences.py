@@ -902,7 +902,7 @@ class TestHistoryInterval:
         dialog, _config = self.dialog(qtbot, tmp_path)
         box = dialog.history_box
         labels = [box.itemText(i) for i in range(box.count())]
-        assert labels == ["なし", "5 分", "15 分", "30 分", "60 分"]
+        assert labels == ["なし", "15 分", "30 分", "60 分", "120 分"]
 
     def test_今の値が出る(self, qtbot, tmp_path) -> None:
         dialog, config = self.dialog(qtbot, tmp_path)
@@ -926,9 +926,9 @@ class TestHistoryInterval:
         assert dialog.tabs.indexOf(dialog.history_box.parentWidget()) == 0
 
     def test_デフォルトに戻すで戻る(self, qtbot, tmp_path) -> None:
-        from hitofude.storage.history import MIN_INTERVAL_MINUTES
+        from hitofude.storage.history import DEFAULT_INTERVAL_MINUTES
 
         dialog, _config = self.dialog(qtbot, tmp_path)
-        dialog.history_box.setCurrentIndex(dialog.history_box.findData(60))
+        dialog.history_box.setCurrentIndex(dialog.history_box.findData(120))
         dialog.reset_to_defaults()
-        assert dialog.history_box.currentData() == MIN_INTERVAL_MINUTES
+        assert dialog.history_box.currentData() == DEFAULT_INTERVAL_MINUTES

@@ -60,7 +60,7 @@ class TestInterval:
 
     def test_間隔が空けば残す(self, root) -> None:
         history.keep(root, NOTE_ID, "# 一版目\n", now=NOW)
-        later = NOW + timedelta(minutes=history.MIN_INTERVAL_MINUTES)
+        later = NOW + timedelta(minutes=history.DEFAULT_INTERVAL_MINUTES)
         assert history.keep(root, NOTE_ID, "# 二版目\n", now=later) is not None
 
     def test_同じ内容なら残さない(self, root) -> None:
@@ -78,11 +78,12 @@ class TestInterval:
 
 class TestVersions:
     def test_新しい順に並ぶ(self, root) -> None:
-        for minutes, text in ((0, "# 一\n"), (10, "# 二\n"), (20, "# 三\n")):
+        # **既定の間引きに引っかからない間隔で置く。** ここで見たいのは並び
+        for minutes, text in ((0, "# 一\n"), (60, "# 二\n"), (120, "# 三\n")):
             history.keep(root, NOTE_ID, text, now=NOW + timedelta(minutes=minutes))
 
         found = history.versions(root, NOTE_ID)
-        assert [version.saved_at.minute for version in found] == [20, 10, 0]
+        assert [version.saved_at.hour for version in found] == [12, 11, 10]
 
     def test_中身が読める(self, root) -> None:
         history.keep(root, NOTE_ID, "# 中身\n", now=NOW)
@@ -188,9 +189,9 @@ class TestChosenInterval:
 
     def test_選んだ間隔まで待つ(self, root) -> None:
         history.keep(root, NOTE_ID, "# 一版目\n", now=NOW)
-        after = NOW + timedelta(minutes=10)
-        assert history.keep(root, NOTE_ID, "# 二版目\n", now=after, interval_minutes=15) is None
-        assert history.keep(root, NOTE_ID, "# 二版目\n", now=after, interval_minutes=5) is not None
+        after = NOW + timedelta(minutes=20)
+        assert history.keep(root, NOTE_ID, "# 二版目\n", now=after, interval_minutes=30) is None
+        assert history.keep(root, NOTE_ID, "# 二版目\n", now=after, interval_minutes=15) is not None
 
     def test_なしなら残さない(self, root) -> None:
         """「なし」は `Cmd+S` を押したときだけ残す（ユーザーの選択）。"""
@@ -201,4 +202,4 @@ class TestChosenInterval:
         assert saved is not None
 
     def test_選べる間隔は5つ(self) -> None:
-        assert history.INTERVAL_CHOICES == (0, 5, 15, 30, 60)
+        assert history.INTERVAL_CHOICES == (0, 15, 30, 60, 120)

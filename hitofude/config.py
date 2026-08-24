@@ -17,8 +17,8 @@ from PySide6.QtCore import QByteArray, QSettings
 
 from hitofude.core import graph, llm, ocr
 from hitofude.core.paths import relative_inside
+from hitofude.storage.history import DEFAULT_INTERVAL_MINUTES as DEFAULT_HISTORY_INTERVAL
 from hitofude.storage.history import INTERVAL_CHOICES as HISTORY_INTERVAL_CHOICES
-from hitofude.storage.history import MIN_INTERVAL_MINUTES as DEFAULT_HISTORY_INTERVAL
 from hitofude.storage.index_db import SortOrder
 from hitofude.theme import ThemeMode
 
