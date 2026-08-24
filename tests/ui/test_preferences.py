@@ -349,10 +349,15 @@ class TestNumberFields:
     def boxes(self, dialog) -> dict:
         return {
             "文字サイズ": dialog._size,
+            "タブ幅": dialog._tab_width,
             "ゴミ箱の保持": dialog._trash_days,
             "ポート": dialog.port_box,
             "答えを待つ長さ": dialog.timeout_box,
         }
+
+    def with_unit(self, dialog) -> dict:
+        """単位のラベルが隣に付く欄。ポートには単位が無い。"""
+        return {name: box for name, box in self.boxes(dialog).items() if name != "ポート"}
 
     def test_単位を欄の中に入れない(self, dialog) -> None:
         for name, box in self.boxes(dialog).items():
@@ -377,6 +382,25 @@ class TestNumberFields:
         """伸ばすと矢印が数字から遠くなる。"""
         for name, box in self.boxes(dialog).items():
             assert box.maximumWidth() < 200, f"「{name}」の欄が長い"
+
+    def test_どの欄も同じ幅(self, dialog) -> None:
+        """**同じ列で長さがばらつかない**（ユーザー指摘 2026-08-24）。"""
+        widths = {box.width() for box in self.boxes(dialog).values()}
+        assert len(widths) == 1, f"幅がばらばら: {widths}"
+
+    def test_単位のある欄は右に寄せる(self, dialog) -> None:
+        """**数字を単位の隣に置く**（ユーザー要望 2026-08-24）。左に寄せると
+        欄を長くしたぶん数字と単位のあいだが空き、別々のものに見える。"""
+        from PySide6.QtCore import Qt
+
+        for name, box in self.with_unit(dialog).items():
+            assert box.alignment() & Qt.AlignmentFlag.AlignRight, f"「{name}」が右に寄っていない"
+
+    def test_単位が無い欄は寄せない(self, dialog) -> None:
+        """ポートには単位が無いので、寄せる相手がいない。"""
+        from PySide6.QtCore import Qt
+
+        assert not (dialog.port_box.alignment() & Qt.AlignmentFlag.AlignRight)
 
 
 class TestLayout:

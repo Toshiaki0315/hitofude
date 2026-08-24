@@ -12,6 +12,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -94,8 +95,6 @@ MIN_DIALOG_WIDTH = 600
 # 保管フォルダの表示幅。**パスの長さでダイアログの形を決めない。**
 # 深い場所を選ぶと窓が横に伸びるか、収まらない文字が潰れる（ユーザー指摘）
 VAULT_LABEL_WIDTH = FIELD_WIDTH
-# タブ幅の入力欄。1 桁ぶん + 矢印が収まればよい
-TAB_WIDTH_FIELD = 70
 # 数字を打つ欄（文字サイズ・保持日数・ポート・待つ長さ）。**中身の長さで
 # 幅を決めない**（ユーザー指摘 2026-08-24）。`setMaximumWidth` では上限を
 # 決めるだけで欄は伸びない。伸ばすには幅そのものを決める
@@ -159,9 +158,14 @@ def _label(text: str) -> QLabel:
     return label
 
 
-def _with_unit(widget: QWidget, unit: str, parent: QWidget) -> QHBoxLayout:
-    """数字の欄と単位のラベル。**単位を接尾辞にしない**（矢印が単位の右に
-    付いて数字から離れる。ユーザー要望）。"""
+def _with_unit(widget: QAbstractSpinBox, unit: str, parent: QWidget) -> QHBoxLayout:
+    """数字の欄と単位のラベル。
+
+    **単位を接尾辞にしない**（矢印が単位の右に付いて数字から離れる）。
+    **数字は右に寄せる**（ユーザー要望 2026-08-24）。欄を長くしたので、
+    左に寄せたままだと数字と単位のあいだが空いて別々のものに見える。
+    """
+    widget.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
     row = QHBoxLayout()
     row.addWidget(widget)
     row.addWidget(QLabel(unit, parent))
@@ -272,10 +276,7 @@ class PreferencesDialog(QDialog):
         self._tab_width.setRange(MIN_TAB_WIDTH, MAX_TAB_WIDTH)
         self._tab_width.setValue(config.tab_width)
         self._tab_width.setToolTip("タブを何文字ぶんの幅で見せるか。書いた文字は変わりません。")
-        # **単位を接尾辞にしない。** `setSuffix(" 文字")` だと矢印が「文字」の
-        # 右に付いて数字から離れる（ユーザー要望）。数字と単位を分け、
-        # 矢印は数字のすぐ横に置く
-        self._tab_width.setMaximumWidth(TAB_WIDTH_FIELD)
+        self._tab_width.setFixedWidth(NUMBER_FIELD)
         text_form.addRow(_label("タブ幅"), _with_unit(self._tab_width, "文字", self))
 
         # -------------------------------------------------------- ウィンドウ
