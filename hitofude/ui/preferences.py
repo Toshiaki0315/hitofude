@@ -9,7 +9,8 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -70,16 +71,33 @@ SPACING_LABELS = {
 
 MAX_TRASH_DAYS = 3650
 
-# 行と行、ラベルと入力欄のあいだ（ユーザー指摘）。既定の 6px では詰まって
-# 見えた。項目が 8 つ並ぶので、ここが効く
-FORM_SPACING = 10
+# 行と行のあいだ（ユーザー指摘 2026-08-16）。既定の 6px では詰まって見えた
+ROW_SPACING = 12
+# ラベルと入力欄のあいだ。**縦より横を広く取る。** 近すぎると、どのラベルが
+# どの欄のものか目で追いにくい
+LABEL_GAP = 16
+# 節と節のあいだ（ユーザー指摘 2026-08-24）。行の間隔より広くしないと
+# 切れ目が見えず、項目がのっぺり並んで見える
+SECTION_GAP = 22
+# 見出しと、その節の最初の行のあいだ
+HEADING_GAP = 8
+# ラベルの列幅。**節をまたいで入力欄の左端を揃える。** 節ごとに列幅が
+# 決まると、節が変わるたび欄の位置がずれて落ち着かない
+LABEL_COLUMN = 130
+# 入力欄の幅。**選ぶ欄も打ち込む欄も同じ幅にする。** 中身の長さで幅が
+# 決まると、右端がぎざぎざになる（参考にした画面はどれも揃っている）
+FIELD_WIDTH = 300
 # ダイアログの外周
 DIALOG_MARGIN = 20
+# 窓の最小幅。狭いと保管フォルダの欄が溢れる（487px で溢れていた）
+MIN_DIALOG_WIDTH = 600
 # 保管フォルダの表示幅。**パスの長さでダイアログの形を決めない。**
 # 深い場所を選ぶと窓が横に伸びるか、収まらない文字が潰れる（ユーザー指摘）
-VAULT_LABEL_WIDTH = 260
+VAULT_LABEL_WIDTH = FIELD_WIDTH
 # タブ幅の入力欄。1 桁ぶん + 矢印が収まればよい
 TAB_WIDTH_FIELD = 70
+# 数字だけの入力欄（文字サイズ・保持日数）。**中身の長さで幅を決めない**
+NUMBER_FIELD = 110
 
 
 def _resolve_vault(text: str) -> Path | None:
@@ -106,8 +124,14 @@ def _resolve_vault(text: str) -> Path | None:
     return path
 
 
-PAGE_MARGIN = 12
+PAGE_MARGIN = 20
 """ページの内側の余白。タブの枠に文字が貼り付くと窮屈に見える。"""
+
+SECTION_TITLE = "sectionTitle"
+"""節の見出しに付ける名前。並びの検査に使う。"""
+
+SECTION_NOTE = "sectionNote"
+"""見出しの下の 1 行に付ける名前。"""
 
 PORT_FIELD = 90
 """ポートの入力欄。**5 桁が入れば足りる**（タブ幅と同じ考え方）。"""
@@ -116,15 +140,94 @@ LLM_NOTE = "（送り先は 127.0.0.1 に固定）"
 """**外へ出さないことがこの機能の前提**（ADR-0025 の 3）。画面でも明示する。"""
 
 
-def _page(form: QFormLayout) -> QWidget:
-    """フォーム 1 つをページにする。**余白はページ側で取る**（タブの枠に
-    文字が貼り付くと窮屈に見える）。"""
+def _form() -> QFormLayout:
+    """節 1 つぶんの行の並び。間隔とラベルの寄せ方をここで揃える。"""
+    form = QFormLayout()
+    form.setContentsMargins(0, 0, 0, 0)
+    form.setVerticalSpacing(ROW_SPACING)
+    form.setHorizontalSpacing(LABEL_GAP)
+    # ラベルは左揃え。**幅を決めた枠の中で左に置くほうが、日本語では
+    # 読み始めの位置が揃って探しやすい**（右揃えだと語尾で揃う）
+    form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+    return form
+
+
+def _label(text: str) -> QLabel:
+    """行のラベル。**幅を決め打ちして節をまたいで列を揃える。**"""
+    label = QLabel(text)
+    label.setMinimumWidth(LABEL_COLUMN)
+    return label
+
+
+def _left(widget: QWidget) -> QHBoxLayout:
+    """幅を決めた欄を左に寄せて置く。**列いっぱいには伸ばさない。**"""
+    row = QHBoxLayout()
+    row.addWidget(widget)
+    row.addStretch(1)
+    return row
+
+
+def _with_unit(widget: QWidget, unit: str, parent: QWidget) -> QHBoxLayout:
+    """数字の欄と単位のラベル。**単位を接尾辞にしない**（矢印が単位の右に
+    付いて数字から離れる。ユーザー要望）。"""
+    row = QHBoxLayout()
+    row.addWidget(widget)
+    row.addWidget(QLabel(unit, parent))
+    row.addStretch(1)
+    return row
+
+
+def _heading(text: str) -> QLabel:
+    label = QLabel(text)
+    label.setObjectName(SECTION_TITLE)
+    font = label.font()
+    font.setBold(True)
+    label.setFont(font)
+    return label
+
+
+def _note(text: str) -> QLabel:
+    """見出しの下の 1 行。**色を落として本文と区別する**（読み飛ばせるように）。
+
+    配色は決め打ちしない。パレットの「使えない文字」の色を借りれば、
+    明るいテーマでも暗いテーマでも本文より薄くなる。
+    """
+    label = QLabel(text)
+    label.setObjectName(SECTION_NOTE)
+    label.setWordWrap(True)
+    palette = label.palette()
+    palette.setColor(
+        QPalette.ColorRole.WindowText,
+        palette.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText),
+    )
+    label.setPalette(palette)
+    return label
+
+
+def _page(sections: list[tuple[str, str, QFormLayout]]) -> tuple[QWidget, list[tuple[str, str]]]:
+    """節をいくつか積んで 1 ページにする（ユーザー要望 2026-08-24）。
+
+    **節ごとにウィジェットで包まない。** 包むと入力欄の `parentWidget()` が
+    節になり、「この欄はどのページのものか」が辿れなくなる（テストが見て
+    いる）。包むのはレイアウトだけにして、欄はページの直下に置く。
+
+    **余白はページ側で取る**（タブの枠に文字が貼り付くと窮屈に見える）。
+    """
     page = QWidget()
     layout = QVBoxLayout(page)
     layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
-    layout.addLayout(form)
+    layout.setSpacing(HEADING_GAP)
+    written: list[tuple[str, str]] = []
+    for index, (title, note, form) in enumerate(sections):
+        if index:
+            layout.addSpacing(SECTION_GAP)
+        layout.addWidget(_heading(title))
+        layout.addWidget(_note(note))
+        layout.addLayout(form)
+        written.append((title, note))
     layout.addStretch(1)
-    return page
+    return page, written
 
 
 class PreferencesDialog(QDialog):
@@ -141,27 +244,37 @@ class PreferencesDialog(QDialog):
         super().__init__(parent)
         self._config = config
         self.setWindowTitle("設定")
-        self.setMinimumWidth(420)
+        self.setMinimumWidth(MIN_DIALOG_WIDTH)
 
-        form = QFormLayout()
-        form.setVerticalSpacing(FORM_SPACING)
-        form.setHorizontalSpacing(FORM_SPACING)
+        # ---------------------------------------------------- 本文の見え方
+        text_form = _form()
 
         self._font = QFontComboBox(self)
+        self._font.setMinimumWidth(FIELD_WIDTH)
         self._font.setCurrentText(config.font_family)
-        form.addRow("本文フォント", self._font)
+        text_form.addRow(_label("本文フォント"), self._font)
 
         self._size = QDoubleSpinBox(self)
         self._size.setRange(MIN_POINT_SIZE, MAX_POINT_SIZE)
         self._size.setSingleStep(0.5)
         self._size.setSuffix(" pt")
         self._size.setValue(config.font_point_size)
-        form.addRow("文字サイズ", self._size)
+        self._size.setMaximumWidth(NUMBER_FIELD)
+        text_form.addRow(_label("文字サイズ"), _left(self._size))
 
         self._mono = QFontComboBox(self)
+        self._mono.setMinimumWidth(FIELD_WIDTH)
         self._mono.setFontFilters(QFontComboBox.FontFilter.MonospacedFonts)
         self._mono.setCurrentText(config.mono_family)
-        form.addRow("等幅フォント", self._mono)
+        text_form.addRow(_label("等幅フォント"), self._mono)
+
+        self._content_width = QComboBox(self)
+        self._content_width.setMinimumWidth(FIELD_WIDTH)
+        for width, label in WIDTH_LABELS.items():
+            self._content_width.addItem(label, width)
+        self._content_width.setCurrentIndex(self._content_width.findData(config.content_width))
+        self._content_width.setToolTip("本文の最大幅。表の桁数と画像の大きさも一緒に変わります。")
+        text_form.addRow(_label("本文の幅"), self._content_width)
 
         self._tab_width = QSpinBox(self)
         self._tab_width.setRange(MIN_TAB_WIDTH, MAX_TAB_WIDTH)
@@ -171,31 +284,28 @@ class PreferencesDialog(QDialog):
         # 右に付いて数字から離れる（ユーザー要望）。数字と単位を分け、
         # 矢印は数字のすぐ横に置く
         self._tab_width.setMaximumWidth(TAB_WIDTH_FIELD)
-        tab_row = QHBoxLayout()
-        tab_row.addWidget(self._tab_width)
-        tab_row.addWidget(QLabel("文字", self))
-        tab_row.addStretch(1)
-        form.addRow("タブ幅", tab_row)
+        text_form.addRow(_label("タブ幅"), _with_unit(self._tab_width, "文字", self))
+
+        # -------------------------------------------------------- ウィンドウ
+        window_form = _form()
+
+        self._theme = QComboBox(self)
+        self._theme.setMinimumWidth(FIELD_WIDTH)
+        for mode, label in THEME_LABELS.items():
+            self._theme.addItem(label, mode)
+        self._theme.setCurrentIndex(self._theme.findData(config.theme_mode))
+        window_form.addRow(_label("テーマ"), self._theme)
 
         self._spacing = QComboBox(self)
+        self._spacing.setMinimumWidth(FIELD_WIDTH)
         for spacing, label in SPACING_LABELS.items():
             self._spacing.addItem(label, spacing)
         self._spacing.setCurrentIndex(self._spacing.findData(config.line_spacing))
         self._spacing.setToolTip("一覧とサイドバーの行の間隔。本文には効きません。")
-        form.addRow("行間", self._spacing)
+        window_form.addRow(_label("行間"), self._spacing)
 
-        self._content_width = QComboBox(self)
-        for width, label in WIDTH_LABELS.items():
-            self._content_width.addItem(label, width)
-        self._content_width.setCurrentIndex(self._content_width.findData(config.content_width))
-        self._content_width.setToolTip("本文の最大幅。表の桁数と画像の大きさも一緒に変わります。")
-        form.addRow("本文の幅", self._content_width)
-
-        self._theme = QComboBox(self)
-        for mode, label in THEME_LABELS.items():
-            self._theme.addItem(label, mode)
-        self._theme.setCurrentIndex(self._theme.findData(config.theme_mode))
-        form.addRow("テーマ", self._theme)
+        # -------------------------------------------------- ノートの置き場所
+        vault_form = _form()
 
         # **打ち込んでも変えられる**（ユーザー要望）。「変更…」だけだと、
         # パスを貼り付けたいときに遠回りになる。入力欄なら長い場所でも
@@ -208,34 +318,36 @@ class PreferencesDialog(QDialog):
         self._vault_button = QPushButton("変更…", self)
         self._vault_button.clicked.connect(self._choose_vault)
         vault_row = QHBoxLayout()
+        vault_row.setSpacing(LABEL_GAP)
         vault_row.addWidget(self._vault_label)
-        # **ボタンは他の欄と同じ右端に置く。** 場所の文字数で位置が動くと、
-        # 行ごとに右端がばらついて落ち着かない
-        vault_row.addStretch(1)
+        # **ボタンは入力欄のすぐ右。** 欄の幅は決め打ちなので、場所の文字数で
+        # ボタンの位置は動かない。窓の右端まで飛ばすと、他の行の欄の右端と
+        # 揃わずに 1 行だけ間延びして見える
         vault_row.addWidget(self._vault_button)
-        form.addRow("保管フォルダ", vault_row)
+        vault_row.addStretch(1)
+        vault_form.addRow(_label("保管フォルダ"), vault_row)
 
         self._trash_days = QSpinBox(self)
         self._trash_days.setRange(1, MAX_TRASH_DAYS)
         self._trash_days.setSuffix(" 日")
         self._trash_days.setValue(config.trash_days)
-        form.addRow("ゴミ箱の保持", self._trash_days)
+        self._trash_days.setMaximumWidth(NUMBER_FIELD)
+        vault_form.addRow(_label("ゴミ箱の保持"), _left(self._trash_days))
 
         # ------------------------------------------------- ローカルLLM
         # **毛色が違うものを同じ列に並べない**（ユーザー要望）。フォントや
         # 行間は「見え方」で、ここは「誰に読ませるか」。ページを分ける
-        llm_form = QFormLayout()
-        llm_form.setVerticalSpacing(FORM_SPACING)
-        llm_form.setHorizontalSpacing(FORM_SPACING)
+        llm_form = _form()
 
         # **送り先は出さない。** 相手は `127.0.0.1` に固定（ADR-0025 の 3）。
         # ここを設定に出すと「うっかり外に出す」道ができる
         self._model = QComboBox(self)
+        self._model.setMinimumWidth(FIELD_WIDTH)
         self._model.setEditable(True)  # これから pull するモデルも書ける
         self._model.addItems(models if models else [config.llm_model])
         self._model.setCurrentText(config.llm_model)
         self._model.setToolTip("`ollama list` に出る名前。入っていないものも書けます。")
-        llm_form.addRow("モデル", self._model)
+        llm_form.addRow(_label("モデル"), self._model)
 
         self._port = QSpinBox(self)
         self._port.setRange(1, 65535)
@@ -243,18 +355,20 @@ class PreferencesDialog(QDialog):
         self._port.setMaximumWidth(PORT_FIELD)
         self._port.setToolTip("Ollama のポート。`OLLAMA_HOST` で変えている場合はここも合わせます。")
         port_row = QHBoxLayout()
+        port_row.setSpacing(LABEL_GAP)
         port_row.addWidget(self._port)
         self._llm_note = QLabel(LLM_NOTE, self)
         port_row.addWidget(self._llm_note)
         port_row.addStretch(1)
-        llm_form.addRow("ポート", port_row)
+        llm_form.addRow(_label("ポート"), port_row)
 
         self._context = QComboBox(self)
+        self._context.setMinimumWidth(FIELD_WIDTH)
         for tokens in CONTEXT_CHOICES:
             self._context.addItem(f"{tokens // 1024}k トークン", tokens)
         self._context.setCurrentIndex(self._context.findData(config.llm_context))
         self._context.setToolTip("一度に渡せる長さ。**広げるほどメモリを食います**。")
-        llm_form.addRow("一度に渡す量", self._context)
+        llm_form.addRow(_label("一度に渡す量"), self._context)
 
         # 答えを待つ長さ（ユーザー要望 2026-08-24）。**読み込みも含めて待つ。**
         # 12b で 8 秒、26b で 392 秒（実測）と桁が違うので、手元のモデルに
@@ -267,19 +381,19 @@ class PreferencesDialog(QDialog):
             "答えを待つ長さ。**大きいモデルは読み込みだけで数分かかります**"
             "（実測: 26b で 6 分半）。短いと途中で切れます。"
         )
-        timeout_row = QHBoxLayout()
-        timeout_row.addWidget(self._timeout)
-        timeout_row.addWidget(QLabel("分", self))
-        timeout_row.addStretch(1)
-        llm_form.addRow("答えを待つ長さ", timeout_row)
+        llm_form.addRow(_label("答えを待つ長さ"), _with_unit(self._timeout, "分", self))
 
+        # ------------------------------------------------------ 画像とPDF
         # 画像を文字にする読み手（ADR-0027）。**選ぶ材料を画面に置く**
+        ocr_form = _form()
+
         self._ocr = QComboBox(self)
+        self._ocr.setMinimumWidth(FIELD_WIDTH)
         self._ocr.addItem("macOS（デフォルト）", Engine.MAC)
         self._ocr.addItem("ローカルLLM", Engine.LLM)
         self._ocr.setCurrentIndex(self._ocr.findData(config.ocr_engine))
         self._ocr.setToolTip("PDF や画像から文字を読み取るときに使うもの。")
-        llm_form.addRow("文字の読み取り", self._ocr)
+        ocr_form.addRow(_label("文字の読み取り"), self._ocr)
 
         self._restart_note = QLabel("保管フォルダの変更は再起動後に反映されます。", self)
         self._restart_note.setVisible(False)
@@ -295,13 +409,40 @@ class PreferencesDialog(QDialog):
         self._reset.setToolTip("両方のページを既定へ戻します（保管フォルダはそのまま）")
         self._reset.clicked.connect(self.reset_to_defaults)
 
+        general, general_sections = _page(
+            [
+                (
+                    "本文の見え方",
+                    "エディタに出る文字の形と幅。開いているノートにすぐ反映されます。",
+                    text_form,
+                ),
+                ("ウィンドウ", "アプリ全体の配色と、一覧やサイドバーの詰まり具合。", window_form),
+                (
+                    "ノートの置き場所",
+                    ".md ファイルを読み書きするフォルダ。変えても中のファイルは移動しません。",
+                    vault_form,
+                ),
+            ]
+        )
+        assistant, assistant_sections = _page(
+            [
+                ("ローカルLLM", "Ollama に繋いで、要約やレビューを頼みます。", llm_form),
+                (
+                    "画像とPDF",
+                    "取り込んだ画像や PDF から、絵の中の文字を起こすときに使うもの。",
+                    ocr_form,
+                ),
+            ]
+        )
+        self._sections = [general_sections, assistant_sections]
+
         self._tabs = QTabWidget(self)
-        self._tabs.addTab(_page(form), "一般")
-        self._tabs.addTab(_page(llm_form), "アシスタント")
+        self._tabs.addTab(general, "一般")
+        self._tabs.addTab(assistant, "アシスタント")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(DIALOG_MARGIN, DIALOG_MARGIN, DIALOG_MARGIN, DIALOG_MARGIN)
-        layout.setSpacing(FORM_SPACING + 2)
+        layout.setSpacing(SECTION_GAP - HEADING_GAP)
         layout.addWidget(self._tabs)
         layout.addWidget(self._restart_note)
         layout.addWidget(buttons)
@@ -313,6 +454,11 @@ class PreferencesDialog(QDialog):
     @property
     def reset_button(self) -> QPushButton:
         return self._reset
+
+    def sections(self, index: int) -> list[tuple[str, str]]:
+        """ページの節（`(見出し, 説明)`）。**説明のない節を作らない**
+        ための検査に使う。"""
+        return list(self._sections[index])
 
     @property
     def tabs(self) -> QTabWidget:

@@ -339,31 +339,76 @@ class TestTabWidthLayout:
 
 
 class TestLayout:
-    """**詰まって見える**（ユーザー指摘）。
+    """**詰まって見える**（ユーザー指摘 2026-08-16 / 2026-08-24）。
 
-    行間が狭いうえ、保管フォルダのパスが行に収まらず潰れていた。
+    1 度目は行間の狭さとパスの潰れ。2 度目の指摘では、行の間隔ではなく
+    **9 行がのっぺり並ぶこと**が窮屈さの中身だったので、節に切って
+    見出しと短い説明を付けた。
     """
 
-    def test_行間が詰まりすぎない(self, dialog) -> None:
-        """**どのページも詰まっていない**（2 ページになった。ユーザー要望）。"""
-        from hitofude.ui.preferences import FORM_SPACING
+    def pages(self, dialog) -> list:
+        return [dialog.tabs.widget(i) for i in range(dialog.tabs.count())]
 
-        pages = [dialog.tabs.widget(i) for i in range(dialog.tabs.count())]
-        forms = [page.layout().itemAt(0).layout() for page in pages]
+    def test_行間が詰まりすぎない(self, dialog) -> None:
+        """**どのページのどの節も詰まっていない**（節に分かれた）。"""
+        from PySide6.QtWidgets import QFormLayout
+
+        from hitofude.ui.preferences import LABEL_GAP, ROW_SPACING
+
+        forms = [form for page in self.pages(dialog) for form in page.findChildren(QFormLayout)]
         assert forms, "ページが無い"
         for form in forms:
-            assert form.verticalSpacing() >= FORM_SPACING
-            assert form.horizontalSpacing() >= FORM_SPACING
+            assert form.verticalSpacing() >= ROW_SPACING
+            assert form.horizontalSpacing() >= LABEL_GAP
 
     def test_ページの内側にも余白がある(self, dialog) -> None:
         """タブの枠に文字が貼り付くと窮屈に見える。"""
         margins = dialog.tabs.widget(0).layout().contentsMargins()
-        assert margins.left() >= 8
+        assert margins.left() >= 16
 
     def test_外側にも余白がある(self, dialog) -> None:
         margins = dialog.layout().contentsMargins()
         assert margins.left() >= 16
         assert margins.top() >= 16
+
+    def test_どのページも節に分かれている(self, dialog) -> None:
+        """**のっぺり並べない。** 見出しがあると探すときに目が止まる。"""
+        for index in range(dialog.tabs.count()):
+            assert len(dialog.sections(index)) >= 2
+
+    def test_節には短い説明が付く(self, dialog) -> None:
+        """見出しだけでは何の設定か分からない（参考にした画面もそうなっている）。"""
+        for index in range(dialog.tabs.count()):
+            for title, note in dialog.sections(index):
+                assert note.strip(), f"「{title}」に説明が無い"
+
+    def test_節と節のあいだが空く(self, dialog) -> None:
+        """**行の間隔より節の間隔を広く取る。** そうしないと切れ目が見えない。"""
+        from hitofude.ui.preferences import SECTION_GAP, SECTION_TITLE
+
+        for index in range(dialog.tabs.count()):
+            layout = dialog.tabs.widget(index).layout()
+            gaps = 0
+            for i in range(1, layout.count()):
+                widget = layout.itemAt(i).widget()
+                if widget is None or widget.objectName() != SECTION_TITLE:
+                    continue
+                before = layout.itemAt(i - 1)
+                assert before.spacerItem() is not None, "見出しの前に間が無い"
+                assert before.sizeHint().height() >= SECTION_GAP
+                gaps += 1
+            assert gaps >= 1, "節の切れ目が無い"
+
+    def test_窓に広さがある(self, dialog) -> None:
+        """**入力欄が横に潰れない広さ**（487px では保管フォルダが溢れていた）。"""
+        assert dialog.minimumWidth() >= 560
+
+    def test_入力欄の右端が揃う(self, dialog) -> None:
+        """**幅がばらばらだと右端がぎざぎざになる**（参考画面は揃っている）。"""
+        from hitofude.ui.preferences import FIELD_WIDTH
+
+        for box in (dialog._font, dialog._mono, dialog._theme, dialog._content_width):
+            assert box.minimumWidth() >= FIELD_WIDTH
 
     def test_長いパスでも幅が広がらない(self, qtbot, config, tmp_path) -> None:
         """**パスの長さでダイアログの形が決まらない。** 深い場所を選ぶと、
