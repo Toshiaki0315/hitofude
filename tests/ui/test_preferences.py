@@ -352,7 +352,7 @@ class TestNumberFields:
             "タブ幅": dialog._tab_width,
             "ゴミ箱の保持": dialog._trash_days,
             "ポート": dialog.port_box,
-            "答えを待つ長さ": dialog.timeout_box,
+            "応答待ち時間": dialog.timeout_box,
         }
 
     def with_unit(self, dialog) -> dict:
@@ -375,17 +375,25 @@ class TestNumberFields:
         assert "日" in labels
 
     def test_窮屈にしない(self, dialog) -> None:
+        """桁が増えても数字が矢印にぶつからない（保持日数は 4 桁まで入る）。"""
         for name, box in self.boxes(dialog).items():
-            assert box.width() >= 100, f"「{name}」の欄が短い"
+            assert box.width() > box.sizeHint().width(), f"「{name}」の欄が短い"
+        assert dialog.port_box.width() >= 100
+
+    def test_単位のある欄は端を半分にする(self, dialog) -> None:
+        """**単位が外に出ているぶん、欄は短くて足りる**（ユーザー要望
+        2026-08-24）。数字の左に残る余りを半分に詰める。"""
+        for name, box in self.with_unit(dialog).items():
+            assert 78 <= box.width() < dialog.port_box.width(), f"「{name}」の幅"
 
     def test_横いっぱいには伸ばさない(self, dialog) -> None:
         """伸ばすと矢印が数字から遠くなる。"""
         for name, box in self.boxes(dialog).items():
             assert box.maximumWidth() < 200, f"「{name}」の欄が長い"
 
-    def test_どの欄も同じ幅(self, dialog) -> None:
+    def test_単位のある欄は同じ幅(self, dialog) -> None:
         """**同じ列で長さがばらつかない**（ユーザー指摘 2026-08-24）。"""
-        widths = {box.width() for box in self.boxes(dialog).values()}
+        widths = {box.width() for box in self.with_unit(dialog).values()}
         assert len(widths) == 1, f"幅がばらばら: {widths}"
 
     def test_単位のある欄は右に寄せる(self, dialog) -> None:
@@ -836,7 +844,7 @@ class TestOcrSetting:
 
 
 class TestLlmTimeoutSetting:
-    """答えを待つ長さを設定に出す（ユーザー要望 2026-08-24）。"""
+    """応答待ち時間を設定に出す（ユーザー要望 2026-08-24）。"""
 
     def dialog(self, qtbot, tmp_path):
         from PySide6.QtCore import QSettings

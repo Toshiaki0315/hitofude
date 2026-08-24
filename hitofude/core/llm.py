@@ -182,7 +182,7 @@ class LocalLLM:
     port: int = DEFAULT_PORT
     context: int = CONTEXT_TOKENS
     timeout: float = TIMEOUT_SECONDS
-    """答えを待つ長さ（秒）。設定で変えられる（大きいモデルほど要る）。"""
+    """応答待ち時間（秒）。設定で変えられる（大きいモデルほど要る）。"""
 
     transport: Transport = field(default=_urlopen)
 

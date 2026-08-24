@@ -80,7 +80,7 @@ MAX_TAB_WIDTH = 8
 # spec §5.1: サイドバー 180px / ノートリスト 280px / エディタ（可変）
 DEFAULT_SPLITTER_SIZES = [180, 280, 640]
 
-# 答えを待つ長さ（分）。**読み込みを含めて待つ。** 12b で 8 秒、26b で
+# 応答待ち時間（分）。**読み込みを含めて待つ。** 12b で 8 秒、26b で
 # 392 秒（実測）と桁が違うので、既定は大きめに取って設定で詰められるようにする
 DEFAULT_LLM_TIMEOUT_MINUTES = 10
 MIN_LLM_TIMEOUT_MINUTES = 1
@@ -370,7 +370,7 @@ class Config:
 
     @property
     def llm_timeout_minutes(self) -> int:
-        """答えを待つ長さ（分）。
+        """応答待ち時間（分）。
 
         **大きいモデルは読み込みだけで数分かかる**（実測: gemma4:26b で
         最初の 1 行まで 391.9 秒）。既定のままだと切れてしまうので、

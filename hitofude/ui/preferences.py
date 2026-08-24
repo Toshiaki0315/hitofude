@@ -95,10 +95,13 @@ MIN_DIALOG_WIDTH = 600
 # 保管フォルダの表示幅。**パスの長さでダイアログの形を決めない。**
 # 深い場所を選ぶと窓が横に伸びるか、収まらない文字が潰れる（ユーザー指摘）
 VAULT_LABEL_WIDTH = FIELD_WIDTH
-# 数字を打つ欄（文字サイズ・保持日数・ポート・待つ長さ）。**中身の長さで
-# 幅を決めない**（ユーザー指摘 2026-08-24）。`setMaximumWidth` では上限を
-# 決めるだけで欄は伸びない。伸ばすには幅そのものを決める
+# 数字を打つ欄。**中身の長さで幅を決めない**（ユーザー指摘 2026-08-24）。
+# `setMaximumWidth` では上限を決めるだけで欄は伸びない（伸縮しない欄は
+# sizeHint のまま）。伸ばすには幅そのものを決める
 NUMBER_FIELD = 110
+# 単位のラベルが隣に付く欄。**数字の左に残る余りを半分に詰める**
+# （ユーザー要望 2026-08-24）。単位が外に出ているぶん短くて足りる
+UNIT_FIELD = 82
 
 
 def _resolve_vault(text: str) -> Path | None:
@@ -166,6 +169,7 @@ def _with_unit(widget: QAbstractSpinBox, unit: str, parent: QWidget) -> QHBoxLay
     左に寄せたままだと数字と単位のあいだが空いて別々のものに見える。
     """
     widget.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    widget.setFixedWidth(UNIT_FIELD)
     row = QHBoxLayout()
     row.addWidget(widget)
     row.addWidget(QLabel(unit, parent))
@@ -255,7 +259,6 @@ class PreferencesDialog(QDialog):
         # **単位は欄の外**（ユーザー要望 2026-08-24）。接尾辞にすると矢印が
         # 「pt」の右に付いて数字から離れる。タブ幅で先に直したのと同じ形
         self._size.setValue(config.font_point_size)
-        self._size.setFixedWidth(NUMBER_FIELD)
         text_form.addRow(_label("文字サイズ"), _with_unit(self._size, "pt", self))
 
         self._mono = QFontComboBox(self)
@@ -276,7 +279,6 @@ class PreferencesDialog(QDialog):
         self._tab_width.setRange(MIN_TAB_WIDTH, MAX_TAB_WIDTH)
         self._tab_width.setValue(config.tab_width)
         self._tab_width.setToolTip("タブを何文字ぶんの幅で見せるか。書いた文字は変わりません。")
-        self._tab_width.setFixedWidth(NUMBER_FIELD)
         text_form.addRow(_label("タブ幅"), _with_unit(self._tab_width, "文字", self))
 
         # -------------------------------------------------------- ウィンドウ
@@ -323,7 +325,6 @@ class PreferencesDialog(QDialog):
         self._trash_days = QSpinBox(self)
         self._trash_days.setRange(1, MAX_TRASH_DAYS)
         self._trash_days.setValue(config.trash_days)
-        self._trash_days.setFixedWidth(NUMBER_FIELD)
         vault_form.addRow(_label("ゴミ箱の保持"), _with_unit(self._trash_days, "日", self))
 
         # ------------------------------------------------- ローカルLLM
@@ -362,18 +363,17 @@ class PreferencesDialog(QDialog):
         self._context.setToolTip("一度に渡せる長さ。**広げるほどメモリを食います**。")
         llm_form.addRow(_label("一度に渡す量"), self._context)
 
-        # 答えを待つ長さ（ユーザー要望 2026-08-24）。**読み込みも含めて待つ。**
+        # 応答待ち時間（ユーザー要望 2026-08-24）。**読み込みも含めて待つ。**
         # 12b で 8 秒、26b で 392 秒（実測）と桁が違うので、手元のモデルに
         # 合わせて延ばせるようにする
         self._timeout = QSpinBox(self)
         self._timeout.setRange(MIN_LLM_TIMEOUT_MINUTES, MAX_LLM_TIMEOUT_MINUTES)
         self._timeout.setValue(config.llm_timeout_minutes)
-        self._timeout.setFixedWidth(NUMBER_FIELD)
         self._timeout.setToolTip(
-            "答えを待つ長さ。**大きいモデルは読み込みだけで数分かかります**"
+            "応答待ち時間。**大きいモデルは読み込みだけで数分かかります**"
             "（実測: 26b で 6 分半）。短いと途中で切れます。"
         )
-        llm_form.addRow(_label("答えを待つ長さ"), _with_unit(self._timeout, "分", self))
+        llm_form.addRow(_label("応答待ち時間"), _with_unit(self._timeout, "分", self))
 
         # ------------------------------------------------------ 画像とPDF
         # 画像を文字にする読み手（ADR-0027）。**選ぶ材料を画面に置く**
