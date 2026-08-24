@@ -5,6 +5,7 @@ conftest.py はテストモジュールより先に読み込まれるため、�
 """
 
 import os
+import pathlib
 import tempfile
 
 # ヘッドレス（CI / バックグラウンド実行）でも GUI テストが動くようにする。
@@ -21,6 +22,12 @@ os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--no-sandbox --disable-gpu"
 # （実際に汚した）。`Path.home()` は HOME を見るので、import 時点で差し替える。
 _SANDBOX_HOME = tempfile.mkdtemp(prefix="hitofude-test-home-")
 os.environ["HOME"] = _SANDBOX_HOME
+# **本物のホームと同じ形にしておく。** `~/Documents` が無いと既定の保管
+# フォルダ（`~/Documents/HitofudeNotes`）が「作れない場所」と判定され、
+# 設定の `apply()` がモーダルの警告を出して**テストが固まる**（閉じる人が
+# 居ない）。全体を通すと他のテストが先に作るので通り、その一部だけを
+# 走らせると固まる、という順序依存になっていた
+pathlib.Path(_SANDBOX_HOME, "Documents").mkdir(parents=True, exist_ok=True)
 
 from pathlib import Path  # noqa: E402
 

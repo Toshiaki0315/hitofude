@@ -17,6 +17,21 @@ from hitofude.config import Config
 from hitofude.ui.main_window import MainWindow
 
 
+class _OfflineLLM:
+    """繋がらない相手。試験の既定（本物の Ollama を叩かないため）。"""
+
+    model = "test"
+
+    def available(self) -> bool:
+        return False
+
+    def models(self) -> list[str]:
+        return []
+
+    def generate(self, prompt: str, *, on_chunk=None, should_stop=None) -> str:
+        raise AssertionError("この試験は LLM を使わない（使うなら set_llm する）")
+
+
 @pytest.fixture
 def config(tmp_path: Path, qapp) -> Config:
     """隔離した設定と保管フォルダ。
@@ -40,6 +55,11 @@ def window(qtbot, config: Config) -> MainWindow:
     `close()` まで面倒を見る。閉じないと監視スレッドと索引の接続が残る。
     """
     widget = MainWindow(config)
+    # **外に繋ぎに行かせない。** 既定のままだと `available()` / `models()` が
+    # 本物の Ollama（127.0.0.1:11434）を叩き、動かしている人の手元だけ
+    # 結果が変わる（アシスタントの開閉と `Cmd+,` が実際にそうなっていた）。
+    # 中身を見たいテストは自分で `set_llm` する
+    widget.set_llm(_OfflineLLM())
     qtbot.addWidget(widget)
     yield widget
     widget.close()
