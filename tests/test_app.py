@@ -489,6 +489,27 @@ class TestQtJapanese:
         assert any("取り消す" in label or "元に戻す" in label for label in labels), labels
         assert not any(label.startswith("Undo") for label in labels), labels
 
+    # **`(&U)` の飾りは自動では見られない。** 動作の文字列には常に入って
+    # いて（実測: `元に戻す(&U)`）、macOS の cocoa が**描くときに外す**。
+    # offscreen では外れないので、ここで見ると必ず落ちる。手動チェックのまま。
+
+    def test_ダイアログのボタンも日本語(self, qapp) -> None:
+        """**「はい / いいえ」も Qt の言葉。** 本文のメニューだけ直しても、
+        確認のダイアログが Yes / No のままだと混ざる（手動チェックの項目）。
+        """
+        from PySide6.QtWidgets import QMessageBox
+
+        from hitofude.app import install_translations
+
+        install_translations(qapp)
+        box = QMessageBox()
+        box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        try:
+            labels = [button.text() for button in box.buttons()]
+        finally:
+            box.deleteLater()
+        assert not any(label.replace("&", "") in {"Yes", "No"} for label in labels), labels
+
     def test_二度読み込んでも増えない(self, qapp) -> None:
         """設定を触るたびに呼ばれても、翻訳が積み上がらない。"""
         from hitofude.app import install_translations
