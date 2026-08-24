@@ -75,6 +75,7 @@ from hitofude.ui.index_sync import (
     IndexSyncTask,
     SyncReporter,
 )
+from hitofude.ui.menu_button import MenuButton
 from hitofude.ui.menus import build_gear_menu, build_menus, sync_edit_actions
 from hitofude.ui.note_actions import NoteActions
 from hitofude.ui.note_list import NoteListView
@@ -366,7 +367,7 @@ class MainWindow(QMainWindow):
         # メニューを開く歯車（ユーザー要望）。置き場は**ステータスバー**。
         # 書式ツールバーは Cmd+3 で隠せるので、そこに置くと設定への入口ごと
         # 消える（ユーザー指摘）。ステータスバーは常に見えている
-        self._menu_button = QToolButton(self.statusBar())
+        self._menu_button = MenuButton(self.statusBar())
         self._menu_button.setAutoRaise(True)
         # 24px（ユーザー要望）。ブラウザの設定歯車と同じくらいの存在感にする
         self._menu_button.setIconSize(QSize(24, 24))

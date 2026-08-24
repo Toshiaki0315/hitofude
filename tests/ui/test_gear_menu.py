@@ -50,6 +50,52 @@ class TestPlacement:
         assert not hasattr(window._pane.toolbar, "menu_button")
 
 
+class TestOpensUpward:
+    """**メニューは必ず上に開く**（ユーザー要望 2026-08-24）。
+
+    歯車は窓のいちばん下（ステータスバー）にいる。Qt 任せだと画面の下に
+    余裕がある限り下へ開き、メニューが窓の外へ出て切り離されて見える。
+    """
+
+    def anchored(self, window):
+        """画面の**上寄り**に置いた窓と、その歯車。
+
+        位置が要る。画面のいちばん下に窓があると、Qt は下に開けないので
+        勝手に上へ回し、**直っていなくてもこの検査が通ってしまう**
+        （実際に一度そうなった）。上下どちらにも余地がある場所に置く。
+        """
+        from PySide6.QtWidgets import QApplication
+
+        available = QApplication.primaryScreen().availableGeometry()
+        window.resize(700, 400)
+        window.move(available.left() + 40, available.top() + 40)
+        window.show()
+        return window.menu_button, gear_menu(window)
+
+    def test_歯車の上に出る(self, window, qtbot) -> None:
+        from PySide6.QtCore import QPoint, Qt
+
+        button, menu = self.anchored(window)
+        qtbot.mouseClick(button, Qt.MouseButton.LeftButton)
+        try:
+            assert menu.isVisible()
+            top = button.mapToGlobal(QPoint(0, 0)).y()
+            assert menu.geometry().bottom() <= top, "メニューが歯車より下に出ている"
+        finally:
+            menu.hide()
+
+    def test_左端を歯車に揃える(self, window) -> None:
+        from PySide6.QtCore import QPoint
+
+        from hitofude.ui.menu_button import above_position
+
+        button, menu = self.anchored(window)
+        corner = button.mapToGlobal(QPoint(0, 0))
+        placed = above_position(button, menu)
+        assert placed.x() == corner.x()
+        assert placed.y() + menu.sizeHint().height() == corner.y()
+
+
 class TestMenuContents:
     def test_主要な項目が入っている(self, window) -> None:
         labels = [a.text() for a in gear_menu(window).actions() if a.text()]
