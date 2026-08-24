@@ -497,14 +497,22 @@ class TestMenuLook:
         finally:
             menu.deleteLater()
 
-    def test_余白も触らない(self, window) -> None:
-        """macOS のメニューは OS が描く。**スタイルシートを当てない。**"""
+    def test_本文の右クリックと同じ見た目(self, window) -> None:
+        """**揃っていることが要件**（2026-08-22）。
+
+        当初は「素のまま（スタイルシートを当てない）」で揃えていたが、
+        2026-08-24 に**どちらも窮屈で角が立っている**と指摘があった。
+        素のままにするのではなく、**同じものを両方に当てて**揃える。
+        """
         path = make_note(window, "会議")
         menu = window.context_menu_for(path.relative_to(window.vault.root))
+        standard = window.editor.build_context_menu()
         try:
-            assert menu.styleSheet() == ""
+            assert menu.styleSheet() != ""
+            assert menu.styleSheet() == standard.styleSheet()
         finally:
             menu.deleteLater()
+            standard.deleteLater()
 
 
 class TestSelectionFollows:

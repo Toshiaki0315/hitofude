@@ -14,6 +14,7 @@ from pathlib import Path
 from PySide6.QtGui import QAction, QIcon, QTextCursor
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QMessageBox
 
+from hitofude.app import style_menu
 from hitofude.core import extract, template
 from hitofude.core.document import Note, with_title
 from hitofude.core.template import daily_title
@@ -53,6 +54,17 @@ MENU_ICONS = {
     "ゴミ箱を空にする…": "user-trash",
     "この検索を削除…": "edit-delete",
 }
+
+
+def _new_menu(window) -> QMenu:
+    """右クリックのメニューを作る。**見た目もここで当てる**（ユーザー指摘）。
+
+    Qt の既定は行が詰まっていて角も立っている。作る場所を 1 つに寄せて、
+    足したメニューだけ素のまま、が起きないようにする。
+    """
+    menu = QMenu(window)
+    style_menu(menu, window._theme_watcher.colors)
+    return menu
 
 
 def add_item(menu: QMenu, label: str) -> QAction:
@@ -385,13 +397,13 @@ class NoteActions:
         出すと、押せる何かがあると誤解させる。
         """
         if target.kind is FilterKind.SEARCH:
-            menu = QMenu(self._window)
+            menu = _new_menu(self._window)
             add_item(menu, "この検索を削除…").triggered.connect(
                 lambda: self.delete_saved_search(target)
             )
             return menu
         if target.kind is FilterKind.FOLDER:
-            menu = QMenu(self._window)
+            menu = _new_menu(self._window)
             add_item(menu, "新しいフォルダ…").triggered.connect(lambda: self.create_folder(target))
             add_item(menu, "Finder で開く").triggered.connect(
                 lambda: self.open_folder_in_finder(target)
@@ -406,7 +418,7 @@ class NoteActions:
             return menu
         if target.kind is not FilterKind.TRASH:
             return None
-        menu = QMenu(self._window)
+        menu = _new_menu(self._window)
         action = add_item(menu, "ゴミ箱を空にする…")
         action.triggered.connect(self.empty_trash)
         # **押してから断らない。** 件数は開く前に分かるので、押せない状態で
@@ -612,7 +624,7 @@ class NoteActions:
         """
         window = self._window
         path = window._vault.root / relative
-        menu = QMenu(window)
+        menu = _new_menu(window)
         if window._filter.kind is FilterKind.TRASH:
             add_item(menu, "元に戻す").triggered.connect(lambda: self.restore_note(path))
             menu.addSeparator()

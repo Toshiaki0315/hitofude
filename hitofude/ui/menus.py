@@ -12,6 +12,7 @@ from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QMenu
 
 from hitofude import APP_NAME
+from hitofude.app import style_menu
 
 
 def build_menus(window) -> None:
@@ -240,6 +241,9 @@ def build_gear_menu(window) -> QMenu:
     全メニューの写しにすると、探す手間がメニューバーと変わらなくなる。
     """
     menu = QMenu(window)
+    # 見た目も揃える（ユーザー指摘 2026-08-24）。歯車から開くのも
+    # 右クリックと同じポップアップ
+    style_menu(menu, window._theme_watcher.colors)
     menu.aboutToShow.connect(lambda: sync_view_checks(window))
     groups = (
         ("設定…",),

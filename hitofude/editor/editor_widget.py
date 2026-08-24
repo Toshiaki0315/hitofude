@@ -26,6 +26,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QListWidget, QMenu, QPlainTextEdit, QTextEdit, QWidget
 
+from hitofude.app import style_menu
 from hitofude.core import code_langs, frontmatter, notelink, search, table, tags
 from hitofude.core.activation import ActivationKind, activation_at
 from hitofude.core.document import plain_text
@@ -1105,6 +1106,9 @@ class MarkdownEditor(QPlainTextEdit):
         **Qt の cocoa 側も落とすが、確かめられないものは自分で落とす**。
         """
         menu = self.createStandardContextMenu()
+        # 見た目はアプリのメニューと揃える（ユーザー指摘 2026-08-24）。
+        # 中身は Qt が作るが、余白と角の丸みはこちらで決める
+        style_menu(menu, self._theme)
         for action in menu.actions():
             text = action.text()
             if text:

@@ -28,8 +28,10 @@ __all__ = [
     "key_repeat_enabled",
     "macos_app_name",
     "macos_appearance",
+    "menu_style",
     "set_macos_app_name",
     "set_macos_appearance",
+    "style_menu",
     "system_is_dark",
 ]
 
@@ -340,6 +342,73 @@ def system_is_dark() -> bool:
     （Phase 2 で接続する）。ここでは現在値だけを読む。
     """
     return QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
+
+
+# ポップアップメニューの寸法（ユーザー指摘 2026-08-24）。Qt が描く既定は
+# macOS のメニューより行が詰まっていて角も立っている。**押す前に読むもの**
+# なので、OS のメニューと並べても浮かない余白と丸みにする
+MENU_RADIUS = 10
+"""メニューの角の丸み（px）。macOS のメニューに合わせた。"""
+
+MENU_ITEM_RADIUS = 6
+"""選んでいる行の丸み（px）。角の丸いメニューに角ばった帯は合わない。"""
+
+MENU_PADDING = 5
+"""メニューの上下の余白（px）。角丸のぶん、内側にも余白が要る。"""
+
+MENU_ITEM_PADDING = (6, 24, 6, 6)
+"""行の余白（上・右・下・左、px）。右は矢印とショートカットのぶん広い。"""
+
+
+def menu_style(theme: ThemeColors) -> str:
+    """ポップアップメニューの見た目（ユーザー指摘 2026-08-24）。
+
+    メニューは Qt が描いていて、既定では行が詰まり角も立っている。
+    余白と丸みは QPalette では決められないので QSS で書く。
+
+    **アプリ全体には置かない。** 描画は変わらない（本体の窓を 256 万画素
+    比べて差 0）が、`QApplication.setStyleSheet()` はすべてのウィジェットを
+    QSS 経由の描画に切り替えるため**とても高い**（同じ試験が 5 秒 → 53 秒。
+    実測）。開くたびに 1 つのメニューへ当てる（`style_menu`）。
+
+    サブメニューは親の QSS を受け継ぐので、親に当てれば足りる。
+    """
+    top, right, bottom, left = MENU_ITEM_PADDING
+    return f"""
+    QMenu {{
+        background-color: {theme.background};
+        color: {theme.foreground};
+        border: 1px solid {theme.rule};
+        border-radius: {MENU_RADIUS}px;
+        padding: {MENU_PADDING}px 0px;
+    }}
+    QMenu::item {{
+        padding: {top}px {right}px {bottom}px {left}px;
+        margin: 0px {MENU_PADDING}px;
+        border-radius: {MENU_ITEM_RADIUS}px;
+    }}
+    QMenu::item:selected {{
+        background-color: {theme.selection_background};
+        color: {theme.foreground};
+    }}
+    QMenu::item:disabled {{ color: {theme.muted_foreground}; }}
+    QMenu::icon {{ padding-left: 10px; }}
+    QMenu::separator {{
+        height: 1px;
+        background-color: {theme.rule};
+        margin: {MENU_PADDING}px 12px;
+    }}
+    """
+
+
+def style_menu(menu: QWidget, theme: ThemeColors) -> None:
+    """1 つのポップアップメニューに見た目を当てる。
+
+    **開くところで呼ぶ。** アプリ全体に置くと描画の経路が丸ごと変わって
+    重い（`menu_style` の説明）。メニューは右クリックのたびに作り直す
+    ので、ここで当てれば常に今のテーマになる。
+    """
+    menu.setStyleSheet(menu_style(theme))
 
 
 def apply_theme(app: QApplication, theme: ThemeColors) -> None:

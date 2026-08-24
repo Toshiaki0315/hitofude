@@ -1,0 +1,129 @@
+"""ポップアップメニューの見た目（ユーザー指摘 2026-08-24）。
+
+**窮屈で角が立っている。** Qt が描く既定のメニューは、macOS のメニュー
+（Finder やターミナルの右クリック）と並べると行が詰まり、角も丸くない。
+押す前に読むものなので、OS のメニューと揃えて浮かないようにする。
+
+配色は QPalette では足りない（余白と丸みは QSS でしか決められない）ので、
+**メニューにだけ** QSS を当てる。本体の描画は変わらない（実測: 窓を
+256 万画素比べて差 0）。
+"""
+
+import pytest
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QMenu
+
+from hitofude.app import (
+    MENU_ITEM_RADIUS,
+    MENU_RADIUS,
+    apply_theme,
+    menu_style,
+    style_menu,
+)
+from hitofude.theme import DARK, LIGHT
+
+pytestmark = pytest.mark.gui
+
+
+class TestStyleSheet:
+    def test_角を丸める(self) -> None:
+        assert f"border-radius: {MENU_RADIUS}px" in menu_style(LIGHT)
+
+    def test_選んでいる行も丸める(self) -> None:
+        """角の丸いメニューに角ばった帯は合わない。"""
+        assert f"border-radius: {MENU_ITEM_RADIUS}px" in menu_style(LIGHT)
+
+    def test_行に余白を取る(self) -> None:
+        assert "QMenu::item" in menu_style(LIGHT)
+        assert "padding" in menu_style(LIGHT)
+
+    def test_テーマの色を使う(self) -> None:
+        assert LIGHT.background in menu_style(LIGHT)
+        assert DARK.background in menu_style(DARK)
+
+    def test_区切り線もテーマの色(self) -> None:
+        assert f"background-color: {DARK.rule}" in menu_style(DARK)
+
+
+class TestApplied:
+    """アプリが開くメニューに当たっているか。
+
+    **`QApplication.setStyleSheet()` は使わない。** 描画は変わらないが、
+    すべてのウィジェットが QSS 経由の描画に切り替わってとても高い
+    （同じ試験が 5 秒 → 53 秒。実測）。開くところで 1 つずつ当てる。
+    """
+
+    def test_アプリ全体には置かない(self, qapp) -> None:
+        apply_theme(qapp, LIGHT)
+        assert "QMenu" not in qapp.styleSheet()
+
+    def test_一覧の右クリック(self, window) -> None:
+        note = window.vault.create("見本", "# 見本\n")
+        window.vault_index.upsert_note(note, window.vault.root)
+        window.refresh()
+        menu = window._notes.context_menu_for(note.path.relative_to(window.vault.root))
+        assert "border-radius" in menu.styleSheet()
+
+    def test_歯車のメニュー(self, window) -> None:
+        assert "border-radius" in window.menu_button.menu().styleSheet()
+
+    def test_本文の右クリック(self, window) -> None:
+        """中身は Qt が作るが、見た目はこちらで決める。"""
+        menu = window.editor.build_context_menu()
+        assert "border-radius" in menu.styleSheet()
+
+    def test_今のテーマの色になる(self, window) -> None:
+        from hitofude.theme import DARK
+
+        window._apply_theme_now(DARK)
+        menu = window.editor.build_context_menu()
+        assert DARK.background in menu.styleSheet()
+
+
+class TestRendering:
+    """**本当に丸くなっているか**を絵で見る（文字列の検査だけでは足りない）。
+
+    暗いテーマで見る。`QT_QPA_PLATFORM=offscreen` の `grab()` は alpha を
+    持たない（`Format_RGB32`）ので、角が「抜けている」ことを透明度では
+    確かめられない。**角が本体の色で塗られていない**ことで見る。
+    実機（cocoa）では alpha=0 になることを別途確認した。
+    """
+
+    def menu(self, qapp) -> QMenu:
+        menu = QMenu()
+        style_menu(menu, DARK)
+        for label in ("新しいフォルダ…", "Finder で開く", "名前を変更…"):
+            menu.addAction(label)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        menu.popup(qapp.primaryScreen().geometry().center())
+        qapp.processEvents()
+        return menu
+
+    def test_四隅は本体の色で塗られていない(self, qapp) -> None:
+        menu = self.menu(qapp)
+        try:
+            image = menu.grab().toImage()
+            body = image.pixelColor(image.width() // 2, image.height() // 2)
+            corners = (
+                (0, 0),
+                (image.width() - 1, 0),
+                (0, image.height() - 1),
+                (image.width() - 1, image.height() - 1),
+            )
+            for x, y in corners:
+                assert image.pixelColor(x, y) != body, f"({x}, {y}) が角丸から出ている"
+        finally:
+            menu.hide()
+
+    def test_中は暗いまま(self, qapp) -> None:
+        """角だけが抜けている（全部が抜けているのではない）。
+
+        色そのものは見ない。Qt は本体の上に薄い板を重ねることがある。
+        """
+        menu = self.menu(qapp)
+        try:
+            image = menu.grab().toImage()
+            middle = image.pixelColor(image.width() // 2, image.height() // 2)
+            assert middle.lightness() < 128, middle.name()
+        finally:
+            menu.hide()
