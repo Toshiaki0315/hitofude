@@ -338,6 +338,47 @@ class TestTabWidthLayout:
         assert dialog._tab_width.maximumWidth() < 200
 
 
+class TestNumberFields:
+    """数字を打つ欄（ユーザー要望 2026-08-24）。
+
+    **単位は欄の外に出す。** 接尾辞にすると矢印が単位の右に付いて数字から
+    離れる（タブ幅で先に直した話と同じ）。
+    **短くしない。** 桁が増えると数字が矢印にぶつかって読みにくい。
+    """
+
+    def boxes(self, dialog) -> dict:
+        return {
+            "文字サイズ": dialog._size,
+            "ゴミ箱の保持": dialog._trash_days,
+            "ポート": dialog.port_box,
+            "答えを待つ長さ": dialog.timeout_box,
+        }
+
+    def test_単位を欄の中に入れない(self, dialog) -> None:
+        for name, box in self.boxes(dialog).items():
+            assert box.suffix() == "", f"「{name}」の単位が欄の中にある"
+
+    def test_数字だけが入っている(self, dialog) -> None:
+        assert dialog._size.text().replace(".", "").isdigit()
+        assert dialog._trash_days.text().isdigit()
+
+    def test_単位のラベルが隣にある(self, dialog) -> None:
+        from PySide6.QtWidgets import QLabel
+
+        labels = [w.text() for w in dialog.findChildren(QLabel)]
+        assert "pt" in labels
+        assert "日" in labels
+
+    def test_窮屈にしない(self, dialog) -> None:
+        for name, box in self.boxes(dialog).items():
+            assert box.width() >= 100, f"「{name}」の欄が短い"
+
+    def test_横いっぱいには伸ばさない(self, dialog) -> None:
+        """伸ばすと矢印が数字から遠くなる。"""
+        for name, box in self.boxes(dialog).items():
+            assert box.maximumWidth() < 200, f"「{name}」の欄が長い"
+
+
 class TestLayout:
     """**詰まって見える**（ユーザー指摘 2026-08-16 / 2026-08-24）。
 

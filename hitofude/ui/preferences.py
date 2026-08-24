@@ -96,7 +96,9 @@ MIN_DIALOG_WIDTH = 600
 VAULT_LABEL_WIDTH = FIELD_WIDTH
 # タブ幅の入力欄。1 桁ぶん + 矢印が収まればよい
 TAB_WIDTH_FIELD = 70
-# 数字だけの入力欄（文字サイズ・保持日数）。**中身の長さで幅を決めない**
+# 数字を打つ欄（文字サイズ・保持日数・ポート・待つ長さ）。**中身の長さで
+# 幅を決めない**（ユーザー指摘 2026-08-24）。`setMaximumWidth` では上限を
+# 決めるだけで欄は伸びない。伸ばすには幅そのものを決める
 NUMBER_FIELD = 110
 
 
@@ -133,9 +135,6 @@ SECTION_TITLE = "sectionTitle"
 SECTION_NOTE = "sectionNote"
 """見出しの下の 1 行に付ける名前。"""
 
-PORT_FIELD = 90
-"""ポートの入力欄。**5 桁が入れば足りる**（タブ幅と同じ考え方）。"""
-
 LLM_NOTE = "（送り先は 127.0.0.1 に固定）"
 """**外へ出さないことがこの機能の前提**（ADR-0025 の 3）。画面でも明示する。"""
 
@@ -158,14 +157,6 @@ def _label(text: str) -> QLabel:
     label = QLabel(text)
     label.setMinimumWidth(LABEL_COLUMN)
     return label
-
-
-def _left(widget: QWidget) -> QHBoxLayout:
-    """幅を決めた欄を左に寄せて置く。**列いっぱいには伸ばさない。**"""
-    row = QHBoxLayout()
-    row.addWidget(widget)
-    row.addStretch(1)
-    return row
 
 
 def _with_unit(widget: QWidget, unit: str, parent: QWidget) -> QHBoxLayout:
@@ -257,10 +248,11 @@ class PreferencesDialog(QDialog):
         self._size = QDoubleSpinBox(self)
         self._size.setRange(MIN_POINT_SIZE, MAX_POINT_SIZE)
         self._size.setSingleStep(0.5)
-        self._size.setSuffix(" pt")
+        # **単位は欄の外**（ユーザー要望 2026-08-24）。接尾辞にすると矢印が
+        # 「pt」の右に付いて数字から離れる。タブ幅で先に直したのと同じ形
         self._size.setValue(config.font_point_size)
-        self._size.setMaximumWidth(NUMBER_FIELD)
-        text_form.addRow(_label("文字サイズ"), _left(self._size))
+        self._size.setFixedWidth(NUMBER_FIELD)
+        text_form.addRow(_label("文字サイズ"), _with_unit(self._size, "pt", self))
 
         self._mono = QFontComboBox(self)
         self._mono.setMinimumWidth(FIELD_WIDTH)
@@ -329,10 +321,9 @@ class PreferencesDialog(QDialog):
 
         self._trash_days = QSpinBox(self)
         self._trash_days.setRange(1, MAX_TRASH_DAYS)
-        self._trash_days.setSuffix(" 日")
         self._trash_days.setValue(config.trash_days)
-        self._trash_days.setMaximumWidth(NUMBER_FIELD)
-        vault_form.addRow(_label("ゴミ箱の保持"), _left(self._trash_days))
+        self._trash_days.setFixedWidth(NUMBER_FIELD)
+        vault_form.addRow(_label("ゴミ箱の保持"), _with_unit(self._trash_days, "日", self))
 
         # ------------------------------------------------- ローカルLLM
         # **毛色が違うものを同じ列に並べない**（ユーザー要望）。フォントや
@@ -352,7 +343,7 @@ class PreferencesDialog(QDialog):
         self._port = QSpinBox(self)
         self._port.setRange(1, 65535)
         self._port.setValue(config.llm_port)
-        self._port.setMaximumWidth(PORT_FIELD)
+        self._port.setFixedWidth(NUMBER_FIELD)
         self._port.setToolTip("Ollama のポート。`OLLAMA_HOST` で変えている場合はここも合わせます。")
         port_row = QHBoxLayout()
         port_row.setSpacing(LABEL_GAP)
@@ -376,7 +367,7 @@ class PreferencesDialog(QDialog):
         self._timeout = QSpinBox(self)
         self._timeout.setRange(MIN_LLM_TIMEOUT_MINUTES, MAX_LLM_TIMEOUT_MINUTES)
         self._timeout.setValue(config.llm_timeout_minutes)
-        self._timeout.setMaximumWidth(TAB_WIDTH_FIELD)
+        self._timeout.setFixedWidth(NUMBER_FIELD)
         self._timeout.setToolTip(
             "答えを待つ長さ。**大きいモデルは読み込みだけで数分かかります**"
             "（実測: 26b で 6 分半）。短いと途中で切れます。"
