@@ -212,3 +212,35 @@ class TestKeepFailure:
         window.refresh()
         window.open_note(note.path)
         assert window.keep_version("本文") is None
+
+
+class TestIntervalSetting:
+    """間隔の設定が保存の道に効く（ユーザー要望 2026-08-24）。
+
+    本文の保存は今のまま（打ち終わって 0.8 秒）。ここで変わるのは
+    版を残す間隔だけ。
+    """
+
+    def test_なしなら自動では残さない(self, window) -> None:
+        window._config.history_interval_minutes = 0
+        window.new_note()
+        write_body(window, "# 覚書\n\n追記\n")
+        window.flush()
+        assert versions(window) == []
+
+    def test_なしでも自分で保存したら残す(self, window) -> None:
+        """押したときだけ残る、が「なし」の約束（ユーザーの選択）。"""
+        window._config.history_interval_minutes = 0
+        window.new_note()
+        write_body(window, "# 覚書\n\n追記\n")
+        window.flush(explicit=True)
+        assert len(versions(window)) == 1
+
+    def test_間隔を空けると間引く(self, window) -> None:
+        window._config.history_interval_minutes = 60
+        window.new_note()
+        write_body(window, "# 覚書\n\n一度目\n")
+        window.flush(explicit=True)
+        write_body(window, "# 覚書\n\n二度目\n")
+        window.flush()
+        assert len(versions(window)) == 1

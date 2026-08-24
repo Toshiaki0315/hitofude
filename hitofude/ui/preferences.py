@@ -33,11 +33,13 @@ from PySide6.QtWidgets import (
 
 from hitofude.config import (
     DEFAULT_FONT_FAMILY,
+    DEFAULT_HISTORY_INTERVAL,
     DEFAULT_LLM_TIMEOUT_MINUTES,
     DEFAULT_MONO_FAMILY,
     DEFAULT_POINT_SIZE,
     DEFAULT_TAB_WIDTH,
     DEFAULT_TRASH_DAYS,
+    HISTORY_INTERVAL_CHOICES,
     MAX_LLM_TIMEOUT_MINUTES,
     MAX_POINT_SIZE,
     MAX_TAB_WIDTH,
@@ -327,6 +329,20 @@ class PreferencesDialog(QDialog):
         self._trash_days.setValue(config.trash_days)
         vault_form.addRow(_label("ゴミ箱の保持"), _with_unit(self._trash_days, "日", self))
 
+        # 版を残す間隔（ユーザー要望 2026-08-24）。**本文の保存とは別。**
+        # 本文は打ち終わって 0.8 秒で書く（§7.4）。ここで決めるのは
+        # `.hitofude/history/` に何分おきに 1 版残すか
+        self._history = QComboBox(self)
+        self._history.setMinimumWidth(FIELD_WIDTH)
+        for minutes in HISTORY_INTERVAL_CHOICES:
+            self._history.addItem("なし" if minutes == 0 else f"{minutes} 分", minutes)
+        self._history.setCurrentIndex(self._history.findData(config.history_interval_minutes))
+        self._history.setToolTip(
+            "「戻す」ために残す版の間隔。本文の保存は打ち終わって 0.8 秒後で、"
+            "ここでは変わりません。「なし」は自分で保存したときだけ残します。"
+        )
+        vault_form.addRow(_label("履歴を残す間隔"), self._history)
+
         # ------------------------------------------------- ローカルLLM
         # **毛色が違うものを同じ列に並べない**（ユーザー要望）。フォントや
         # 行間は「見え方」で、ここは「誰に読ませるか」。ページを分ける
@@ -474,6 +490,11 @@ class PreferencesDialog(QDialog):
         return self._timeout
 
     @property
+    def history_box(self) -> QComboBox:
+        """版を残す間隔。**本文の保存の間隔ではない**（§7.4 は変えない）。"""
+        return self._history
+
+    @property
     def ocr_box(self) -> QComboBox:
         return self._ocr
 
@@ -574,6 +595,7 @@ class PreferencesDialog(QDialog):
         self._theme.setCurrentIndex(self._theme.findData(ThemeMode.SYSTEM))
         self._tab_width.setValue(DEFAULT_TAB_WIDTH)
         self._trash_days.setValue(DEFAULT_TRASH_DAYS)
+        self._history.setCurrentIndex(self._history.findData(DEFAULT_HISTORY_INTERVAL))
         self._spacing.setCurrentIndex(self._spacing.findData(LineSpacing.NORMAL))
         self._content_width.setCurrentIndex(self._content_width.findData(ContentWidth.STANDARD))
         self._model.setCurrentText(DEFAULT_MODEL)
@@ -598,6 +620,7 @@ class PreferencesDialog(QDialog):
         self._config.line_spacing = self.line_spacing
         self._config.content_width = self.content_width
         self._config.trash_days = self._trash_days.value()
+        self._config.history_interval_minutes = self._history.currentData()
         self._config.llm_model = self._model.currentText()
         self._config.llm_port = self._port.value()
         self._config.llm_context = self._context.currentData()

@@ -177,3 +177,28 @@ class TestLazyReads:
         removed = history.prune(tmp_path, now=datetime(2026, 8, 20, 10, 0))
         assert len(removed) == 1  # 30 日超は消える
         assert reads == []
+
+
+class TestChosenInterval:
+    """間引く間隔を選べるようにする（ユーザー要望 2026-08-24）。
+
+    既定の 5 分は「打ちながら数百版にならない」ための下限だったが、
+    どれくらい細かく残したいかは書く人によって違う。
+    """
+
+    def test_選んだ間隔まで待つ(self, root) -> None:
+        history.keep(root, NOTE_ID, "# 一版目\n", now=NOW)
+        after = NOW + timedelta(minutes=10)
+        assert history.keep(root, NOTE_ID, "# 二版目\n", now=after, interval_minutes=15) is None
+        assert history.keep(root, NOTE_ID, "# 二版目\n", now=after, interval_minutes=5) is not None
+
+    def test_なしなら残さない(self, root) -> None:
+        """「なし」は `Cmd+S` を押したときだけ残す（ユーザーの選択）。"""
+        assert history.keep(root, NOTE_ID, "# 初版\n", now=NOW, interval_minutes=0) is None
+
+    def test_なしでも指示されたら残す(self, root) -> None:
+        saved = history.keep(root, NOTE_ID, "# 初版\n", now=NOW, interval_minutes=0, force=True)
+        assert saved is not None
+
+    def test_選べる間隔は5つ(self) -> None:
+        assert history.INTERVAL_CHOICES == (0, 5, 15, 30, 60)

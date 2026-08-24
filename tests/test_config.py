@@ -364,3 +364,27 @@ class TestLlmTimeout:
 
         config.settings.setValue("llm/timeout_minutes", 0)
         assert config.llm_timeout_minutes == DEFAULT_LLM_TIMEOUT_MINUTES
+
+
+class TestHistoryInterval:
+    """履歴を残す間隔（ユーザー要望 2026-08-24）。"""
+
+    def test_既定は今までの間引き方(self, config) -> None:
+        from hitofude.storage.history import MIN_INTERVAL_MINUTES
+
+        assert config.history_interval_minutes == MIN_INTERVAL_MINUTES
+
+    def test_変えられる(self, config) -> None:
+        config.history_interval_minutes = 30
+        assert config.history_interval_minutes == 30
+
+    def test_なしを選べる(self, config) -> None:
+        config.history_interval_minutes = 0
+        assert config.history_interval_minutes == 0
+
+    def test_選べない値は既定に戻す(self, config) -> None:
+        """設定ファイルは手で編集できる。壊れた値で履歴を止めない。"""
+        from hitofude.storage.history import MIN_INTERVAL_MINUTES
+
+        config.settings.setValue("history/interval_minutes", 7)
+        assert config.history_interval_minutes == MIN_INTERVAL_MINUTES

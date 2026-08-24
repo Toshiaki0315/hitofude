@@ -1151,9 +1151,13 @@ class MainWindow(QMainWindow):
         # 際限なく持つと閉じるときの保存も重くなる
         del self._history[:-MAX_HISTORY]
 
-    def flush(self, *, interactive: bool = True) -> None:
-        """未保存の内容を今すぐ書く（§7.4）。実体は SaveController。"""
-        self._saver.flush(interactive=interactive)
+    def flush(self, *, interactive: bool = True, explicit: bool = False) -> None:
+        """未保存の内容を今すぐ書く（§7.4）。実体は SaveController。
+
+        `explicit` は「人が `Cmd+S` を押した」の印。版を残す間隔を
+        「なし」にしていても、押したときは 1 版残す（ユーザーの選択）。
+        """
+        self._saver.flush(interactive=interactive, explicit=explicit)
 
     # ------------------------------------------------------------------ 外部変更
 
@@ -1574,6 +1578,7 @@ class MainWindow(QMainWindow):
                 text,
                 now=self._history_now(),
                 force=force,
+                interval_minutes=self._config.history_interval_minutes,
             )
         except OSError as error:
             # **履歴は付随物。** 本体（.md）は既に書けているのに、ここで

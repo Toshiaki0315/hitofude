@@ -877,3 +877,58 @@ class TestLlmTimeoutSetting:
         dialog.timeout_box.setValue(30)
         dialog.reset_to_defaults()
         assert dialog.timeout_box.value() == DEFAULT_LLM_TIMEOUT_MINUTES
+
+
+class TestHistoryInterval:
+    """履歴を残す間隔（ユーザー要望 2026-08-24）。
+
+    本文の保存は今のまま（打ち終わって 0.8 秒）。ここで決めるのは
+    `.hitofude/history/` に版を残す間隔で、「なし」は `Cmd+S` を
+    押したときだけ残す。
+    """
+
+    def dialog(self, qtbot, tmp_path):
+        from PySide6.QtCore import QSettings
+
+        from hitofude.config import Config
+        from hitofude.ui.preferences import PreferencesDialog
+
+        config = Config(QSettings(str(tmp_path / "t.ini"), QSettings.Format.IniFormat))
+        found = PreferencesDialog(config)
+        qtbot.addWidget(found)
+        return found, config
+
+    def test_選択肢は5つ(self, qtbot, tmp_path) -> None:
+        dialog, _config = self.dialog(qtbot, tmp_path)
+        box = dialog.history_box
+        labels = [box.itemText(i) for i in range(box.count())]
+        assert labels == ["なし", "5 分", "15 分", "30 分", "60 分"]
+
+    def test_今の値が出る(self, qtbot, tmp_path) -> None:
+        dialog, config = self.dialog(qtbot, tmp_path)
+        assert dialog.history_box.currentData() == config.history_interval_minutes
+
+    def test_変えると書き込まれる(self, qtbot, tmp_path) -> None:
+        dialog, config = self.dialog(qtbot, tmp_path)
+        dialog.history_box.setCurrentIndex(dialog.history_box.findData(30))
+        dialog.apply()
+        assert config.history_interval_minutes == 30
+
+    def test_なしも選べる(self, qtbot, tmp_path) -> None:
+        dialog, config = self.dialog(qtbot, tmp_path)
+        dialog.history_box.setCurrentIndex(dialog.history_box.findData(0))
+        dialog.apply()
+        assert config.history_interval_minutes == 0
+
+    def test_一般のページにある(self, qtbot, tmp_path) -> None:
+        """ノートの置き場所と同じ毛色（どこに何を残すか）。"""
+        dialog, _config = self.dialog(qtbot, tmp_path)
+        assert dialog.tabs.indexOf(dialog.history_box.parentWidget()) == 0
+
+    def test_デフォルトに戻すで戻る(self, qtbot, tmp_path) -> None:
+        from hitofude.storage.history import MIN_INTERVAL_MINUTES
+
+        dialog, _config = self.dialog(qtbot, tmp_path)
+        dialog.history_box.setCurrentIndex(dialog.history_box.findData(60))
+        dialog.reset_to_defaults()
+        assert dialog.history_box.currentData() == MIN_INTERVAL_MINUTES

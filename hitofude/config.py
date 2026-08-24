@@ -17,6 +17,8 @@ from PySide6.QtCore import QByteArray, QSettings
 
 from hitofude.core import graph, llm, ocr
 from hitofude.core.paths import relative_inside
+from hitofude.storage.history import INTERVAL_CHOICES as HISTORY_INTERVAL_CHOICES
+from hitofude.storage.history import MIN_INTERVAL_MINUTES as DEFAULT_HISTORY_INTERVAL
 from hitofude.storage.index_db import SortOrder
 from hitofude.theme import ThemeMode
 
@@ -115,6 +117,7 @@ _LAST_NOTE = "session/last_note"
 _LINE_SPACING = "layout/line_spacing"
 _CONTENT_WIDTH = "editor/content_width"
 _SAVED_SEARCHES = "sidebar/saved_searches"
+_HISTORY_INTERVAL = "history/interval_minutes"
 
 
 class Config:
@@ -197,6 +200,20 @@ class Config:
     @content_width.setter
     def content_width(self, value: ContentWidth) -> None:
         self.settings.setValue(_CONTENT_WIDTH, value.value)
+
+    @property
+    def history_interval_minutes(self) -> int:
+        """版を残す間隔（分）。`0` は「なし」（ユーザー要望 2026-08-24）。
+
+        **選べる値だけを返す。** ini は手で編集できるので、途中の値
+        （7 分など）が入っていたら既定に戻す。履歴が黙って止まるのは困る。
+        """
+        found = self.settings.value(_HISTORY_INTERVAL, DEFAULT_HISTORY_INTERVAL, type=int)
+        return found if found in HISTORY_INTERVAL_CHOICES else DEFAULT_HISTORY_INTERVAL
+
+    @history_interval_minutes.setter
+    def history_interval_minutes(self, value: int) -> None:
+        self.settings.setValue(_HISTORY_INTERVAL, value)
 
     @property
     def saved_searches(self) -> list[SavedSearch]:

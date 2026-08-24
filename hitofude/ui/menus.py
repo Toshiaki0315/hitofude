@@ -55,7 +55,9 @@ def build_menus(window) -> None:
         "Ctrl+Shift+]",
         lambda: window.open_adjacent_daily(forward=True),
     )
-    add(file_menu, "保存", QKeySequence.StandardKey.Save, window.flush)
+    # **押したことを伝える。** 版を残す間隔を「なし」にしていても、
+    # `Cmd+S` のときは 1 版残す（ユーザーの選択 2026-08-24）
+    add(file_menu, "保存", QKeySequence.StandardKey.Save, lambda: window.flush(explicit=True))
     file_menu.addSeparator()
     # **Finder で直に触ることがある**（ユーザー要望）。監視は動いている間しか
     # 効かないので、押せば必ず合う道を置く。**キーは付けない** — 急ぐ操作では

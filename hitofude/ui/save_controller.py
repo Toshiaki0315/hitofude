@@ -71,7 +71,7 @@ class SaveController:
 
     # ------------------------------------------------------------- 保存
 
-    def flush(self, *, interactive: bool = True) -> None:
+    def flush(self, *, interactive: bool = True, explicit: bool = False) -> None:
         """未保存の内容を今すぐ書く（§7.4 の即時フラッシュ）。
 
         `interactive=False` のときは競合してもダイアログを出さない。
@@ -82,9 +82,9 @@ class SaveController:
         if window._note is None or not self.debouncer.pending:
             return
         self.debouncer.clear()
-        self._save(window._editor.toPlainText(), interactive=interactive)
+        self._save(window._editor.toPlainText(), interactive=interactive, explicit=explicit)
 
-    def _save(self, text: str, *, interactive: bool = True) -> None:
+    def _save(self, text: str, *, interactive: bool = True, explicit: bool = False) -> None:
         window = self._window
         note = window._note
         if note is None:
@@ -111,7 +111,9 @@ class SaveController:
             return
         # **書けたあとに残す**（ADR-0023）。書けなかった内容を版にすると、
         # ファイルに無いものが履歴に出る
-        window.keep_version(payload)
+        # **人が押したときは必ず 1 版残す。** 間隔を「なし」にしていても、
+        # `Cmd+S` は「ここを残す」の意思表示（ユーザーの選択 2026-08-24）
+        window.keep_version(payload, force=explicit)
         # 書けた時点で「ここが保存済みの状態」。これを怠ると、保存後の
         # カーソル移動（リビールの textChanged）が編集扱いに戻ってしまう
         window._editor.document().setModified(False)

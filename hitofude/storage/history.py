@@ -25,7 +25,14 @@ from hitofude.core.document import title_of
 logger = logging.getLogger(__name__)
 
 MIN_INTERVAL_MINUTES = 5
-"""前の版からこれだけ経っていなければ残さない（ADR-0023）。"""
+"""前の版からこれだけ経っていなければ残さない（ADR-0023）。既定。"""
+
+INTERVAL_CHOICES = (0, 5, 15, 30, 60)
+"""設定で選べる間隔（分）。`0` は「なし」（ユーザー要望 2026-08-24）。
+
+**細かさの好みは人による。** 打つたびに残っていてほしい人と、
+版が増えるのを嫌う人がいる。`0` は自分で保存したときだけ残す。
+"""
 
 MAX_VERSIONS = 50
 """1 ノートにつき保つ版の数。"""
@@ -74,24 +81,36 @@ class Version:
         return _title_of(self.path)
 
 
-def keep(root: Path, key: str, text: str, *, now: datetime, force: bool = False) -> Path | None:
+def keep(
+    root: Path,
+    key: str,
+    text: str,
+    *,
+    now: datetime,
+    force: bool = False,
+    interval_minutes: int = MIN_INTERVAL_MINUTES,
+) -> Path | None:
     """今の全文を 1 版として残す。残したら場所を、残さなければ `None`。
 
     **残さない場合**（`force=True` なら間引きだけ飛ばす）:
 
     - 本文が空（新規ノートを開いただけで版が増えない）
-    - 直前の版から `MIN_INTERVAL_MINUTES` 経っていない
+    - `interval_minutes` が `0`（「なし」。自分で保存したときだけ残す）
+    - 直前の版から `interval_minutes` 経っていない
     - 直前の版と中身が同じ（打っていないのに増えない）
     """
     if not text.strip():
+        return None
+
+    if not force and interval_minutes <= 0:
         return None
 
     note_id = folder_name(key)
     latest = _latest(root, note_id)
     if latest is not None:
         # **時刻の判定が先。** ファイル名だけで済み、中身を読まずに
-        # 大半（5 分以内の自動保存）を弾ける。中身の比較はその後
-        if not force and now - latest.saved_at < timedelta(minutes=MIN_INTERVAL_MINUTES):
+        # 大半（間隔の内に入る自動保存）を弾ける。中身の比較はその後
+        if not force and now - latest.saved_at < timedelta(minutes=interval_minutes):
             return None
         try:
             if latest.read() == text:
