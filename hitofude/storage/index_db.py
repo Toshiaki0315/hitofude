@@ -309,7 +309,7 @@ class IndexDb:
 
     def upsert_note(self, note: Note, root: Path, *, trashed: bool = False) -> str:
         """1 つのノートを索引に入れ直す。ID を返す。"""
-        note_id = _note_id(note, root)
+        note_id = note_key(note, root)
         relative = note.relative_to(root)
         note_id = self._resolve_duplicate_id(note_id, relative, root)
         parsed = note.meta
@@ -920,10 +920,6 @@ def merge_folders(counts: list[FolderCount], folders: list[str]) -> list[FolderC
         FolderCount(folder=folder, count=known.get(folder, 0)) for folder in sorted(folders)
     )
     return found
-
-
-# 旧名。索引の中からはこちらで呼ばれている
-_note_id = note_key
 
 
 def _to_row(row: sqlite3.Row) -> NoteRow:

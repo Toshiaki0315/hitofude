@@ -11,7 +11,6 @@
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import Qt
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -1184,8 +1183,3 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             # ようにする。絵にするには matplotlib（実測 74MB）が要る
             SpanType.MATH: code,
         }
-
-        # 未使用だが、リンクのクリック判定（Phase 6）で色を引くために保持する
-        self._link_color = QColor(theme.accent)
-        self._rule_color = QColor(theme.rule)
-        self._cursor_shape = Qt.CursorShape.IBeamCursor

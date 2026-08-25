@@ -19,8 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from hitofude.core import frontmatter
-from hitofude.core.document import title_of
+from hitofude.core.document import UNTITLED, title_of
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +48,6 @@ MAX_DAYS = 30
 # ファイル名にできる形の日時。`:` は macOS の Finder が `/` に見せるので使わない
 _STAMP_FORMAT = "%Y-%m-%dT%H-%M-%S"
 _STAMP_RE = re.compile(r"\A\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}")
-
-UNTITLED = "無題"
 
 
 def folder_name(key: str) -> str:
@@ -161,12 +158,17 @@ def rekey(root: Path, before: str, after: str) -> Path | None:
 
 def versions(root: Path, key: str) -> list[Version]:
     """残っている版を**新しい順**に返す。読めないものは飛ばす。"""
-    folder = root / folder_name(key)
-    if not folder.is_dir():
+    return _versions_in(root, folder_name(key))
+
+
+def _versions_in(root: Path, folder: str) -> list[Version]:
+    """畳んだフォルダ名で引く内側。`prune` はフォルダを列挙するのでここへ来る。"""
+    place = root / folder
+    if not place.is_dir():
         return []
 
     found: list[Version] = []
-    for path in folder.glob("*.md"):
+    for path in place.glob("*.md"):
         saved_at = _stamp_of(path)
         if saved_at is None:
             continue
@@ -188,7 +190,10 @@ def prune(root: Path, *, now: datetime) -> list[Path]:
     for folder in sorted(root.iterdir()):
         if not folder.is_dir():
             continue
-        found = versions(root, folder.name)
+        # `folder.name` は既にフォルダ名（鍵ではない）。`versions()` は鍵を
+        # 待つが、`folder_name()` が `path:` 以外を素通しするので同じ結果になる。
+        # 取り違えを紛れ込ませないよう、ここでは畳んだ名前をそのまま使う
+        found = _versions_in(root, folder.name)
         for index, version in enumerate(found):
             if index >= MAX_VERSIONS or version.saved_at < deadline:
                 version.path.unlink(missing_ok=True)
@@ -225,4 +230,5 @@ def _title_of(path: Path) -> str:
         text = path.read_text(encoding="utf-8")
     except OSError:
         return UNTITLED
-    return title_of(frontmatter.split(text).body, UNTITLED)
+    # `title_of` が自分で front matter を外す。先に split すると 2 回パースになる
+    return title_of(text, UNTITLED)

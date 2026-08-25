@@ -116,7 +116,6 @@ FOCUS_DIM_ALPHA = 150
 
 class DecorationKind(Enum):
     FOCUS_DIM = auto()
-    TABLE_BACKGROUND = auto()
     TABLE_HEADER = auto()
     TABLE_RULE = auto()
     CODE_BACKGROUND = auto()
@@ -761,8 +760,6 @@ def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) 
                 painter.fillRect(decoration.rect, QColor(theme.code_background))
             case DecorationKind.TABLE_RULE:
                 painter.fillRect(decoration.rect, QColor(theme.rule))
-            case DecorationKind.TABLE_BACKGROUND:
-                painter.fillRect(decoration.rect, QColor(theme.code_background))
             case DecorationKind.QUOTE_BAR:
                 painter.fillRect(decoration.rect, QColor(theme.quote_bar))
             case DecorationKind.NOTE_BACKGROUND:

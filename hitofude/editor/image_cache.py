@@ -72,7 +72,9 @@ class ImageCache:
             else loaded.scaledToWidth(max_width, Qt.TransformationMode.SmoothTransformation)
         )
         self._entries[key] = scaled
-        while len(self._entries) > MAX_ENTRIES:
+        # クラス属性を見る。モジュール定数を見ると、テストや呼び出し側が
+        # `ImageCache.MAX_ENTRIES` を差し替えても効かない罠になる（レビュー 2026-08-25）
+        while len(self._entries) > self.MAX_ENTRIES:
             self._entries.popitem(last=False)
         return scaled
 

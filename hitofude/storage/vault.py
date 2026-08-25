@@ -35,7 +35,7 @@ from hitofude.core.references import attachment_names
 from hitofude.core.table import find_table, format_table
 from hitofude.core.template import Expanded, daily_title, expand
 from hitofude.storage import history
-from hitofude.storage.autosave import save_atomic, save_bytes_atomic
+from hitofude.storage.autosave import TEMP_SUFFIX, save_atomic, save_bytes_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +46,9 @@ TRASH_DIR = ".trash"
 MANAGED_DIR = ".hitofude"
 DEFAULT_TRASH_DAYS = 30
 
-# 一時ファイルの拡張子（autosave.TEMP_SUFFIX と揃える。循環 import 回避で値を持つ）
-TEMP_SUFFIX = ".tmp"
+# 一時ファイルの拡張子。autosave が正で、こちらは名前を借りるだけ
+# （「循環 import 回避で値を持つ」と書かれていたが、38 行目で既に
+# autosave を import しており、循環は無い。レビュー 2026-08-25）
 # これより古い .tmp はクラッシュの残骸と見なして掃除する（H-1 層 1）
 TEMP_SWEEP_AGE_SECONDS = 3600.0
 # UNTITLED は core/document.py が持つ（タイトル導出のフォールバックと同じ値）。

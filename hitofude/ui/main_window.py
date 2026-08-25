@@ -90,8 +90,9 @@ from hitofude.ui.save_controller import SaveController
 from hitofude.ui.search_actions import SearchActions
 from hitofude.ui.shortcut_sheet import ShortcutSheet
 from hitofude.ui.sidebar import ALL, TRASH, Filter, FilterKind, Sidebar
-from hitofude.ui.status_bar import (  # noqa: F401  ASYNC_STATS_CHARS 等はテストが再輸出先として参照する
+from hitofude.ui.status_bar import (  # noqa: F401  定数はテストが再輸出先として参照する
     ASYNC_STATS_CHARS,
+    NOTICE_MS,
     STATUS_RIGHT_MARGIN,
     StatusBarController,
 )
@@ -109,13 +110,8 @@ DIRTY_MARK = "•"
 # 際限なく増えると開くたびに遅くなる。読み切れない数を並べても使えない
 MAX_BACKLINKS = 50
 
-# 片づけの確認に並べる名前の数（E-5）。全部並べるとダイアログが画面を溢れる
-CLEANUP_PREVIEW = 10
-
 NEW_NOTE_TITLE = "無題"
-PINNED_NOTICE = "ピン留めしているノートは削除できません。先にピン留めを外してください。"
 HUGE_NOTE_NOTICE = "大きなノートのため、装飾を無効にして開きました（編集と保存はできます）"
-NOTICE_MS = 5000
 
 # 終了時に索引の走査を待つ上限。索引は捨ててよいキャッシュ（R9）なので、
 # ここで粘るより窓が閉じるほうが大事
@@ -1664,10 +1660,6 @@ class MainWindow(QMainWindow):
 
     def toggle_toolbar(self) -> None:
         self._pane.set_toolbar_visible(not self._pane.toolbar_visible())
-
-    def _apply_splitter_style(self, theme: ThemeColors) -> None:
-        """ペインの境界に 1px の線を引く。"""
-        self._splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {theme.rule}; }}")
 
     def _apply_palette(self, colors: ThemeColors) -> None:
         """配色を `QPalette` へ流し込む（spec §5.3）。

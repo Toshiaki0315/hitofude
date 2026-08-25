@@ -20,12 +20,9 @@ from PySide6.QtPrintSupport import QPrintDialog
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox, QToolButton
 
 from hitofude.editor import exporter, importer, pptx_export
+from hitofude.ui.status_bar import NOTICE_MS
 
 logger = logging.getLogger(__name__)
-
-# 知らせを出しておく長さ。main_window の NOTICE_MS と揃える
-# （循環 import を避けるため値をここに持つ。ずらしたいときは両方見ること）
-NOTICE_MS = 5000
 
 
 def short_path(path: Path) -> str:

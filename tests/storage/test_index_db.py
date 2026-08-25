@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from hitofude.core.document import Note
-from hitofude.storage.index_db import SCHEMA_VERSION, IndexDb, SortOrder, note_key, rebuild
+from hitofude.core.document import Note, note_key
+from hitofude.storage.index_db import SCHEMA_VERSION, IndexDb, SortOrder, rebuild
 from hitofude.storage.vault import Vault
 
 
