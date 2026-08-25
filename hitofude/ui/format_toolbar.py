@@ -16,7 +16,7 @@
 from dataclasses import dataclass
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter
+from PySide6.QtGui import QColor, QFont, QKeySequence, QPainter
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QToolButton, QWidget
 
 from hitofude.theme import LIGHT, ThemeColors
@@ -61,24 +61,31 @@ class FormatAction:
     """`MarkdownEditor` のメソッド名。実在するかは `TestButtons` が見る。"""
 
     shortcut: str = ""
-    """表示のみ。登録は `ui/menus.py` の仕事で、ここでは二重に登録しない。"""
+    """**登録できる形**で持つ（`"Ctrl+B"`）。登録は `ui/menus.py` の仕事で、
+    ここでは二重に登録しない。**見せるときだけ `⌘B` に直す** — 2 通りの
+    書き方を台帳に置くと、片方だけ直したときに食い違う（2026-08-25）。"""
+
+
+def _native(shortcut: str) -> str:
+    """`Ctrl+B` → `⌘B`。**見せるときだけ直す**（台帳は登録できる形で持つ）。"""
+    return QKeySequence(shortcut).toString(QKeySequence.SequenceFormat.NativeText)
 
 
 class FormatToolbar(QWidget):
     # 並びは「文字の装飾 → 行の書式 → 差し込むもの」。押す頻度の高い順ではなく
     # 種類でまとめる。目で探すとき、ひとかたまりになっているほうが早い
     ACTIONS = (
-        FormatAction(Glyph.BOLD, "太字", "toggle_strong", "⌘B"),
-        FormatAction(Glyph.ITALIC, "斜体", "toggle_emphasis", "⌘I"),
-        FormatAction(Glyph.STRIKE, "打ち消し", "toggle_strike", "⌘⇧X"),
-        FormatAction(Glyph.CODE, "コード", "toggle_code", "⌘E"),
-        FormatAction(Glyph.MARKER, "マーカー", "toggle_highlight", "⌘⇧H"),
+        FormatAction(Glyph.BOLD, "太字", "toggle_strong", "Ctrl+B"),
+        FormatAction(Glyph.ITALIC, "斜体", "toggle_emphasis", "Ctrl+I"),
+        FormatAction(Glyph.STRIKE, "打ち消し", "toggle_strike", "Ctrl+Shift+X"),
+        FormatAction(Glyph.CODE, "コード", "toggle_code", "Ctrl+E"),
+        FormatAction(Glyph.MARKER, "マーカー", "toggle_highlight", "Ctrl+Shift+H"),
         FormatAction(Glyph.HEADING, "見出し", "cycle_heading"),
         FormatAction(Glyph.BULLET, "箇条書き", "toggle_bullet"),
         FormatAction(Glyph.ORDERED, "番号付き", "toggle_ordered"),
-        FormatAction(Glyph.CHECKBOX, "チェックボックス", "toggle_checkbox", "⌘⇧T"),
+        FormatAction(Glyph.CHECKBOX, "チェックボックス", "toggle_checkbox", "Ctrl+Shift+T"),
         FormatAction(Glyph.QUOTE, "引用", "toggle_quote"),
-        FormatAction(Glyph.LINK, "リンク", "insert_link", "⌘K"),
+        FormatAction(Glyph.LINK, "リンク", "insert_link", "Ctrl+K"),
     )
 
     outline_toggled = Signal()
@@ -212,7 +219,7 @@ class FormatToolbar(QWidget):
         # **押しても本文の選択を外さない。** 外すと囲むものが無くなる
         found.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         found.setToolTip(
-            f"{action.label}（{action.shortcut}）" if action.shortcut else action.label
+            f"{action.label}（{_native(action.shortcut)}）" if action.shortcut else action.label
         )
         found.setAccessibleName(action.label)
         found.clicked.connect(lambda _=False, name=action.method: self._run(name))

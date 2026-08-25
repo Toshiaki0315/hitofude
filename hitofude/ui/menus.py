@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QMenu
 
 from hitofude import APP_NAME
 from hitofude.app import style_menu
+from hitofude.ui.format_toolbar import FormatToolbar
 from hitofude.ui.icons import menu_icon
 
 
@@ -174,6 +175,24 @@ def _search_menu(window, bar) -> None:
     add(search_menu, "前を検索", "Ctrl+Shift+G", lambda: window._pane.find_again(backward=True))
 
 
+def _to_editor(window, method: str):
+    """本文へ渡す。**エディタに焦点が無ければ何もしない。**
+
+    `Cmd+B` などは今までエディタの `keyPressEvent` が受けていて、検索欄では
+    何も起きなかった。`QAction` にすると窓のどこにいても飛ぶので、
+    ここで止めて**今までの挙動を保つ**。
+
+    `triggered(checked)` の `checked` を渡さないため、引数は捨てる
+    （`insert_link(url="")` に `False` が流れ込むのを防ぐ）。
+    """
+
+    def run(*_args) -> None:
+        if window._editor.hasFocus():
+            getattr(window._editor, method)()
+
+    return run
+
+
 def _edit_menu(window, bar) -> None:
     def add(menu, label, shortcut, slot):
         return _add(window, menu, label, shortcut, slot)
@@ -196,6 +215,15 @@ def _edit_menu(window, bar) -> None:
     # 文字合成に使われ、Cmd+Option+T は `†` を生む。ショートカットが
     # 発火せず、選択中だと選択範囲がその 1 文字に置き換わって消える
     add(edit_menu, "表を整形", "Ctrl+Shift+L", window._editor.format_table)
+
+    # **書式もメニューから届くようにする**（2026-08-25）。今まで入口は
+    # ツールバーとキーだけで、`Cmd+3` で隠すと**手が届かなくなっていた**
+    # （設定への入口が消えていた件と同じ形）。台帳はツールバーと共用する
+    # ——片方に足してもう片方に足し忘れる、を防ぐ。
+    # **11 個を直下に並べない**（「ファイル」を 20 行にした反省）
+    format_menu = _add_menu(window, edit_menu, "書式")
+    for entry in FormatToolbar.ACTIONS:
+        add(format_menu, entry.label, entry.shortcut, _to_editor(window, entry.method))
     edit_menu.addSeparator()
     # **選んでいないと押せない**ので、開く瞬間に灰色を決める（G-3 の作法）
     edit_menu.aboutToShow.connect(lambda: sync_edit_actions(window))

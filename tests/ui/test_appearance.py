@@ -6,6 +6,7 @@ from PySide6.QtGui import QKeyEvent
 
 from hitofude.config import Config
 from hitofude.theme import DARK, LIGHT, ThemeMode
+from hitofude.ui.format_toolbar import FormatToolbar
 from hitofude.ui.main_window import MainWindow
 from hitofude.ui.panes import SPLITTER_HANDLE_WIDTH
 
@@ -169,8 +170,14 @@ class TestTableFormatting:
 
 
 # **同じ操作を 2 つの道から出しているもの。** メニューにも出しつつ、
-# エディタが本文で直接受けている（どちらを通っても結果は同じ）
-SHARED_WITH_EDITOR = frozenset({"Ctrl+Shift+D", "Ctrl+Shift+Y", "Ctrl+/"})
+# エディタが本文で直接受けている（どちらを通っても結果は同じ）。
+#
+# 書式（太字・斜体…）は**台帳から導く**（2026-08-25 に `編集 → 書式` へ
+# 出した）。ここに書き写すと、台帳に足したときに片方だけ古くなる
+SHARED_WITH_EDITOR = frozenset(
+    {"Ctrl+Shift+D", "Ctrl+Shift+Y", "Ctrl+/"}
+    | {entry.shortcut for entry in FormatToolbar.ACTIONS if entry.shortcut}
+)
 
 
 class TestShortcutRegistration:
