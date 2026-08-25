@@ -4,6 +4,9 @@
 ここは折り返しの純ロジック（R3: GUI 非依存）だけを見る。
 """
 
+import pytest
+
+from hitofude.core import table
 from hitofude.core.table import (
     CELL_OVERHEAD,
     MIN_WRAP_COLUMN,
@@ -76,3 +79,47 @@ class TestWrapRow:
         cells = wrap_row("| 短い | あいうえおかきくけこ |", [4, 6])
         assert cells[0] == ["短い"]
         assert cells[1] == ["あいう", "えおか", "きくけ", "こ"]
+
+
+class TestForcedBreak:
+    """セル内の明示的な改行 `<br>`（ユーザー要望 2026-08-25 / ADR-0028）。
+
+    GFM の表はセル内改行の公式記法を持たず、GitHub / Qiita とも `<br>` が
+    事実上の標準。表のセルの中だけで意味を持ち、本文中は文字のまま。
+    """
+
+    def test_brで折り返す(self) -> None:
+        assert table.wrap_cell("一行目<br>二行目", 20) == ["一行目", "二行目"]
+
+    @pytest.mark.parametrize("br", ["<br>", "<br/>", "<br />", "<BR>", "<Br/>"])
+    def test_変種も同義(self, br: str) -> None:
+        assert table.wrap_cell(f"上{br}下", 20) == ["上", "下"]
+
+    def test_断片はさらに幅で折り返す(self) -> None:
+        assert table.wrap_cell("short<br>ながいながい", 6) == ["short", "ながい", "ながい"]
+
+    def test_brが無ければ今まで通り(self) -> None:
+        assert table.wrap_cell("あい うえ", 4) == ["あい", "うえ"]
+
+    def test_列の自然幅は断片の最長(self) -> None:
+        """`<br>` を入れると列が痩せる、という直感どおりの効き。"""
+        rows = ["| 見出し |", "| --- |", "| 短い<br>ながいながい |"]
+        assert table.wrapped_columns(rows, 200) == [table.display_width("ながいながい")]
+
+    def test_brがあれば折り返し表示になる(self) -> None:
+        rows = ["| A |", "| --- |", "| 上<br>下 |"]
+        assert table.forces_wrap(rows) is True
+
+    def test_brが無ければ強制しない(self) -> None:
+        rows = ["| A |", "| --- |", "| ふつう |"]
+        assert table.forces_wrap(rows) is False
+
+    def test_整形の縦線はbr込みの全長で揃える(self) -> None:
+        """ユーザー決定 2026-08-25。整形はソースの見た目を揃える機能で、
+        断片幅で数えるとソース上の縦線がずれる。"""
+        lines = ["| A | B |", "| --- | --- |", "| 上<br>下 | x |"]
+        fixed = table.format_table(lines)
+        assert fixed is not None
+        assert "| 上<br>下 | x" in fixed[2]
+        # 見出し行の A の列は「上<br>下」の全長ぶん空く
+        assert table.display_width(fixed[0].split("|")[1]) >= table.display_width(" 上<br>下 ")

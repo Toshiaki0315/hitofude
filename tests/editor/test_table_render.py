@@ -742,3 +742,51 @@ class TestWrappedTable:
         texts = [d.text for d in visible_decorations(editor) if d.kind is DecorationKind.TABLE_TEXT]
         assert any("短い" in t for t in texts)
         assert any("長い説明" in t for t in texts)
+
+
+class TestForcedBreakInEditor:
+    """セル内の `<br>`（ユーザー要望 2026-08-25 / ADR-0028）。
+
+    幅に収まる表でも、`<br>` があれば折り返し描画に入る（行の高さを
+    変えるには ADR-0017 の予約機構が要る）。列幅は自然幅のままなので、
+    見た目は「行が高くなる」だけ。
+    """
+
+    NOTE = "| 項目 | 中身 |\n| --- | --- |\n| 上<br>下 | x |\n\n末尾\n"
+
+    def wrapped_of(self, editor: MarkdownEditor, line: int):
+        data = editor.document().findBlockByNumber(line).userData()
+        return getattr(data, "wrapped", None)
+
+    def test_収まる表でも折り返し表示に入る(self, editor) -> None:
+        editor.setPlainText(self.NOTE)
+        move_to(editor, 4)
+        wrapped = self.wrapped_of(editor, 2)
+        assert wrapped is not None
+        assert wrapped.cells[0] == ("上", "下")
+        assert wrapped.lines == 2
+
+    def test_brの記号は描く中身に出ない(self, editor) -> None:
+        editor.setPlainText(self.NOTE)
+        move_to(editor, 4)
+        wrapped = self.wrapped_of(editor, 2)
+        assert all("<br" not in piece for cell in wrapped.cells for piece in cell)
+
+    def test_行の高さが2行ぶんになる(self, editor) -> None:
+        editor.setPlainText(self.NOTE)
+        move_to(editor, 4)
+        plain = editor.blockBoundingGeometry(editor.document().findBlockByNumber(4)).height()
+        tall = editor.blockBoundingGeometry(editor.document().findBlockByNumber(2)).height()
+        # 表の行送りは本文より小さい（等幅・詰め）ので、2 行でも本文の
+        # 2 倍にはならない。1.4 倍あれば 2 行ぶん予約されている
+        assert tall > plain * 1.4
+
+    def test_brの無い収まる表は今まで通り(self, editor) -> None:
+        editor.setPlainText("| A | B |\n| --- | --- |\n| a | b |\n\n末尾\n")
+        move_to(editor, 4)
+        assert self.wrapped_of(editor, 2) is None
+
+    def test_キャレットを入れた行は生に戻る(self, editor) -> None:
+        editor.setPlainText(self.NOTE)
+        move_to(editor, 2)
+        assert self.wrapped_of(editor, 2) is None  # 生の Markdown で編集できる

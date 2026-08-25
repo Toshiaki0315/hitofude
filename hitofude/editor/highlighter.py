@@ -37,7 +37,7 @@ from hitofude.core.models import (
     InlineSpan,
     SpanType,
 )
-from hitofude.core.table import WrappedRow, fits, wrap_row, wrapped_columns
+from hitofude.core.table import WrappedRow, fits, forces_wrap, wrap_row, wrapped_columns
 from hitofude.core.textpos import py_to_utf16, utf16_to_py
 from hitofude.editor.painter_overlay import (
     BULLET_GAP_RATIO,
@@ -879,8 +879,10 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             # 折り返すか（ADR-0017）は**表全体**で決める。1 行だけ折り返すと
             # 列の線が行ごとにずれて表にならない
             run = self._table_run_texts()
-            wrapped_mode = self._table_columns > 0 and any(
-                not fits(row, self._table_columns) for row in run
+            # 幅に収まらない表のほか、`<br>` 入りの表も折り返し描画へ
+            # （ADR-0028。行の高さを変えるにはこの予約機構が要る）
+            wrapped_mode = self._table_columns > 0 and (
+                any(not fits(row, self._table_columns) for row in run) or forces_wrap(run)
             )
             if info.type is BlockType.TABLE_DELIMITER:
                 # 区切り行は折り返し表示でも隠す（線は paintEvent が引く）。

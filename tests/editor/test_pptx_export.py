@@ -233,3 +233,24 @@ class TestMenu:
             assert any(shape.shape_type == 13 for shape in slides(target)[0].shapes)
         finally:
             window.close()
+
+
+class TestCellBreaks:
+    """表セルの `<br>` は改行として出す（ADR-0028）。"""
+
+    def test_brはセル内改行になる(self, qapp, tmp_path: Path) -> None:
+        from pptx import Presentation
+
+        target = tmp_path / "b.pptx"
+        write_pptx(target, "# 題\n\n## 頁\n\n| A |\n| --- |\n| 上<br>下 |\n")
+        deck = Presentation(str(target))
+        cells = [
+            cell.text
+            for slide in deck.slides
+            for shape in slide.shapes
+            if shape.has_table
+            for row in shape.table.rows
+            for cell in row.cells
+        ]
+        assert "上\n下" in cells
+        assert all("<br" not in text for text in cells)

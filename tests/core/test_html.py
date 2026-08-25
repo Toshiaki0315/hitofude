@@ -476,3 +476,33 @@ class TestMermaid:
 
     def test_他の言語は今まで通り(self) -> None:
         assert '<pre class="mermaid">' not in render("```python\nx = 1\n```\n")
+
+
+class TestCellBreaks:
+    """表セルの `<br>` は改行として出す（ADR-0028）。
+
+    `html: False`（安全のため生 HTML は通さない）のままだと `<br>` が
+    文字にエスケープされて出る。**表のセルの中だけ**改行に変換する。
+    """
+
+    TABLE = "| 項目 | 中身 |\n| --- | --- |\n| 上<br>下 | x |\n"
+
+    def test_セルの中は改行になる(self) -> None:
+        found = render(self.TABLE)
+        assert "<br />" in found
+        assert "&lt;br&gt;" not in found
+
+    @pytest.mark.parametrize("br", ["<br>", "<br/>", "<br />", "<BR>"])
+    def test_変種も同義(self, br: str) -> None:
+        found = render(f"| A |\n| --- |\n| 上{br}下 |\n")
+        assert "<br />" in found
+
+    def test_本文の中は文字のまま(self) -> None:
+        """スコープは表のセルだけ。本文の生 HTML を通さない判断は変えない。"""
+        found = render("段落の中の <br> は文字。\n")
+        assert "&lt;br&gt;" in found
+        assert "<br />" not in found
+
+    def test_コードの中は触らない(self) -> None:
+        found = render("| A |\n| --- |\n| `x<br>y` |\n")
+        assert "x&lt;br&gt;y" in found or "x<br>y" not in found

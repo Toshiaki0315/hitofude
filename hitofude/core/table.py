@@ -226,6 +226,26 @@ def find_table(lines: list[str], line: int) -> tuple[int, int] | None:
 # 1 行 1〜2 文字の縦書きのようになり、読めない
 MIN_WRAP_COLUMN = 6
 
+# セル内の明示的な改行（ユーザー要望 2026-08-25 / ADR-0028）。GFM の表は
+# セル内改行の公式記法を持たず、GitHub / Qiita とも `<br>` が事実上の標準。
+# **表のセルの中だけ**で意味を持つ。本文中の `<br>` は文字のまま
+FORCED_BREAK_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+
+
+def split_forced(text: str) -> list[str]:
+    """セルの中身を `<br>`（変種含む）で分ける。無ければ 1 断片。"""
+    return FORCED_BREAK_RE.split(text)
+
+
+def forces_wrap(rows: list[str]) -> bool:
+    """`<br>` 入りのセルがあるか。**あれば表全体を折り返し表示にする**。
+
+    行の高さを変えるには折り返し描画の予約機構（ADR-0017）が要る。
+    収まる表なら列幅は自然幅のままなので、見た目は行が高くなるだけ。
+    """
+    return any(FORCED_BREAK_RE.search(row) for row in rows if not _is_delimiter(row))
+
+
 # 1 列あたりの飾りの取り分（縦線 1 + 左右の余白 2）。行末の縦線に +1
 CELL_OVERHEAD = 3
 
@@ -238,6 +258,14 @@ def wrap_cell(text: str, width: int) -> list[str]:
     """
     if width <= 0:
         return [text]
+    segments = split_forced(text)
+    if len(segments) > 1:
+        # `<br>` の位置で必ず折り、各断片をさらに幅で折り返す。
+        # 記号そのものは描かない（キャレットを入れた行では生で見える）
+        found: list[str] = []
+        for segment in segments:
+            found.extend(wrap_cell(segment.strip(), width))
+        return found
     lines: list[str] = []
     current = ""
     current_width = 0
@@ -294,8 +322,17 @@ def wrapped_columns(rows: list[str], available: int) -> list[int]:
     if count == 0:
         return []
 
+    # 自然幅は**断片の最長**で数える（ADR-0028）。`<br>` 込みの全長で
+    # 数えると、改行を書いたのに列が痩せないという直感に反する結果になる
     widths = [
-        max((display_width(cells[i]) for cells in bodies if i < len(cells)), default=0)
+        max(
+            (
+                max(display_width(segment) for segment in split_forced(cells[i]))
+                for cells in bodies
+                if i < len(cells)
+            ),
+            default=0,
+        )
         for i in range(count)
     ]
     usable = available - (CELL_OVERHEAD * count + 1)

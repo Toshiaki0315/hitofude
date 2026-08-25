@@ -208,7 +208,44 @@ def render(text: str, *, math_as_source: bool = False, dark: bool = False) -> st
     env: dict = {_MATH_AS_SOURCE: math_as_source, _DARK_CODE: dark}
     tokens = _MD.parse(frontmatter.split(text).body, env)
     _mark_tasks(tokens)
+    _break_table_cells(tokens)
     return _MD.renderer.render(tokens, _MD.options, env)
+
+
+def _break_table_cells(tokens) -> None:
+    """表セルの `<br>`（変種含む）を改行にする（ADR-0028）。
+
+    `html: False` のままだと `<br>` が文字にエスケープされて出る。
+    生 HTML を通す判断はしない（`<script>` を通さない上の決定のまま）。
+    **表のセルの中の、文字のトークンだけ**を対象に、`<br>` を
+    hardbreak トークン（描画は `<br />`）へ分解する。インラインコードは
+    `code_inline` トークンなので対象にならない。
+    """
+    from markdown_it.token import Token
+
+    from hitofude.core.table import FORCED_BREAK_RE
+
+    depth = 0
+    for token in tokens:
+        if token.type == "table_open":
+            depth += 1
+        elif token.type == "table_close":
+            depth -= 1
+        elif depth > 0 and token.type == "inline" and token.children:
+            children = []
+            for child in token.children:
+                if child.type != "text" or not FORCED_BREAK_RE.search(child.content):
+                    children.append(child)
+                    continue
+                pieces = FORCED_BREAK_RE.split(child.content)
+                for index, piece in enumerate(pieces):
+                    if index:
+                        children.append(Token("hardbreak", "br", 0))
+                    if piece:
+                        text_token = Token("text", "", 0)
+                        text_token.content = piece
+                        children.append(text_token)
+            token.children = children
 
 
 def _mark_tasks(tokens) -> None:

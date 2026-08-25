@@ -18,7 +18,7 @@ from pathlib import Path
 
 from hitofude.core.paths import resolve_reference
 from hitofude.core.slides import Block, BlockKind, Deck, Slide, split
-from hitofude.core.table import split_cells
+from hitofude.core.table import split_cells, split_forced
 
 logger = logging.getLogger(__name__)
 
@@ -211,7 +211,9 @@ def _add_table(slide, block: Block, top: float, width: float) -> float:
     for row_index, row in enumerate(rows):
         for column_index in range(columns):
             cell = table.cell(row_index, column_index)
-            cell.text = row[column_index] if column_index < len(row) else ""
+            content = row[column_index] if column_index < len(row) else ""
+            # セル内の `<br>`（変種含む）は改行として出す（ADR-0028）
+            cell.text = "\n".join(split_forced(content))
             for paragraph in cell.text_frame.paragraphs:
                 for run in paragraph.runs:
                     run.font.size = Pt(TABLE_POINTS)
