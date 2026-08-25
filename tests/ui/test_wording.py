@@ -10,6 +10,7 @@
 
 import ast
 import pathlib
+import re
 
 import pytest
 
@@ -53,6 +54,52 @@ def ui_strings() -> list[tuple[str, str]]:
             if written and id(node) not in docstrings:
                 found.append((path.name, node.value))
     return found
+
+
+# `**...**` の強調記法。`**` 単独（記号そのものの例示）は許す
+EMPHASIS = re.compile(r"\*\*[^*]+\*\*")
+
+
+def tooltip_strings() -> list[tuple[str, str]]:
+    """ツールチップに出うる文字列（`(ファイル名, 文字列)`）。
+
+    `setToolTip(...)` の引数に現れるリテラルと、名前に `TOOLTIP` を含む
+    モジュール定数を集める。ツールチップは Markdown を描画しないので、
+    記号を書くとそのまま画面に出る。
+    """
+    found: list[tuple[str, str]] = []
+    for path in sorted(UI_DIR.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            call = (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "setToolTip"
+            )
+            constant = isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and "TOOLTIP" in target.id for target in node.targets
+            )
+            if call or constant:
+                for sub in ast.walk(node):
+                    if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                        found.append((path.name, sub.value))
+    return found
+
+
+class TestTooltipMarks:
+    """ツールチップに Markdown の記号を混ぜない（ユーザー指摘 2026-08-25）。
+
+    「一度に渡せる長さ。**広げるほどメモリを食います**。」のように
+    記号がそのまま見えていた。画面に出る言葉は素の日本語で書く。
+    """
+
+    def test_ツールチップに強調の記号を混ぜない(self) -> None:
+        slips = [f"{name}: {text}" for name, text in tooltip_strings() if EMPHASIS.search(text)]
+        assert slips == [], "ツールチップは Markdown を描かないので ** がそのまま見える"
+
+    def test_ツールチップにバッククォートを混ぜない(self) -> None:
+        slips = [f"{name}: {text}" for name, text in tooltip_strings() if "`" in text]
+        assert slips == [], "ツールチップは Markdown を描かないので ` がそのまま見える"
 
 
 class TestChosenWords:

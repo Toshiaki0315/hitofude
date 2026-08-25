@@ -392,14 +392,14 @@ class PreferencesDialog(QDialog):
         self._model.setEditable(True)  # これから pull するモデルも書ける
         self._model.addItems(models if models else [config.llm_model])
         self._model.setCurrentText(config.llm_model)
-        self._model.setToolTip("`ollama list` に出る名前。入っていないものも書けます。")
+        self._model.setToolTip("ollama list に出る名前。入っていないものも書けます。")
         llm_form.addRow(_label("モデル"), self._model)
 
         self._port = QSpinBox(self)
         self._port.setRange(1, 65535)
         self._port.setValue(config.llm_port)
         self._port.setFixedWidth(NUMBER_FIELD)
-        self._port.setToolTip("Ollama のポート。`OLLAMA_HOST` で変えている場合はここも合わせます。")
+        self._port.setToolTip("Ollama のポート。OLLAMA_HOST で変えている場合はここも合わせます。")
         port_row = QHBoxLayout()
         port_row.setSpacing(LABEL_GAP)
         port_row.addWidget(self._port)
@@ -413,7 +413,7 @@ class PreferencesDialog(QDialog):
         for tokens in CONTEXT_CHOICES:
             self._context.addItem(f"{tokens // 1024}k トークン", tokens)
         self._context.setCurrentIndex(self._context.findData(config.llm_context))
-        self._context.setToolTip("一度に渡せる長さ。**広げるほどメモリを食います**。")
+        self._context.setToolTip("一度に渡せる長さ。広げるほどメモリを食います。")
         llm_form.addRow(_label("一度に渡す量"), self._context)
 
         # 応答待ち時間（ユーザー要望 2026-08-24）。**読み込みも含めて待つ。**
@@ -423,7 +423,7 @@ class PreferencesDialog(QDialog):
         self._timeout.setRange(MIN_LLM_TIMEOUT_MINUTES, MAX_LLM_TIMEOUT_MINUTES)
         self._timeout.setValue(config.llm_timeout_minutes)
         self._timeout.setToolTip(
-            "応答待ち時間。**大きいモデルは読み込みだけで数分かかります**"
+            "応答待ち時間。大きいモデルは読み込みだけで数分かかります"
             "（実測: 26b で 6 分半）。短いと途中で切れます。"
         )
         llm_form.addRow(_label("応答待ち時間"), _with_unit(self._timeout, "分", self))
@@ -437,8 +437,8 @@ class PreferencesDialog(QDialog):
             self._keep_alive.addItem(label, minutes)
         self._keep_alive.setCurrentIndex(self._keep_alive.findData(config.llm_keep_alive_minutes))
         self._keep_alive.setToolTip(
-            "答えたあとモデルをメモリに残す長さ。**残すと次が速く、"
-            "降ろすとメモリが空きます**（実測: 12b で 8.0GB、読み込み直しに 8 秒）。"
+            "答えたあとモデルをメモリに残す長さ。残すと次が速く、"
+            "降ろすとメモリが空きます（実測: 12b で 8.0GB、読み込み直しに 8 秒）。"
         )
         llm_form.addRow(_label("モデルを残す時間"), self._keep_alive)
 

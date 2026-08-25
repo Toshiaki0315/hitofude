@@ -33,7 +33,7 @@ STATUS_BAR_HEIGHT = 32
 
 # 一時通知を出す時間。showMessage の既定と同じ感覚
 NOTICE_MS = 5000
-STATS_TOOLTIP = "文字数と行数。\n装飾の記号（`**` など）と front matter、改行は数えません。"
+STATS_TOOLTIP = "文字数と行数。\n装飾の記号（** など）と front matter、改行は数えません。"
 MODE_TOOLTIP = "今入っている書き方のモード。\nRaw（⌘/）／ フォーカス（⇧⌘D）／ タイプライタ（⇧⌘Y）"
 
 
