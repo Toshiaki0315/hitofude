@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup run test test-fast cov fmt lint check clean ocr-tool
+.PHONY: help setup run test test-fast cov bench fmt lint check clean ocr-tool
 
 UV := uv
 
@@ -34,6 +34,10 @@ test-fast: ## GUI/slow を除いた高速テスト
 
 cov: ## カバレッジ計測（core は 90% 必須）
 	$(UV) run pytest --cov --cov-report=term-missing
+
+bench: ## 性能の受け入れ基準（CLAUDE.md §7）を実測
+	$(UV) run python scripts/bench.py
+
 
 fmt: ## Lint 自動修正 + フォーマット
 	$(UV) run ruff check --fix .
