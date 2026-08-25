@@ -11,7 +11,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtGui import QAction, QIcon, QTextCursor
+from PySide6.QtGui import QAction, QTextCursor
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QMessageBox
 
 from hitofude.app import style_menu
@@ -20,7 +20,7 @@ from hitofude.core.document import Note, with_title
 from hitofude.core.template import daily_title
 from hitofude.storage.index_db import ROOT_FOLDER, NoteRow
 from hitofude.storage.vault import MARKDOWN_SUFFIXES, sanitize_filename, unique_path
-from hitofude.ui.icons import MENU_ICONS
+from hitofude.ui.icons import menu_icon
 from hitofude.ui.note_list import NoteRole
 from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
 from hitofude.ui.sidebar import Filter, FilterKind
@@ -48,9 +48,9 @@ def _new_menu(window) -> QMenu:
 def add_item(menu: QMenu, label: str) -> QAction:
     """メニューに 1 項目足す。**アイコンは OS からもらう。**"""
     action = menu.addAction(label)
-    name = MENU_ICONS.get(label)
-    if name:
-        action.setIcon(QIcon.fromTheme(name))
+    icon = menu_icon(label)
+    if icon is not None:
+        action.setIcon(icon)
     return action
 
 

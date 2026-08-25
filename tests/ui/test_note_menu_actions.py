@@ -463,7 +463,7 @@ class TestMenuLook:
 
     def test_一覧のメニューにアイコンを頼む(self, window) -> None:
         """**名前で頼む。** 実物が返るかは OS 次第（offscreen では空）。"""
-        from hitofude.ui.note_actions import MENU_ICONS
+        from hitofude.ui.icons import MENU_ICONS
 
         path = make_note(window, "会議")
         menu = window.context_menu_for(path.relative_to(window.vault.root))
@@ -475,7 +475,7 @@ class TestMenuLook:
 
     def test_フォルダのメニューも同じ(self, window) -> None:
         from hitofude.storage.index_db import ROOT_FOLDER
-        from hitofude.ui.note_actions import MENU_ICONS
+        from hitofude.ui.icons import MENU_ICONS
         from hitofude.ui.sidebar import Filter, FilterKind
 
         window.vault.create_folder("仕事")

@@ -10,10 +10,11 @@
 輪郭だけでは形が読めないため。
 """
 
+import functools
 from enum import Enum, auto
 from math import cos, radians, sin
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -23,6 +24,7 @@ from PySide6.QtGui import (
     QPen,
     QPixmap,
 )
+from PySide6.QtWidgets import QApplication
 
 from hitofude import APP_NAME
 
@@ -424,6 +426,41 @@ _DRAW = {
     Glyph.QUOTE: _draw_quote,
 }
 
+
+def menu_icon(label: str) -> QIcon | None:
+    """メニューの項目に付ける絵。台帳に無い言葉なら `None`。
+
+    **先に絵（pixmap）へ焼いてから渡す**（性能。2026-08-25 の実測）。
+    `QIcon.fromTheme()` の戻りをそのままネイティブメニューへ入れると
+    **1 種類 16ms** かかり、メニューバーの 35 個で 569ms——起動が基準
+    （1500ms）を割っていた。焼いてから渡すと **20 個で 14ms**（18 倍）で、
+    見た目は変わらない。
+
+    | 20 個をメニューバーへ | 所要 |
+    | --- | --- |
+    | `fromTheme` をそのまま | 255ms |
+    | **焼いてから** | **14ms** |
+
+    遅いのは**ネイティブメニューへの挿入**だけで、`fromTheme` を呼ぶこと
+    自体は 0ms、ポップアップへの挿入も 0ms（実測）。
+
+    **画面の倍率で焼く。** 16x16 で焼くと Retina でぼやける。
+    """
+    name = MENU_ICONS.get(label)
+    if not name:
+        return None
+    app = QApplication.instance()
+    return _baked_icon(name, app.devicePixelRatio() if app else 1.0)
+
+
+@functools.cache
+def _baked_icon(name: str, ratio: float) -> QIcon:
+    """焼いた絵を覚えておく。**同じ絵はメニューバーと右クリックで共用**。"""
+    return QIcon(QIcon.fromTheme(name).pixmap(QSize(MENU_ICON_SIZE, MENU_ICON_SIZE), ratio))
+
+
+MENU_ICON_SIZE = 16
+"""メニューの絵の大きさ（論理 px）。実際は画面の倍率を掛けて焼く。"""
 
 MENU_ICONS = {
     # **アイコンは OS からもらう**（`QIcon.fromTheme`）。自分で描くと

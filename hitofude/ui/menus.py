@@ -8,12 +8,12 @@
 
 from functools import partial
 
-from PySide6.QtGui import QAction, QIcon, QKeySequence
+from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QMenu
 
 from hitofude import APP_NAME
 from hitofude.app import style_menu
-from hitofude.ui.icons import MENU_ICONS
+from hitofude.ui.icons import menu_icon
 
 
 def _add_menu(window, parent, title: str):
@@ -25,9 +25,9 @@ def _add_menu(window, parent, title: str):
     （`Internal C++ object already deleted`。テストで踏んだ）。
     """
     menu = parent.addMenu(title)
-    name = MENU_ICONS.get(title)
-    if name:
-        menu.setIcon(QIcon.fromTheme(name))
+    icon = menu_icon(title)
+    if icon is not None:
+        menu.setIcon(icon)
     window.menus[title] = menu
     return menu
 
@@ -45,9 +45,12 @@ def _add(window, menu, label: str, shortcut, slot) -> QAction:
     入れていない（印が絵を隠すため。`MENU_ICONS`）。
     """
     action = QAction(label, window)
-    name = MENU_ICONS.get(label)
-    if name:
-        action.setIcon(QIcon.fromTheme(name))
+    # **焼いた絵を渡す**（性能。2026-08-25 の実測）。`fromTheme` の戻りを
+    # そのままネイティブメニューへ入れると 1 種類 16ms かかり、35 個で
+    # 569ms——起動が基準を割っていた（`icons.menu_icon` に実測表）
+    icon = menu_icon(label)
+    if icon is not None:
+        action.setIcon(icon)
     action.setShortcut(QKeySequence(shortcut))
     action.triggered.connect(slot)
     menu.addAction(action)
