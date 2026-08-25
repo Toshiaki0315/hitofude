@@ -43,5 +43,7 @@ jobs:
           uv run ruff format --check .
 
       - name: Test
-        # GUI テストは offscreen で動く（tests/conftest.py が強制する）
-        run: uv run pytest --cov --cov-report=term-missing
+        # GUI テストは offscreen で動く（tests/conftest.py が強制する）。
+        # faulthandler は「止まって見える」事象の保険——1 テストが 5 分を
+        # 超えたら、そのテスト名と全スレッドのスタックがログに出る
+        run: uv run pytest --cov --cov-report=term-missing -o faulthandler_timeout=300

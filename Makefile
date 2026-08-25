@@ -33,7 +33,7 @@ test-fast: ## GUI/slow を除いた高速テスト
 	$(UV) run pytest -m "not gui and not slow"
 
 cov: ## カバレッジ計測（core は 90% 必須）
-	$(UV) run pytest --cov --cov-report=term-missing
+	$(UV) run pytest --cov --cov-report=term-missing -o faulthandler_timeout=300
 
 bench: ## 性能の受け入れ基準（CLAUDE.md §7）を実測
 	$(UV) run python scripts/bench.py
