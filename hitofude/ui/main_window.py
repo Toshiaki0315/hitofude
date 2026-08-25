@@ -243,6 +243,16 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ 構築
 
     def _build_ui(self) -> None:
+        """画面を組む。**呼ぶ順に意味がある**（部品 → 束ね → 結線 → 設定の
+        反映）ので、段階ごとの 4 メソッドをこの順で呼ぶだけにしてある
+        （レビュー 2026-08-25。1 本で 121 行に育っていた）。"""
+        self._build_panes()
+        self._assemble_layout()
+        self._wire_signals()
+        self._apply_config_to_ui()
+
+    def _build_panes(self) -> None:
+        """部品を作る。テーマは**保存された設定**で当てる。"""
         self.setWindowTitle(APP_NAME)
         self.resize(*DEFAULT_SIZE)
         self.setMinimumSize(*MINIMUM_SIZE)
@@ -291,6 +301,9 @@ class MainWindow(QMainWindow):
         # 前の回が「まだ走ってよい」と誤解して喋り出す（レビュー指摘）
         self._assistant_run = 0
 
+    def _assemble_layout(self) -> None:
+        """部品をスプリッタへ束ね、協調オブジェクトとタイマを作る。"""
+        theme = self._theme_watcher.colors
         self._splitter = PaneSplitter(theme.rule)
         self._splitter.addWidget(self._sidebar)
         self._splitter.addWidget(self._list_pane)
@@ -327,6 +340,8 @@ class MainWindow(QMainWindow):
         self._outline_timer.setInterval(OUTLINE_DELAY_MS)
         self._outline_timer.timeout.connect(self._update_outline)
 
+    def _wire_signals(self) -> None:
+        """部品どうしを結線する。"""
         self._list_pane.new_note_requested.connect(self.new_note)
         self._list_pane.sort_order_changed.connect(self.set_sort_order)
         self._editor.link_activated.connect(self.activate_link)
@@ -355,6 +370,8 @@ class MainWindow(QMainWindow):
         self._editor.textChanged.connect(self._on_text_changed)
         self._theme_watcher.changed.connect(self._on_theme_changed)
 
+    def _apply_config_to_ui(self) -> None:
+        """保存された設定を部品へ流し込む。"""
         self._editor.set_attachment_handler(self.save_attachment)
         self._editor.set_image_base(self._vault.root)
         self._editor.set_tag_source(self._known_tags)

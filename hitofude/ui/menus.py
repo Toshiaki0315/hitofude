@@ -16,49 +16,64 @@ from hitofude.app import style_menu
 from hitofude.ui.icons import MENU_ICONS
 
 
-def build_menus(window) -> None:
-    """`MainWindow` のメニューを組む。
+def _add_menu(window, parent, title: str):
+    """メニューを 1 つ足し、台帳（`window.menus`）に控える。
 
-    `add` はメニューへ入れるのと同時にウィンドウへも登録する。
-    メニューを開かなくてもショートカットが効くようにするため。
+    台帳は **Python 側で参照を持ち続けるために要る**。`addMenu()` の
+    返り値を捨てると、PySide は `QAction.menu()` で作り直したラッパを
+    Python 所有と見なし、それが回収された拍子に C++ の `QMenu` を消す
+    （`Internal C++ object already deleted`。テストで踏んだ）。
     """
+    menu = parent.addMenu(title)
+    name = MENU_ICONS.get(title)
+    if name:
+        menu.setIcon(QIcon.fromTheme(name))
+    window.menus[title] = menu
+    return menu
 
-    # 歯車メニュー（build_gear_menu）が同じアクションを使い回すための台帳。
-    # 別のアクションを作ると、ショートカット表示や状態が二重管理になる
+
+def _add(window, menu, label: str, shortcut, slot) -> QAction:
+    """項目を 1 つ足す。メニューと同時に**ウィンドウにも**登録する
+    （メニューを開かなくてもショートカットが効くように）。
+
+    台帳（`window.menu_actions`）は歯車メニュー（build_gear_menu）が
+    同じアクションを使い回すため。別のアクションを作ると、ショートカット
+    表示や状態が二重管理になる。
+
+    **メニューバーにも絵を付ける**（ユーザー要望 2026-08-24）。右クリックと
+    同じ台帳を引く（同じ言葉には同じ絵）。チェック印の付く項目は台帳に
+    入れていない（印が絵を隠すため。`MENU_ICONS`）。
+    """
+    action = QAction(label, window)
+    name = MENU_ICONS.get(label)
+    if name:
+        action.setIcon(QIcon.fromTheme(name))
+    action.setShortcut(QKeySequence(shortcut))
+    action.triggered.connect(slot)
+    menu.addAction(action)
+    window.addAction(action)
+    window.menu_actions[label] = action
+    return action
+
+
+def build_menus(window) -> None:
+    """`MainWindow` のメニューを組む。1 メニュー 1 関数（レビュー 2026-08-25。
+    1 本の関数に 5 メニュー分・192 行が積まれていた）。"""
     window.menu_actions = {}
-
-    # メニュー自体の台帳。**Python 側で参照を持ち続けるために要る。**
-    # `addMenu()` の返り値を捨てると、PySide は `QAction.menu()` で作り直した
-    # ラッパを Python 所有と見なし、それが回収された拍子に C++ の `QMenu` を
-    # 消す（`Internal C++ object already deleted`。テストで踏んだ）
     window.menus = {}
-
-    def add_menu(parent, title: str):
-        menu = parent.addMenu(title)
-        name = MENU_ICONS.get(title)
-        if name:
-            menu.setIcon(QIcon.fromTheme(name))
-        window.menus[title] = menu
-        return menu
-
     bar = window.menuBar()
+    _file_menu(window, bar)
+    _search_menu(window, bar)
+    _edit_menu(window, bar)
+    _view_menu(window, bar)
+    _help_menu(window, bar)
 
-    def add(menu, label: str, shortcut, slot) -> QAction:
-        action = QAction(label, window)
-        # **メニューバーにも絵を付ける**（ユーザー要望 2026-08-24）。
-        # 右クリックと同じ台帳を引く（同じ言葉には同じ絵）。チェック印の
-        # 付く項目は台帳に入れていない（印が絵を隠すため。`MENU_ICONS`）
-        name = MENU_ICONS.get(label)
-        if name:
-            action.setIcon(QIcon.fromTheme(name))
-        action.setShortcut(QKeySequence(shortcut))
-        action.triggered.connect(slot)
-        menu.addAction(action)
-        window.addAction(action)
-        window.menu_actions[label] = action
-        return action
 
-    file_menu = add_menu(bar, "ファイル")
+def _file_menu(window, bar) -> None:
+    def add(menu, label, shortcut, slot):
+        return _add(window, menu, label, shortcut, slot)
+
+    file_menu = _add_menu(window, bar, "ファイル")
     add(file_menu, "新規ノート", QKeySequence.StandardKey.New, window.new_note)
     add(file_menu, "テンプレートから新規…", "Ctrl+Shift+N", window.new_from_template)
     # **キーは付けない。** 消す操作で急がない（読み込む… と同じ理由）
@@ -111,7 +126,7 @@ def build_menus(window) -> None:
     # **書き出しは 2 段階**（ユーザー要望 2026-08-24）。形式が 4 つ直下に
     # 並ぶとメニューが伸びる。用事は「書き出す」の 1 つなので畳む。
     # 畳んでもショートカットは効く（`add` がウィンドウにも登録する）
-    export_menu = add_menu(file_menu, "書き出す")
+    export_menu = _add_menu(window, file_menu, "書き出す")
     add(export_menu, "Markdown…", "Ctrl+Shift+M", window.export_markdown)
     add(export_menu, "HTML…", "Ctrl+Shift+E", window.export_html)
     # **`Cmd+P` は印刷に譲る（C-9）。** macOS では印刷が慣習で、その
@@ -132,7 +147,12 @@ def build_menus(window) -> None:
 
     add(file_menu, "設定…", "Ctrl+,", window.open_preferences)
 
-    search_menu = add_menu(bar, "検索")
+
+def _search_menu(window, bar) -> None:
+    def add(menu, label, shortcut, slot):
+        return _add(window, menu, label, shortcut, slot)
+
+    search_menu = _add_menu(window, bar, "検索")
     add(search_menu, "クイックオープン", "Ctrl+O", window.quick_open)
     add(search_menu, "全文検索", "Ctrl+Shift+F", window.full_text_search)
     add(search_menu, "見出しへ飛ぶ", "Ctrl+R", window.open_outline)
@@ -143,7 +163,12 @@ def build_menus(window) -> None:
     add(search_menu, "次を検索", "Ctrl+G", window._pane.find_again)
     add(search_menu, "前を検索", "Ctrl+Shift+G", lambda: window._pane.find_again(backward=True))
 
-    edit_menu = add_menu(bar, "編集")
+
+def _edit_menu(window, bar) -> None:
+    def add(menu, label, shortcut, slot):
+        return _add(window, menu, label, shortcut, slot)
+
+    edit_menu = _add_menu(window, bar, "編集")
     # **フォーカスのあるウィジェットへ渡す。** ここで登録した
     # ショートカットはウィンドウ全体に効くので、素通しにすると
     # 検索欄で Cmd+A を押したのに本文が全選択される
@@ -173,7 +198,12 @@ def build_menus(window) -> None:
     # （`tests/ui/test_appearance.py` の衝突検査が見ている）
     add(edit_menu, "リンクの図…", "Ctrl+Shift+R", window.show_graph)
 
-    view_menu = add_menu(bar, "表示")
+
+def _view_menu(window, bar) -> None:
+    def add(menu, label, shortcut, slot):
+        return _add(window, menu, label, shortcut, slot)
+
+    view_menu = _add_menu(window, bar, "表示")
     # 開くたびに今の状態をチェック印へ写す（ユーザー要望）。トグルの
     # たびに印を追いかけるより、見せる瞬間に読むほうが取りこぼさない
     view_menu.aboutToShow.connect(lambda: sync_view_checks(window))
@@ -203,7 +233,12 @@ def build_menus(window) -> None:
     ):
         add(view_menu, label, key, slot).setCheckable(True)
 
-    help_menu = add_menu(bar, "ヘルプ")
+
+def _help_menu(window, bar) -> None:
+    def add(menu, label, shortcut, slot):
+        return _add(window, menu, label, shortcut, slot)
+
+    help_menu = _add_menu(window, bar, "ヘルプ")
     add(help_menu, "ショートカット一覧", "Ctrl+?", window.show_shortcuts)
     add(help_menu, "使い方のノートを置き直す", "", window.place_manual)
     help_menu.addSeparator()
