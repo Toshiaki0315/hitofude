@@ -289,7 +289,14 @@ class IndexDb:
         return int(self._connection.execute("PRAGMA user_version").fetchone()[0])
 
     def reset(self) -> None:
-        """索引を空にする。ファイルは触らない（R9）。"""
+        """索引を空にする。ファイルは触らない（R9）。**テストの道具。**
+
+        本番の「作り直す」はここではなく `rebuild_in_place`（表ごと
+        作り直す。中身だけ消す方式は、列を足すマイグレーションで直らない
+        ことが分かって退役した——`_migrate` の注記）。残してあるのは、
+        テストが「スキーマは正しいがデータが空」という壊れた索引を
+        作るのに使うため（R9 の逃げ道そのものの検査に要る）。
+        """
         self._connection.execute("DELETE FROM notes")
         self._connection.execute("DELETE FROM links")
         self._connection.execute("DELETE FROM tags")
