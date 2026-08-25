@@ -125,6 +125,38 @@ class Config:
     def __init__(self, settings: QSettings | None = None) -> None:
         self.settings = settings if settings is not None else QSettings()
 
+    # -------------------------------------------------------- 読み方の共通形
+    #
+    # 設定ファイルは手で編集できるので、壊れた値でも**アプリが起動しなく
+    # なってはいけない**。読み方は 3 つに揃える（コードレビュー 2026-08-25。
+    # 同型の検証が 12 プロパティで少しずつ違う書き方になっていた）。
+    #
+    # **`type=int` に頼らない。** 数字でない文字列を黙って 0 に変えるので、
+    # 0 が妥当な選択肢のとき（履歴の「なし」）に検証を素通りする。
+
+    def _int_choice(self, key: str, choices: tuple[int, ...], default: int) -> int:
+        """選べる値だけを返す。途中の値・壊れた値は既定へ。"""
+        try:
+            found = int(self.settings.value(key, default))
+        except (TypeError, ValueError):
+            return default
+        return found if found in choices else default
+
+    def _int_between(self, key: str, low: int, high: int, default: int) -> int:
+        """範囲の中だけを返す。外れた値・壊れた値は既定へ。"""
+        try:
+            found = int(self.settings.value(key, default))
+        except (TypeError, ValueError):
+            return default
+        return found if low <= found <= high else default
+
+    def _enum(self, key: str, kind, default):
+        """列挙の値だけを返す。知らない値は既定へ。"""
+        try:
+            return kind(self.settings.value(key, default.value, type=str))
+        except ValueError:
+            return default
+
     # ------------------------------------------------------------------ vault
 
     @property
@@ -147,11 +179,7 @@ class Config:
 
     @property
     def theme_mode(self) -> ThemeMode:
-        stored = self.settings.value(_THEME, ThemeMode.SYSTEM.value, type=str)
-        try:
-            return ThemeMode(stored)
-        except ValueError:
-            return ThemeMode.SYSTEM
+        return self._enum(_THEME, ThemeMode, ThemeMode.SYSTEM)
 
     @theme_mode.setter
     def theme_mode(self, value: ThemeMode) -> None:
@@ -179,11 +207,7 @@ class Config:
     @property
     def line_spacing(self) -> LineSpacing:
         """行間。壊れた値は既定（ふつう）へ戻す。"""
-        raw = self.settings.value(_LINE_SPACING, LineSpacing.NORMAL.value, type=str)
-        try:
-            return LineSpacing(raw)
-        except ValueError:
-            return LineSpacing.NORMAL
+        return self._enum(_LINE_SPACING, LineSpacing, LineSpacing.NORMAL)
 
     @line_spacing.setter
     def line_spacing(self, value: LineSpacing) -> None:
@@ -192,11 +216,7 @@ class Config:
     @property
     def content_width(self) -> ContentWidth:
         """本文の横幅。壊れた値は既定（標準）へ戻す。"""
-        raw = self.settings.value(_CONTENT_WIDTH, ContentWidth.STANDARD.value, type=str)
-        try:
-            return ContentWidth(raw)
-        except ValueError:
-            return ContentWidth.STANDARD
+        return self._enum(_CONTENT_WIDTH, ContentWidth, ContentWidth.STANDARD)
 
     @content_width.setter
     def content_width(self, value: ContentWidth) -> None:
@@ -211,12 +231,7 @@ class Config:
 
         **選べる値だけを返す**（`history_interval_minutes` と同じ理由）。
         """
-        raw = self.settings.value(_LLM_KEEP_ALIVE, llm.KEEP_ALIVE_MINUTES)
-        try:
-            found = int(raw)
-        except (TypeError, ValueError):
-            return llm.KEEP_ALIVE_MINUTES
-        return found if found in llm.KEEP_ALIVE_CHOICES else llm.KEEP_ALIVE_MINUTES
+        return self._int_choice(_LLM_KEEP_ALIVE, llm.KEEP_ALIVE_CHOICES, llm.KEEP_ALIVE_MINUTES)
 
     @llm_keep_alive_minutes.setter
     def llm_keep_alive_minutes(self, value: int) -> None:
@@ -232,12 +247,9 @@ class Config:
         **`type=int` に頼らない**（コードレビュー指摘）。数字でない文字列を
         0 に変えてしまい、0 は妥当な選択肢（なし）なので検証を素通りする。
         """
-        raw = self.settings.value(_HISTORY_INTERVAL, DEFAULT_HISTORY_INTERVAL)
-        try:
-            found = int(raw)
-        except (TypeError, ValueError):
-            return DEFAULT_HISTORY_INTERVAL
-        return found if found in HISTORY_INTERVAL_CHOICES else DEFAULT_HISTORY_INTERVAL
+        return self._int_choice(
+            _HISTORY_INTERVAL, HISTORY_INTERVAL_CHOICES, DEFAULT_HISTORY_INTERVAL
+        )
 
     @history_interval_minutes.setter
     def history_interval_minutes(self, value: int) -> None:
@@ -316,11 +328,7 @@ class Config:
     @property
     def sort_order(self) -> SortOrder:
         """一覧の並び順（C-3）。知らない値は既定へ戻す。"""
-        stored = self.settings.value(_SORT_ORDER, SortOrder.MODIFIED.value, type=str)
-        try:
-            return SortOrder(stored)
-        except ValueError:
-            return SortOrder.MODIFIED
+        return self._enum(_SORT_ORDER, SortOrder, SortOrder.MODIFIED)
 
     @sort_order.setter
     def sort_order(self, value: SortOrder) -> None:
@@ -333,13 +341,7 @@ class Config:
         範囲の外や壊れた値は既定へ戻す。設定ファイルは手で編集できるので、
         変な値が入っていても**アプリが起動しなくなってはいけない**。
         """
-        try:
-            width = int(self.settings.value(_TAB_WIDTH, DEFAULT_TAB_WIDTH))
-        except (TypeError, ValueError):
-            return DEFAULT_TAB_WIDTH
-        if not MIN_TAB_WIDTH <= width <= MAX_TAB_WIDTH:
-            return DEFAULT_TAB_WIDTH
-        return width
+        return self._int_between(_TAB_WIDTH, MIN_TAB_WIDTH, MAX_TAB_WIDTH, DEFAULT_TAB_WIDTH)
 
     @tab_width.setter
     def tab_width(self, value: int) -> None:
@@ -392,8 +394,7 @@ class Config:
         `OLLAMA_HOST` で別のポートにしている人がいるので、そこだけ開ける。
         外の機械を指せるようにはしない（ノートが外に出ない、が前提）。
         """
-        found = self.settings.value(_LLM_PORT, llm.DEFAULT_PORT, type=int)
-        return found if 1 <= found <= 65535 else llm.DEFAULT_PORT
+        return self._int_between(_LLM_PORT, 1, 65535, llm.DEFAULT_PORT)
 
     @llm_port.setter
     def llm_port(self, value: int) -> None:
@@ -406,8 +407,7 @@ class Config:
         短すぎれば指示すら入らず、長すぎればメモリを食い潰す。
         知らない値は既定へ戻す（設定ファイルは手で編集できる）。
         """
-        found = self.settings.value(_LLM_CONTEXT, llm.CONTEXT_TOKENS, type=int)
-        return found if found in llm.CONTEXT_CHOICES else llm.CONTEXT_TOKENS
+        return self._int_choice(_LLM_CONTEXT, llm.CONTEXT_CHOICES, llm.CONTEXT_TOKENS)
 
     @llm_context.setter
     def llm_context(self, value: int) -> None:
@@ -422,10 +422,12 @@ class Config:
         手元のモデルに合わせて延ばせるようにする（ユーザー要望）。
         知らない値・短すぎる値は既定へ戻す（設定ファイルは手で編集できる）。
         """
-        found = self.settings.value(_LLM_TIMEOUT, DEFAULT_LLM_TIMEOUT_MINUTES, type=int)
-        if found < MIN_LLM_TIMEOUT_MINUTES or found > MAX_LLM_TIMEOUT_MINUTES:
-            return DEFAULT_LLM_TIMEOUT_MINUTES
-        return found
+        return self._int_between(
+            _LLM_TIMEOUT,
+            MIN_LLM_TIMEOUT_MINUTES,
+            MAX_LLM_TIMEOUT_MINUTES,
+            DEFAULT_LLM_TIMEOUT_MINUTES,
+        )
 
     @llm_timeout_minutes.setter
     def llm_timeout_minutes(self, value: int) -> None:
@@ -437,11 +439,7 @@ class Config:
 
         知らない値は既定へ戻す（設定ファイルは手で編集できる）。
         """
-        found = str(self.settings.value(_OCR_ENGINE, ocr.DEFAULT_ENGINE.value))
-        try:
-            return ocr.Engine(found)
-        except ValueError:
-            return ocr.DEFAULT_ENGINE
+        return self._enum(_OCR_ENGINE, ocr.Engine, ocr.DEFAULT_ENGINE)
 
     @ocr_engine.setter
     def ocr_engine(self, value: ocr.Engine) -> None:
@@ -454,8 +452,9 @@ class Config:
         **毎回選び直させない。** 範囲の外は既定へ戻す（設定ファイルは手で
         編集できるので、変な値でアプリが壊れてはいけない）。
         """
-        found = self.settings.value(_GRAPH_DEPTH, graph.DEFAULT_DEPTH, type=int)
-        return found if MIN_GRAPH_DEPTH <= found <= MAX_GRAPH_DEPTH else graph.DEFAULT_DEPTH
+        return self._int_between(
+            _GRAPH_DEPTH, MIN_GRAPH_DEPTH, MAX_GRAPH_DEPTH, graph.DEFAULT_DEPTH
+        )
 
     @graph_depth.setter
     def graph_depth(self, value: int) -> None:

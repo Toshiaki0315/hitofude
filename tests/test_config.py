@@ -416,3 +416,41 @@ class TestKeepAlive:
         for broken in (7, "こわれた", ""):
             config.settings.setValue("llm/keep_alive_minutes", broken)
             assert config.llm_keep_alive_minutes == 5, broken
+
+
+class TestBrokenValues:
+    """壊れた設定値はどのプロパティでも既定へ戻る（コードレビュー 2026-08-25）。
+
+    検証の書き方が 12 プロパティで少しずつ違い、`type=int` が数字でない
+    文字列を 0 に変える罠に落ちる箇所と落ちない箇所が混ざっていた。
+    読み方を 3 つの共通形に畳んだうえで、**全プロパティに同じ検査**を当てる。
+
+    **キーは実装の定数から取る。** 手で綴ると、違うキーに書いて
+    「既定のまま＝合格」という素通りの検査になる（書いていて実際になった）。
+    """
+
+    @pytest.mark.parametrize(
+        ("key_name", "name"),
+        [
+            ("_THEME", "theme_mode"),
+            ("_LINE_SPACING", "line_spacing"),
+            ("_CONTENT_WIDTH", "content_width"),
+            ("_SORT_ORDER", "sort_order"),
+            ("_OCR_ENGINE", "ocr_engine"),
+            ("_TAB_WIDTH", "tab_width"),
+            ("_LLM_TIMEOUT", "llm_timeout_minutes"),
+            ("_LLM_PORT", "llm_port"),
+            ("_LLM_CONTEXT", "llm_context"),
+            ("_LLM_KEEP_ALIVE", "llm_keep_alive_minutes"),
+            ("_HISTORY_INTERVAL", "history_interval_minutes"),
+            ("_GRAPH_DEPTH", "graph_depth"),
+        ],
+    )
+    def test_壊れた文字列でも既定に戻る(self, config, key_name, name) -> None:
+        from hitofude import config as config_module
+
+        key = getattr(config_module, key_name)
+        fresh = getattr(config, name)  # 既定値（何も書いていない状態）
+        for broken in ("こわれた", "", "12個"):
+            config.settings.setValue(key, broken)
+            assert getattr(config, name) == fresh, (name, broken)
