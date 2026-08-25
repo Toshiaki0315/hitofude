@@ -93,7 +93,7 @@ class TestWiring:
     def test_エディタからの合図で開く(self, window) -> None:
         """`Cmd+クリック` の受け口が繋がっていること。"""
         path = make_note(window, "会議メモ")
-        window.editor.note_activated.emit("会議メモ")
+        window.editor.wikilink_activated.emit("会議メモ")
         assert window.current_note.path == path
 
     def test_書きかけの内容を保存してから移る(self, window) -> None:

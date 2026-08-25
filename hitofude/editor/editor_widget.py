@@ -125,9 +125,14 @@ class MarkdownEditor(QPlainTextEdit):
     tag_activated = Signal(str)
     """`Cmd+クリック` されたタグ（D-2）。一覧の絞り込みは `MainWindow` の仕事。"""
 
-    note_activated = Signal(str)
-    """`Cmd+クリック` された `[[ノート名]]`（E-6）。名前を解決して開く（無ければ
-    作る）のは `MainWindow` の仕事。エディタは vault を知らない。"""
+    wikilink_activated = Signal(str)
+    """`Cmd+クリック` された `[[ノート名]]`（E-6）。載るのは**題名**。名前を
+    解決して開く（無ければ作る）のは `MainWindow` の仕事。エディタは vault を
+    知らない。
+
+    **`note_activated` とは名乗らない**（レビュー 2026-08-25）。その名前は
+    一覧系（note_list / assistant_pane / backlink_bar）が「相対 Path が
+    載る」という意味で使っており、同名で題名を載せると受け手が取り違える。"""
 
     source_mode_changed = Signal(bool)
     """ソースモードが切り替わった。**入口が 2 つある**（`Cmd+/` と Raw ボタン）
@@ -1526,7 +1531,7 @@ class MarkdownEditor(QPlainTextEdit):
             case ActivationKind.LINK:
                 self.link_activated.emit(found.payload)
             case ActivationKind.NOTE:
-                self.note_activated.emit(found.payload)
+                self.wikilink_activated.emit(found.payload)
             case _:
                 self.tag_activated.emit(found.payload)
 

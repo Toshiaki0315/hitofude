@@ -50,8 +50,9 @@ class Backlink:
 
 
 class BacklinkBar(QWidget):
-    opened = Signal(Path)
-    """行が押された。**開くのはここではない**（ウィジェットは vault を知らない）。"""
+    note_activated = Signal(object)
+    """行が押された。載るのは相対 `Path`（一覧系の同名シグナルと同じ言葉）。
+    **開くのはここではない**（ウィジェットは vault を知らない）。"""
 
     toggled = Signal(bool)
     """開閉が変わった。覚えておくのは `Config` の仕事。"""
@@ -142,7 +143,7 @@ class BacklinkBar(QWidget):
     def activate(self, row: int) -> None:
         """行を選ぶ（クリックと同じ）。無い行なら何もしない。"""
         if 0 <= row < len(self._links):
-            self.opened.emit(self._links[row].path)
+            self.note_activated.emit(self._links[row].path)
 
     def set_theme(self, theme: ThemeColors) -> None:
         self._theme = theme

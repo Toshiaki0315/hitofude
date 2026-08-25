@@ -100,7 +100,7 @@ class TestList:
 class TestOpening:
     def test_押すと合図が出る(self, bar, qtbot) -> None:
         bar.set_links(LINKS)
-        with qtbot.waitSignal(bar.opened) as blocker:
+        with qtbot.waitSignal(bar.note_activated) as blocker:
             bar.activate(0)
         assert blocker.args[0] == Path("日報.md")
 
