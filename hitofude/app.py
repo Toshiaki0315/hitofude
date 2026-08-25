@@ -507,9 +507,11 @@ def create_application(argv: list[str] | None = None) -> QApplication:
     app.setApplicationVersion(__version__)
 
     install_translations(app)
-    apply_chrome_font(app)
-    # **テーマより先に。** `setStyle()` はパレットを標準へ戻す
+    # **スタイルがいちばん先。** `setStyle()` はパレットもツールチップの
+    # フォントも標準へ戻すので、あとに置くと文字の大きさ（+2pt）と配色が
+    # 黙って消える（tests/ui/test_menu_font.py が単独実行で捕まえた）
     apply_tooltip_margin(app)
+    apply_chrome_font(app)
     apply_tooltip_colors()
     apply_theme(app, colors_for(ThemeMode.SYSTEM, system_is_dark=system_is_dark()))
     return app
