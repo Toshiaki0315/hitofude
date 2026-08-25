@@ -232,8 +232,10 @@ def preview_height(font: QFont, text: str, width: int) -> int:
     `lineSpacing()` で進む。Hiragino Sans 12pt は height 12 / lineSpacing 18 で、
     2 行だと 12px 足りず、実機でプレビューの 2 行目が切れていた。
 
-    実際に折り返した行数で数えるので、**1 行しかないノートの行は低くなる**。
-    常に 2 行ぶん取ると一覧がすかすかになる。長い本文は 2 行で止める。
+    実際に折り返した行数で数える。**行の高さはこれでは変わらない**
+    （`sizeHint` は `setUniformItemSizes` の前提から常に 2 行ぶん取る）。
+    ここで決まるのは**描く矩形**で、1 行のプレビューを 2 行ぶんの枠に
+    描くと縦の中心がずれるのを防ぐ。長い本文は 2 行で止める。
     """
     if not text:
         return 0

@@ -75,12 +75,12 @@ MAX_FILENAME_BYTES = 200
 _ILLEGAL_RE = re.compile(r"[/:\\]")
 _WHITESPACE_RE = re.compile(r"\s+")
 
-# 走査から外すフォルダ。**`storage/watcher.py` もこれを使う。**
-# 2 か所に書くと、片方だけ直したときに「一覧には出ないのに索引には入る」
-# という食い違いが出る（E-4 で実際に起きた）
 # macOS が勝手に置くファイル。フォルダが「空か」の判定では無視する
 _IGNORED_FILE = ".DS_Store"
 
+# 走査から外すフォルダ。**`storage/watcher.py` もこれを使う。**
+# 2 か所に書くと、片方だけ直したときに「一覧には出ないのに索引には入る」
+# という食い違いが出る（E-4 で実際に起きた）
 SKIP_DIRS = frozenset({TRASH_DIR, MANAGED_DIR, ATTACHMENTS_DIR, TEMPLATES_DIR})
 
 DEFAULT_ATTACHMENT_SUFFIX = ".png"

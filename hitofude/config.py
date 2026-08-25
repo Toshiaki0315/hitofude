@@ -69,12 +69,13 @@ DEFAULT_FONT_FAMILY = "Hiragino Sans"
 DEFAULT_MONO_FAMILY = "Menlo"
 DEFAULT_POINT_SIZE = 15.0
 DEFAULT_TRASH_DAYS = 30
-# タブ幅（文字数）。Markdown の世界では 4 が標準。Qt の既定は 80px 固定で、
-# 本文フォントだと 12 文字ぶんもあった（実測。ユーザーの違和感の元）
+
 MIN_GRAPH_DEPTH = 1
 MAX_GRAPH_DEPTH = 3
 """図の深さの幅。**3 で一気に増える**（点の数の 2 乗で効く。TASKS.md の M-2）。"""
 
+# タブ幅（文字数）。Markdown の世界では 4 が標準。Qt の既定は 80px 固定で、
+# 本文フォントだと 12 文字ぶんもあった（実測。ユーザーの違和感の元）
 DEFAULT_TAB_WIDTH = 4
 MIN_TAB_WIDTH = 1
 MAX_TAB_WIDTH = 8

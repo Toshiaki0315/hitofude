@@ -26,12 +26,12 @@ from PySide6.QtGui import (
 
 from hitofude import APP_NAME
 
-# 描画は倍率をかけた大きさで行い、表示側で縮小する。線が滑らかになる
 # 上部のバー（一覧の並び順・新規、本文の書式ツールバー）の倍率。
 # **1 か所に持つ。** 各ファイルに数字を散らすと、直すときに片方だけ残る。
 # 1.0 が元の大きさ（ユーザー要望で 1.5 倍を試し、1.3 に落ち着いた）
 TOOLBAR_SCALE = 1.3
 
+# 描画は倍率をかけた大きさ（CANVAS）で行い、表示側で縮小する。線が滑らかになる
 CANVAS = 64
 STROKE = 5.0
 _CACHE: dict[tuple["Glyph", str, bool], QIcon] = {}

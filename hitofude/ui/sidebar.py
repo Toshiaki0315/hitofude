@@ -249,13 +249,13 @@ class SidebarItemDelegate(QStyledItemDelegate):
 
 class Sidebar(QTreeView):
     filter_changed = Signal(object)
+    """選ばれた `Filter`。"""
 
     note_dropped = Signal(object, str)
     """落とされたノートの相対 `Path` と、移動先のフォルダ（直下は空文字）。
 
     **移すのは受け手（MainWindow）の仕事。** サイドバーは vault も索引も
     知らない（一覧が `files_dropped` で知らせるのと同じ分担）。"""
-    """選ばれた `Filter`。"""
 
     def __init__(self, parent: QWidget | None = None, *, theme: ThemeColors = LIGHT) -> None:
         super().__init__(parent)

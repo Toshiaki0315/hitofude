@@ -920,8 +920,6 @@ class MarkdownEditor(QPlainTextEdit):
         self._images.clear()
         self._highlighter.rehighlight()
 
-    # ------------------------------------------------------------------ 添付
-
     # ------------------------------------------------------------- タグ補完
 
     def set_tag_source(self, source: Callable[[], list[str]] | None) -> None:
@@ -1286,8 +1284,6 @@ class MarkdownEditor(QPlainTextEdit):
         cursor.insertText(text)
         cursor.endEditBlock()
         cursor.setPosition(cursor.block().position() + py_to_utf16(text, min(column, len(text))))
-
-    # ------------------------------------------------------------- リビール
 
     # --------------------------------------------- 見出しの折りたたみ（I-4）
 

@@ -4,6 +4,7 @@
 
 - `IndexSyncTask` … vault の走査
 - `StatsTask` … 文字数と行数の集計
+- `AssistantTask` … ローカルLLM の生成（L-1 / ADR-0025）
 """
 
 import logging

@@ -43,7 +43,10 @@ MAX_VERSIONS = 50
 """1 ノートにつき保つ版の数。"""
 
 MAX_DAYS = 30
-"""保つ期間。ゴミ箱（`DEFAULT_TRASH_DAYS`）と揃える。"""
+"""保つ期間。ゴミ箱の既定（`DEFAULT_TRASH_DAYS` = 30）と同じ値にしてある。
+
+**import はしない**（config がこのモジュールを import しており循環する）。
+ゴミ箱の既定を変えるときはここも見ること。"""
 
 # ファイル名にできる形の日時。`:` は macOS の Finder が `/` に見せるので使わない
 _STAMP_FORMAT = "%Y-%m-%dT%H-%M-%S"

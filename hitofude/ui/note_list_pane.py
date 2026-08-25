@@ -32,10 +32,10 @@ from hitofude.ui.panes import NOTE_LIST_MIN_WIDTH
 # 拡大して並べて選んだ: 14 は接触、20 は際どい、**26 で明確に離れる**
 HEADER_MARGIN = round(6 * TOOLBAR_SCALE)
 
-# 並び順の選択肢（C-3）。**設定ダイアログには置かない。** 並び替えは
-# 「今そうしたい」操作で、一度決めて忘れる設定とは性質が違う
 EMPTY_NOTICE = "ノートがありません。\n右上の ＋ で作れます。"
 
+# 並び順の選択肢（C-3）。**設定ダイアログには置かない。** 並び替えは
+# 「今そうしたい」操作で、一度決めて忘れる設定とは性質が違う
 SORT_LABELS = {
     SortOrder.MODIFIED: "更新の新しい順",
     SortOrder.CREATED: "作成の新しい順",
@@ -84,9 +84,6 @@ class NoteListPane(QWidget):
         self._sort_order = SortOrder.MODIFIED
         self.set_sort_order(self._sort_order)
 
-        # **本文側のツールバーと同じ高さにする**（ユーザー要望）。左右に
-        # 並んで見えるので、高さが違うと段差になる。
-        #
         # **本文側のツールバーと同じ高さにする**（ユーザー要望）。左右に並んで
         # 見えるので、高さが違うと段差になって目に付く。高さは入れ物で決め、
         # 記号は上下の真ん中に置く（上に張り付くと、ただ余白が空いて見える）
@@ -178,12 +175,11 @@ class NoteListPane(QWidget):
 
     def set_theme(self, theme: ThemeColors) -> None:
         self._list.set_theme(theme)
-        # ボタンだけに当てる。ペイン全体へ流すと一覧の配色まで上書きしてしまう。
-        # **両方に当てる。** 片方だけだと、あとから足したボタンが枠付きで
-        # 浮いて見える（実機で `⇅` だけ枠が出ていた）
         # **本文側のツールバーと同じ見た目にする**（ユーザー要望）。同じバーに
         # 並ぶのに片方だけ枠が無いと、押せるものだと分かりにくい。丸みは
-        # 向こうの値を引く（別々に書くと食い違う）
+        # 向こうの値を引く（別々に書くと食い違う）。QSS は**ボタン全部に、
+        # ボタンだけに**当てる——ペイン全体へ流すと一覧の配色まで上書きし、
+        # 片方だけだと後から足したボタンが枠付きで浮く（実機で `⇅` だけ出た）
         self._sort.setIcon(glyph_icon(Glyph.SORT, theme.muted_foreground))
         self._new.setIcon(glyph_icon(Glyph.NEW_NOTE, theme.muted_foreground))
         style = (
