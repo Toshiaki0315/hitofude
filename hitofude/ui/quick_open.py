@@ -42,6 +42,29 @@ MAX_RESULTS = 50
 # 一覧のボタンと同じ角丸の枠を付ける
 CLOSE_ICON = 12
 
+
+def close_button(parent, theme: ThemeColors) -> QPushButton:
+    """枠の無い窓の「閉じる」ボタン（パレットとリンクの図で同じ形）。
+
+    一覧のボタン（ソート・新規）と同じ形。**押せるものだと分かる形を
+    アプリの中で 1 つに揃える。** 色は増やさない。写しが 2 か所に
+    育っていたので 1 つに畳んだ（レビュー 2026-08-25）。
+    """
+    found = QPushButton("閉じる", parent)
+    found.setIcon(glyph_icon(Glyph.CLOSE, theme.muted_foreground))
+    found.setIconSize(QSize(CLOSE_ICON, CLOSE_ICON))
+    found.setToolTip("閉じる（Esc）")
+    found.setStyleSheet(
+        f"QPushButton {{ color: {theme.muted_foreground}; "
+        f"border: 1px solid {theme.rule}; border-radius: {BUTTON_RADIUS}px; "
+        f"padding: 3px 8px; }}"
+        f"QPushButton:hover {{ background: {theme.tag_background}; }}"
+    )
+    # **打つ手を止めない。** 押す気が無い人には無いのと同じ
+    found.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    return found
+
+
 # 1 行の内側の余白（上下左右）。帯と文字が接しないぶん
 PADDING = 4
 # 一覧の幅が分からないときの代用。ふつうは使われない
@@ -139,21 +162,8 @@ class Palette(QDialog):
 
         # **閉じるボタン**（ユーザー要望）。枠の無い窓なので OS の閉じる
         # ボタンが無く、Esc を知らないと閉じられなかった
-        self._close = QPushButton("閉じる", self)
-        self._close.setIcon(glyph_icon(Glyph.CLOSE, theme.muted_foreground))
-        self._close.setIconSize(QSize(CLOSE_ICON, CLOSE_ICON))
-        self._close.setToolTip("閉じる（Esc）")
+        self._close = close_button(self, theme)
         tooltip.adopt(self)  # 自前のツールチップ（黒地に白・角丸）
-        # 一覧のボタン（ソート・新規）と同じ形。**押せるものだと分かる形を
-        # アプリの中で 1 つに揃える。** 色は増やさない
-        self._close.setStyleSheet(
-            f"QPushButton {{ color: {theme.muted_foreground}; "
-            f"border: 1px solid {theme.rule}; border-radius: {BUTTON_RADIUS}px; "
-            f"padding: 3px 8px; }}"
-            f"QPushButton:hover {{ background: {theme.tag_background}; }}"
-        )
-        # **打つ手を止めない。** 押す気が無い人には無いのと同じ
-        self._close.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._close.clicked.connect(self.reject)
 
         self._results = QListWidget(self)

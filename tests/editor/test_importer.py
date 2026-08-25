@@ -177,7 +177,7 @@ class TestImages:
         """
         from hitofude.editor import importer
 
-        for suffix in importer.IMAGE_SUFFIXES:
+        for suffix in importer.OCR_SUFFIXES:
             assert f"*{suffix}" in importer.FILE_FILTER, suffix
 
 

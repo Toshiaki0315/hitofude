@@ -35,8 +35,9 @@ def _open_temporary(path: Path) -> tuple[int, Path]:
     return descriptor, Path(name)
 
 
-def save_atomic(path: Path, text: str) -> None:
-    """一時ファイルへ書いてから差し替える（spec §7.4）。
+def _replace_atomically(path: Path, payload, *, mode: str, **open_options) -> None:
+    """一時ファイルへ書いてから差し替える共通部（レビュー 2026-08-25 で
+    テキスト版とバイト列版の写しを畳んだ）。
 
     `fsync` してから `os.replace` する。これで電源断が起きても、
     「古い内容のまま」か「新しい内容」かのどちらかにしかならない。
@@ -45,8 +46,8 @@ def save_atomic(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = _open_temporary(path)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(text)
+        with os.fdopen(descriptor, mode, **open_options) as handle:
+            handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
         temporary.replace(path)  # os.replace と同じ。同一ボリューム内なら atomic
@@ -55,23 +56,18 @@ def save_atomic(path: Path, text: str) -> None:
         raise
 
 
+def save_atomic(path: Path, text: str) -> None:
+    """一時ファイルへ書いてから差し替える（spec §7.4）。改行は LF に揃える。"""
+    _replace_atomically(path, text, mode="w", encoding="utf-8", newline="\n")
+
+
 def save_bytes_atomic(path: Path, data: bytes) -> None:
     """`save_atomic()` のバイト列版（添付ファイル用）。
 
     テキスト版と違い改行の変換をしない。画像にとって `\r\n` はデータの
     一部で、触ると壊れる。
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = _open_temporary(path)
-    try:
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(data)
-            handle.flush()
-            os.fsync(handle.fileno())
-        temporary.replace(path)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
+    _replace_atomically(path, data, mode="wb")
 
 
 @dataclass

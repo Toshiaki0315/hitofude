@@ -22,7 +22,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -32,9 +31,7 @@ from hitofude.config import MAX_GRAPH_DEPTH, MIN_GRAPH_DEPTH
 from hitofude.core import graph
 from hitofude.theme import LIGHT, ThemeColors
 from hitofude.ui import tooltip
-from hitofude.ui.format_toolbar import BUTTON_RADIUS
-from hitofude.ui.icons import Glyph, glyph_icon
-from hitofude.ui.quick_open import CLOSE_ICON
+from hitofude.ui.quick_open import close_button
 
 NODE_RADIUS = 6
 """点の大きさ。押せる大きさと、200 点並べても潰れない大きさの折り合い。"""
@@ -323,18 +320,8 @@ class GraphWindow(QDialog):
 
         # **言葉で書いた閉じるボタン**（`Cmd+Shift+F` で 2 回報告があった。
         # 薄い × は大きくしても見つけてもらえない）
-        self.close_button = QPushButton("閉じる", self)
-        self.close_button.setIcon(glyph_icon(Glyph.CLOSE, theme.muted_foreground))
-        self.close_button.setIconSize(QSize(CLOSE_ICON, CLOSE_ICON))
-        self.close_button.setToolTip("閉じる（Esc）")
+        self.close_button = close_button(self, theme)
         tooltip.adopt(self)  # 自前のツールチップ（黒地に白・角丸）
-        self.close_button.setStyleSheet(
-            f"QPushButton {{ color: {theme.muted_foreground}; "
-            f"border: 1px solid {theme.rule}; border-radius: {BUTTON_RADIUS}px; "
-            f"padding: 3px 8px; }}"
-            f"QPushButton:hover {{ background: {theme.tag_background}; }}"
-        )
-        self.close_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.close_button.clicked.connect(self.reject)
 
         header = QHBoxLayout()

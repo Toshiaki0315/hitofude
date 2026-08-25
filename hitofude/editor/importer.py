@@ -27,13 +27,17 @@ logger = logging.getLogger(__name__)
 PDF_SUFFIX = ".pdf"
 PPTX_SUFFIX = ".pptx"
 
-IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".heic", ".tiff", ".tif"})
-"""絵から文字を読む（ADR-0027）。**読み手が無ければ読み込めない。**"""
+OCR_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".heic", ".tiff", ".tif"})
+"""絵から文字を読める拡張子（ADR-0027）。**読み手が無ければ読み込めない。**
 
-# ファイル選択に出す絞り込み。**IMAGE_SUFFIXES から組み立てる。**
+`attachments.IMAGE_SUFFIXES`（貼り付けられる絵）とは**別物**。同名だったが
+中身が違い（あちらは .gif/.webp/.bmp も貼れる）、取り違えの元だったので
+役目で名乗る（レビュー 2026-08-25）。"""
+
+# ファイル選択に出す絞り込み。**OCR_SUFFIXES から組み立てる。**
 # 手書きの一覧だと、対応を増やしたときにここだけ置いていかれる
 # （`.tif` が実際に漏れていた。レビュー 2026-08-25）
-FILE_FILTER = f"読み込める資料 (*.pdf *.pptx {' '.join(f'*{s}' for s in sorted(IMAGE_SUFFIXES))})"
+FILE_FILTER = f"読み込める資料 (*.pdf *.pptx {' '.join(f'*{s}' for s in sorted(OCR_SUFFIXES))})"
 
 # 絵にするときの横幅。**大きすぎると遅く、小さすぎると読めない。**
 # 実測では A4 相当を 1,600px で読めている
@@ -134,7 +138,7 @@ def to_markdown(path: Path, *, save_image=None, ocr=None) -> str:
     if suffix == PPTX_SUFFIX:
         # PowerPoint は構造を持っているので、ページの文字に均さず直に組む
         return pptx_import.to_markdown(path, save_image=save_image)
-    if suffix in IMAGE_SUFFIXES:
+    if suffix in OCR_SUFFIXES:
         return _from_images([path], title=path.stem, reader=ocr)
     if suffix == PDF_SUFFIX:
         pages = pdf_pages(path)
