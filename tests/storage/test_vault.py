@@ -213,13 +213,13 @@ class TestSubfolder:
 
     def test_フォルダを指定して作れる(self, vault) -> None:
         """複製がこれを使う（元と同じ場所に作る）。"""
-        note = vault.create("新しいメモ", folder=vault.root / "仕事")
+        note = vault.create("新しいメモ", folder="仕事")
         assert note.path == vault.root / "仕事" / "新しいメモ.md"
 
     def test_vaultの外には作らせない(self, vault) -> None:
         """**保管フォルダの外へ書かない。** 渡し間違いを黙って通さない。"""
         with pytest.raises(ValueError):
-            vault.create("外のメモ", folder=vault.root.parent)
+            vault.create("外のメモ", folder="..")
 
 
 class TestTrash:
@@ -708,11 +708,11 @@ class TestWritableFolderGuards:
     @pytest.mark.parametrize("reserved", [".trash", ".hitofude", "templates", "attachments"])
     def test_予約フォルダには作れない(self, vault, reserved) -> None:
         with pytest.raises(ValueError):
-            vault.create("迷子", "# 迷子\n", folder=vault.root / reserved)
+            vault.create("迷子", "# 迷子\n", folder=reserved)
 
     def test_予約フォルダの子孫も弾く(self, vault) -> None:
         with pytest.raises(ValueError):
-            vault.create("迷子", "# 迷子\n", folder=vault.root / ".hitofude" / "history")
+            vault.create("迷子", "# 迷子\n", folder=".hitofude/history")
 
     def test_renameは保管フォルダの外を弾く(self, vault, tmp_path) -> None:
         outsider = tmp_path / "外.md"
@@ -1076,7 +1076,7 @@ class TestRenameFolder:
     def prepared(self, vault):
         vault.ensure_layout()
         vault.create_folder("仕事")
-        note = vault.create("会議", "# 会議\n\n本文\n", folder=vault.root / "仕事")
+        note = vault.create("会議", "# 会議\n\n本文\n", folder="仕事")
         return note
 
     def test_名前が変わる(self, vault) -> None:
@@ -1141,7 +1141,7 @@ class TestWritableFolder:
 
     def test_ふつうのフォルダは通る(self, vault) -> None:
         vault.ensure_layout()
-        found = vault.writable_folder(vault.root / "資料")
+        found = vault.writable_folder("資料")
         assert found == vault.root / "資料"
         assert found.is_dir(), "無ければ作る"
 
@@ -1152,20 +1152,19 @@ class TestWritableFolder:
     def test_予約フォルダは断る(self, vault) -> None:
         vault.ensure_layout()
         with pytest.raises(ValueError):
-            vault.writable_folder(vault.attachments_dir)
+            vault.writable_folder("attachments")
 
     def test_予約フォルダを指すリンクも断る(self, vault) -> None:
         """**別名でも中身は同じ。** 実体で見る。"""
         vault.ensure_layout()
-        link = vault.root / "資料"
-        link.symlink_to(vault.attachments_dir)
+        (vault.root / "資料").symlink_to(vault.attachments_dir)
         with pytest.raises(ValueError):
-            vault.writable_folder(link)
+            vault.writable_folder("資料")
 
-    def test_保管フォルダの外は断る(self, vault, tmp_path) -> None:
+    def test_保管フォルダの外は断る(self, vault) -> None:
         vault.ensure_layout()
         with pytest.raises(ValueError):
-            vault.writable_folder(tmp_path / "よそ")
+            vault.writable_folder("../よそ")
 
 
 class TestHistoryFollowsThePath:
@@ -1242,3 +1241,53 @@ class TestHistoryFollowsThePath:
         vault.create_folder("作業")
         moved = vault.move_note(note.path, "作業")
         assert self.kept(vault, moved) == 1
+
+
+class TestFolderArgument:
+    """`folder` は **vault からの相対（str）** で受け取る（レビュー 2026-08-25）。
+
+    フォルダの言葉が「絶対 Path」（create 系）と「相対 str」（move_note /
+    create_folder 系）の 2 系統に割れていて、呼ぶたびに変換を挟んでいた。
+    索引・サイドバー・履歴の鍵はすべて相対 str なので、そちらへ寄せる。
+    """
+
+    def test_相対strで作れる(self, vault) -> None:
+        note = vault.create("新しいメモ", folder="仕事")
+        assert note.path == vault.root / "仕事" / "新しいメモ.md"
+
+    def test_深い相対もそのまま(self, vault) -> None:
+        note = vault.create("報告", folder="仕事/2026")
+        assert note.path == vault.root / "仕事" / "2026" / "報告.md"
+
+    def test_Noneと空文字は直下(self, vault) -> None:
+        assert vault.create("直下A", folder=None).path.parent == vault.root
+        assert vault.create("直下B", folder="").path.parent == vault.root
+
+    def test_絶対Pathは受け取らない(self, vault) -> None:
+        """**移行の失敗を黙らせない。** 旧 API の呼び方は型で大きく落とす。"""
+        with pytest.raises(TypeError):
+            vault.create("旧式", folder=vault.root / "仕事")
+
+    def test_外へ抜ける相対は受け取らない(self, vault) -> None:
+        with pytest.raises(ValueError):
+            vault.create("外のメモ", folder="..")
+
+    def test_予約フォルダは受け取らない(self, vault) -> None:
+        for reserved in (".hitofude", ".trash", ".hitofude/history"):
+            with pytest.raises(ValueError):
+                vault.create("迷子", folder=reserved)
+
+    def test_writable_folderも相対strで(self, vault) -> None:
+        found = vault.writable_folder("取り込み")
+        assert found == vault.root / "取り込み"
+        assert found.is_dir()
+
+    def test_writable_folderの既定は直下(self, vault) -> None:
+        assert vault.writable_folder() == vault.root
+
+    def test_テンプレートから作るのも相対strで(self, vault) -> None:
+        vault.ensure_layout()
+        vault.templates_dir.mkdir(parents=True, exist_ok=True)
+        (vault.templates_dir / "日報.md").write_text("# {{date}}\n", encoding="utf-8")
+        created = vault.create_from_template(vault.templates_dir / "日報.md", folder="仕事")
+        assert created.note.path.parent == vault.root / "仕事"

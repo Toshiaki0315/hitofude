@@ -98,3 +98,20 @@ K-2 でサイドバーにも見えるようになった。見えるのに動か�
   してのみ許す」。**追記 1 で撤回**し、サイドバーの右クリックからも作れる）
 - `Vault.create(folder=)` の `mkdir(parents=True)` はこの決定で正当化
   される（K-2 レビューで指摘された「ADR なしのフォルダ作成能力」）
+
+## 追記 5（2026-08-25）: `folder` 引数を「vault からの相対 str」に統一
+
+フォルダの言葉が 2 系統に割れていた——ノート作成系（`create` /
+`create_from_template` / `writable_folder`）は**絶対 Path**、フォルダ操作系
+（`create_folder` / `rename_folder` / `delete_folder` / `move_note`）は
+**相対 str**。呼ぶたびに `root / relative` の変換を挟み、レビュー中の検証
+スクリプトでも 2 回取り違えた（実害）。
+
+**相対 str に寄せた。** 索引（`folder_tree` / `notes_in_folder`）・
+サイドバーの `Filter.folder`・履歴の鍵（`path:相対`）がすべて相対 str で
+喋っており、絶対 Path は Vault の内側だけの言葉にする。
+
+- `None` と空文字は直下
+- **絶対 Path は `TypeError` で大きく断る**（旧 API の呼び方を黙って
+  受けない。移行漏れをその場で気づかせる）
+- `..` は `ValueError`（vault の外に出さない）

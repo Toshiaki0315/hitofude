@@ -180,7 +180,7 @@ class TestWhereItGoes:
         """`[[まだ無いノート]]` と同じ規則（ユーザー決定 2026-08-23）。"""
         folder = window._vault.root / "仕事"
         folder.mkdir()
-        note = window._vault.create("会議メモ", BODY, folder=folder)
+        note = window._vault.create("会議メモ", BODY, folder="仕事")
         window.refresh()
         window.open_and_select(note.path)
         select(window, "# 買い物リスト")
@@ -194,7 +194,7 @@ class TestWhereItGoes:
         folder = window._vault.root / "仕事"
         folder.mkdir()
         (window._vault.root / "私用").mkdir()
-        note = window._vault.create("会議メモ", BODY, folder=folder)
+        note = window._vault.create("会議メモ", BODY, folder="仕事")
         window.refresh()
         window.open_and_select(note.path)
         window.set_filter(Filter(FilterKind.FOLDER, folder="私用"))

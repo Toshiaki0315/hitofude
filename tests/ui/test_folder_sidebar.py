@@ -499,7 +499,7 @@ class TestRenameFolderMenu:
 
     def prepared(self, window):
         window.vault.create_folder("仕事")
-        note = window.vault.create("会議", "# 会議\n\n本文\n", folder=window.vault.root / "仕事")
+        note = window.vault.create("会議", "# 会議\n\n本文\n", folder="仕事")
         window.vault_index.upsert_note(note, window.vault.root)
         window.refresh()
         return note

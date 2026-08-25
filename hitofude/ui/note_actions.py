@@ -562,12 +562,14 @@ class NoteActions:
         # **元と同じフォルダに作る**（K-1）。分類して置いたノートの複製が
         # vault 直下に出ると、片方だけ箱から外れる
         folder = path.parent
+        relative = folder.relative_to(window._vault.root)
+        in_folder = relative.as_posix() if relative.parts else None
         # **先に sanitize してから空きを探す。** create も同じ順で計算する
         # ので、2 回の unique_path が必ず同じ答えになる。生の stem から
         # 探すと、手作りのファイル名（sanitize で変わる名前）で -2-2 の
         # 二重接尾や H1 とファイル名の乖離が起きる（コードレビュー指摘）
         target = unique_path(folder, sanitize_filename(path.stem), path.suffix)
-        note = window._vault.create(target.stem, with_title(text, target.stem), folder=folder)
+        note = window._vault.create(target.stem, with_title(text, target.stem), folder=in_folder)
         # **作成系の後始末は 1 か所に任せる**（`_open_created` の注記どおり。
         # 直に開くと一覧の帯が前のノートに残る）
         window._open_created(note)

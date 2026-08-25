@@ -989,8 +989,9 @@ class MainWindow(QMainWindow):
         self.flush()
         self._open_created(self._vault.create(NEW_NOTE_TITLE, folder=self.creation_folder()))
 
-    def creation_folder(self) -> Path | None:
-        """新規作成の置き場。フォルダで絞っている間はそのフォルダの中。
+    def creation_folder(self) -> str | None:
+        """新規作成の置き場（vault からの相対）。フォルダで絞っている間は
+        そのフォルダの中。`None` は直下。
 
         直下に作ると、絞り込み中の一覧に現れもせず「押したのに何も
         起きない」ように見える（ユーザー要望）。日報フォルダに毎日
@@ -998,8 +999,8 @@ class MainWindow(QMainWindow):
         """
         if self._filter.kind is FilterKind.FOLDER and self._filter.folder:
             if self._filter.folder == ROOT_FOLDER:
-                return self._vault.root  # ルートを選んでいるときは直下へ
-            return self._vault.root / self._filter.folder
+                return None  # ルートを選んでいるときは直下へ
+            return self._filter.folder
         return None
 
     def _open_created(self, note: Note, cursor: int | None = None) -> None:
@@ -1269,7 +1270,7 @@ class MainWindow(QMainWindow):
         """「編集」メニューの灰色を今の選択に合わせる（M-1）。"""
         sync_edit_actions(self)
 
-    def _link_folder(self) -> Path | None:
+    def _link_folder(self) -> str | None:
         """`[[…]]` から作るノートの置き場（ユーザー決定 2026-08-22）。
 
         **書いたノートの隣に生やす。** リンクは本文の中にあるので、書いた
@@ -1285,7 +1286,9 @@ class MainWindow(QMainWindow):
         if not folder.is_relative_to(self._vault.root):
             return None
         relative = folder.relative_to(self._vault.root)
-        return None if relative.is_relative_to(TRASH_DIR) else folder
+        if relative.is_relative_to(TRASH_DIR) or not relative.parts:
+            return None
+        return relative.as_posix()
 
     def _remember_backlinks(self, expanded: bool) -> None:
         self._config.backlinks_expanded = expanded

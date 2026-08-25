@@ -259,24 +259,40 @@ class Vault:
     def read(self, path: Path) -> Note:
         return Note.read(path)
 
-    def writable_folder(self, folder: Path | None = None) -> Path:
+    def writable_folder(self, folder: str | None = None) -> Path:
         """書き込んでよい場所か確かめて、無ければ作る（レビュー指摘）。
+
+        `folder` は **vault からの相対（str）**。`None` と空文字は直下。
+        フォルダの言葉はこれに統一した（レビュー 2026-08-25。move_note /
+        create_folder 系と、索引・サイドバー・履歴の鍵がすべて相対 str）。
 
         **`Vault` の外で置き場を決めさせない。** ドロップの取り込みが
         ここを通らずに直にコピーしていたため、予約フォルダ（`attachments`
         など）を指すリンクを選ぶと、その中へノートが入っていた（実測）。
         一覧にも索引にも出ない場所なので、書いた人からは消えたように見える。
         """
-        target = self._writable_folder(folder) if folder is not None else self.root
+        cleaned = self._folder_relative(self._relative_str(folder))
+        target = self._writable_folder(self.root / cleaned) if cleaned else self.root
         target.mkdir(parents=True, exist_ok=True)
         return target
 
-    def create(self, title: str, text: str | None = None, *, folder: Path | None = None) -> Note:
+    @staticmethod
+    def _relative_str(folder: str | None) -> str:
+        """`folder` 引数の受付。**絶対 Path は型で大きく断る**（移行の
+        失敗を黙らせない。旧 API は絶対 Path を取っていた）。"""
+        if folder is None:
+            return ""
+        if isinstance(folder, Path):
+            raise TypeError(f"folder は vault からの相対（str）で渡す: {folder}")
+        return folder
+
+    def create(self, title: str, text: str | None = None, *, folder: str | None = None) -> Note:
         """新しいノートを作る。front matter に ULID と日時を入れる（spec §7.2）。
 
-        `folder` を渡すとそこに作る（既定は vault 直下）。複製が「元と同じ
-        場所」に作るために使う（K-1）。**vault の外には作らせない**
-        （渡し間違いを黙って通すと、保管フォルダの外にノートが散る）。
+        `folder` は vault からの相対（`仕事/2026`）。渡すとそこに作る
+        （既定は直下）。複製が「元と同じ場所」に作るために使う（K-1）。
+        **vault の外には作らせない**（渡し間違いを黙って通すと、
+        保管フォルダの外にノートが散る）。
         """
         self.ensure_layout()
         target = self.writable_folder(folder)
@@ -479,6 +495,8 @@ class Vault:
         剥ぐので、後で調べると `.trash` が `trash` に化けてすり抜ける。
         """
         raw_parts = [part.strip() for part in folder.split("/") if part.strip()]
+        if any(part == ".." for part in raw_parts):
+            raise ValueError(f"vault の外には出られない: {folder}")
         if raw_parts and (raw_parts[0] in SKIP_DIRS or raw_parts[0].startswith(".")):
             raise ValueError(f"予約フォルダは使えない: {folder}")
         return "/".join(sanitize_filename(part) for part in raw_parts)
@@ -778,7 +796,7 @@ class Vault:
         *,
         title: str | None = None,
         now: datetime | None = None,
-        folder: Path | None = None,
+        folder: str | None = None,
     ) -> NewNote:
         """雛形から新しいノートを作る（E-4）。
 

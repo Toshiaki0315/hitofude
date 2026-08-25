@@ -45,7 +45,7 @@ def note_in(window: MainWindow, folder: str, title: str) -> Path:
     """`folder/` の中にノートを作って索引に入れる。"""
     if not (window.vault.root / folder).is_dir():
         window.vault.create_folder(folder)
-    note = window.vault.create(title, f"# {title}\n\n本文\n", folder=window.vault.root / folder)
+    note = window.vault.create(title, f"# {title}\n\n本文\n", folder=folder)
     window.vault_index.upsert_note(note, window.vault.root)
     window.refresh()
     return note.path
