@@ -15,14 +15,13 @@
 import re
 from dataclasses import dataclass
 
+from hitofude.core.fences import FenceGate
+
 SEPARATOR = "/"
 
 # (?<![^\s]) は「直前が非空白ではない」＝行頭または空白の後、を表す。
 # 文字列先頭でも成立するので \A を別に書かなくてよい。
 TAG_RE = re.compile(r"(?<![^\s])#(?P<name>[^\s#]+)")
-
-# コードフェンスの開始/終了。前置の空白は 3 つまで（CommonMark）。
-_FENCE_RE = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})")
 
 # インラインコード。同じ数のバッククォートで閉じる。
 _INLINE_CODE_RE = re.compile(r"(?P<ticks>`+)(?P<body>.+?)(?P=ticks)", re.DOTALL)
@@ -67,20 +66,10 @@ def find_all(text: str) -> list[TagMatch]:
     """
     matches: list[TagMatch] = []
     offset = 0
-    fence: str | None = None
+    gate = FenceGate()
 
     for line in text.split("\n"):
-        fence_match = _FENCE_RE.match(line)
-        if fence_match is not None:
-            found = fence_match.group("fence")
-            if fence is None:
-                fence = found
-            elif found[0] == fence[0] and len(found) >= len(fence):
-                fence = None
-            offset += len(line) + 1
-            continue
-
-        if fence is None:
+        if not gate.crosses(line) and not gate.inside:
             masked = _mask_inline_code(line)
             for match in TAG_RE.finditer(masked):
                 raw = match.group("name")
