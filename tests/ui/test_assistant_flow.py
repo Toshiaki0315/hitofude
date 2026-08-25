@@ -443,7 +443,9 @@ class TestReporterLifetime:
                 super().__init__(*args, **kwargs)
                 made.append(self)
 
-        import hitofude.ui.main_window as module
+        # 生成の入口は assistant_actions に切り出された（2026-08-25）。
+        # 差し替え先も名前解決が起きるモジュールに合わせる
+        import hitofude.ui.assistant_actions as module
 
         module.AssistantReporter = Spy
         try:

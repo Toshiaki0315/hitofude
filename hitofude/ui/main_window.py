@@ -38,7 +38,7 @@ from hitofude.config import (
     MIN_POINT_SIZE,
     Config,
 )
-from hitofude.core import frontmatter, keywords, ocr, related, searchquery, textpos
+from hitofude.core import frontmatter, searchquery, textpos
 from hitofude.core import llm as llm_module
 from hitofude.core.activation import ALLOWED_SCHEMES
 from hitofude.core.document import Note
@@ -53,7 +53,6 @@ from hitofude.storage.index_db import (
     NoteRow,
     SortOrder,
     merge_folders,
-    note_key,
 )
 from hitofude.storage.vault import (
     TRASH_DIR,
@@ -63,6 +62,7 @@ from hitofude.storage.vault import (
 from hitofude.storage.watcher import ChangeKind, VaultWatcher
 from hitofude.theme import ThemeColors, ThemeMode
 from hitofude.ui import tooltip
+from hitofude.ui.assistant_actions import AssistantActions
 from hitofude.ui.assistant_pane import AssistantPane
 from hitofude.ui.backlink_bar import Backlink
 from hitofude.ui.editor_pane import EditorPane
@@ -72,8 +72,6 @@ from hitofude.ui.history_actions import HistoryActions
 from hitofude.ui.history_dialog import HistoryDialog
 from hitofude.ui.icons import Glyph, glyph_icon
 from hitofude.ui.index_sync import (
-    AssistantReporter,
-    AssistantTask,
     IndexSyncTask,
     SyncReporter,
 )
@@ -201,6 +199,9 @@ class MainWindow(QMainWindow):
         # ノートの CRUD（ゴミ箱・ピン・改名・雛形・片づけ）は束ごと
         # 切り出してある（ui/note_actions.py）。メニューの結線より先に作る
         self._notes = NoteActions(self)
+        # ローカルLLM（読ませる・降ろす・関連・質問）も束ごと切り出して
+        # ある（ui/assistant_actions.py）。_build_ui が相手を作るのに使う
+        self._assistant_actions = AssistantActions(self)
 
         self._build_ui()
         self._build_menus()
@@ -289,7 +290,7 @@ class MainWindow(QMainWindow):
         self._assistant.note_activated.connect(
             lambda relative: self.open_and_select(self._vault.root / relative)
         )
-        self._llm = self._llm_from_config()
+        self._llm = self._assistant_actions.llm_from_config()
         # **回ごとに番号を振る。** 1 つの旗を使い回すと、頼み直したときに
         # 前の回が「まだ走ってよい」と誤解して喋り出す（レビュー指摘）
         self._assistant_run = 0
@@ -1330,280 +1331,43 @@ class MainWindow(QMainWindow):
         self._llm = client
 
     def reload_llm(self) -> None:
-        """設定を読み直して相手を作り直す。
-
-        **設定画面で変えたのに古い相手のまま**、を防ぐ。作り直しは安く、
-        走っている生成は自分の相手を握ったまま終わる。
-        """
-        self._llm = self._llm_from_config()
-        if not self._assistant.isHidden():
-            self._assistant.set_available(self._llm.available())
+        """設定を読み直して相手を作り直す。実体は AssistantActions。"""
+        self._assistant_actions.reload_llm()
 
     def ocr_engine(self):
-        """画像を文字にする読み手（ADR-0027）。設定で切り替える。
-
-        **既定は macOS**（速くて正確）。ローカルLLM は大きなモデルを積める
-        人向け。どちらも無ければ「使えない」と答える（呼ぶ側が知らせる）。
-        """
-        if self._config.ocr_engine is ocr.Engine.LLM:
-            return ocr.LlmEngine(client=self._llm)
-        return ocr.MacEngine(tool=ocr.tool_path())
-
-    def _llm_from_config(self):
-        return llm_module.LocalLLM(
-            model=self._config.llm_model,
-            port=self._config.llm_port,
-            context=self._config.llm_context,
-            timeout=self._config.llm_timeout_minutes * 60,
-            keep_alive=self._config.llm_keep_alive_minutes,
-        )
+        """画像を文字にする読み手（ADR-0027）。実体は AssistantActions。"""
+        return self._assistant_actions.ocr_engine()
 
     def toggle_assistant(self) -> None:
         """`Cmd+6`。ローカルLLM の欄を開閉する（L-1 / ADR-0025）。"""
         self.show_assistant(self._assistant.isHidden())
 
     def show_assistant(self, showing: bool) -> None:
-        was_visible = not self._assistant.isHidden()
-        # スプリッタ経由で出し入れする（幅の退避・復元込み。アウトラインと同じ）
-        self._splitter.set_pane_visible(self._splitter.indexOf(self._assistant), showing)
-        self._config.assistant_visible = showing
-        if showing:
-            # **押してから断らない。** 開いた時点で動いているか見る
-            self._assistant.set_available(self._llm.available())
-        elif was_visible:
-            # **閉じるのは「もう使わない」の合図**（ユーザー要望 2026-08-24）。
-            # 出したままのモデルは 8.0GB を抱える。開いていなかったとき
-            # （起動時の復元）は通信しない
-            self._release_model()
+        self._assistant_actions.show_assistant(showing)
 
     def unload_model(self) -> bool:
-        """モデルをメモリから降ろす（ユーザー要望 2026-08-24）。降ろせたら True。
-
-        答えたあともモデルは載ったままで、12b でも `llama-server` が
-        8.0GB を抱える（実測）。設定の「モデルを残す時間」で自動でも
-        降りるが、**今すぐ空けたいときの道**をメニューにも置く。
-        """
-        if self._assistant.is_running():
-            self.notify("答えを待っている間は降ろせません")
-            return False
-        if not getattr(self._llm, "is_loaded", lambda: False)():
-            self.notify("モデルは読み込まれていません")
-            return False
-        if not self._llm.unload():
-            self.notify("モデルを降ろせませんでした")
-            return False
-        self.notify("モデルを降ろしました")
-        return True
+        """モデルをメモリから降ろす（ユーザー要望 2026-08-24）。"""
+        return self._assistant_actions.unload_model()
 
     def _release_model(self) -> None:
-        """黙って降ろす（閉じたとき・終わるとき）。
-
-        **答えの途中では降ろさない。** 走っている生成を壊す。
-        載っていなければ何もしない（無駄な通信をしない）。
-        """
-        if self._assistant.is_running():
-            return
-        release = getattr(self._llm, "unload", None)
-        if release is None or not getattr(self._llm, "is_loaded", lambda: False)():
-            return
-        release()
+        """黙って降ろす（閉じたとき・終わるとき）。実体は AssistantActions。"""
+        self._assistant_actions.release_model()
 
     def ask_assistant(self, task: llm_module.Task) -> None:
-        """今開いているノートを読ませる（L-1）。
-
-        **渡すのは今のノートの本文だけ。** 本文は書き換えない（R1）ので、
-        答えはペインにしか出ない。生成は別スレッド（§6.6）。
-        """
-        if self._note is None or self._assistant.is_running():
-            return
-        prompt = llm_module.build_prompt(task, self._editor.toPlainText())
-        if prompt is None:
-            self._assistant.fail("本文が空です。")
-            return
-
-        self._start_assistant(prompt)
-
-    def _start_assistant(self, prompt: str, *, keep_notes: bool = False) -> None:
-        """読ませて、届いたぶんから出す。**打鍵の経路に入れない**（§6.6）。"""
-        self._assistant_run += 1
-        run = self._assistant_run
-        self._assistant.begin(keep_notes=keep_notes)
-        # **読み込み中はそう言う**（ユーザー報告 2026-08-24）。26b で最初の
-        # 1 行まで 6 分半かかる（実測）。何も言わないと壊れたように見える
-        # `is_loaded` を持たない相手（試験の偽物・古い実装）は「載っている」
-        # 扱いにする。案内が出ないだけで、動きは変わらない
-        if not getattr(self._llm, "is_loaded", lambda: True)():
-            self._assistant.set_status(
-                f"「{self._llm.model}」を読み込んでいます…（初回は数分かかります）"
-            )
-        # **親を付けず、こちらで参照を持つ**（索引の SyncReporter と同じ
-        # 作法）。窓の子にすると、ワーカーが返す前に窓ごと壊れて
-        # "Signal source has been deleted" で落ちる。逆に参照を捨てると
-        # 知らせが届く前に消える。1 回ぶんだけ持てばよいので、次の回で
-        # 置き換わる（前の回の繋ぎ先も一緒に落ちる）
-        reporter = AssistantReporter()
-        self._assistant_reporter = reporter
-        # **遅れて届いた前の回の言葉を出さない。** 閉じたあとにも触らない
-        reporter.chunk.connect(lambda chunk: self._if_current(run, self._assistant.append, chunk))
-        reporter.finished.connect(lambda: self._if_current(run, self._assistant.finish))
-        reporter.failed.connect(
-            lambda reason: self._if_current(run, self._on_assistant_failed, reason)
-        )
-        QThreadPool.globalInstance().start(
-            AssistantTask(self._llm, prompt, reporter, lambda: self._assistant_run != run)
-        )
-
-    def _if_current(self, run: int, handler, *args) -> None:
-        """その回がまだ今の回なら渡す。**古い回と閉じたあとは捨てる。**"""
-        if run == self._assistant_run and not self._closing:
-            handler(*args)
+        """今開いているノートを読ませる（L-1）。実体は AssistantActions。"""
+        self._assistant_actions.ask_assistant(task)
 
     def show_related(self, *_args) -> None:
-        """今のノートに関係するノートを並べる（L-3）。
-
-        **モデルは通さない。** 関係の根拠は索引の中にある（同じタグ・
-        `[[…]]` の指し合い・題名の言及）。選ばせると、なぜ関係するのか
-        確かめられないうえ待たされ、Ollama を入れていない人には何も出ない。
-        """
-        if self._note is None:
-            return
-        rows = self._db.notes()
-        relative = self._note.path.relative_to(self._vault.root)
-        found = related.rank(self._related_signals(rows), exclude=str(relative))
-
-        titles = {str(row.path): row.title for row in rows}
-        self._assistant.set_related(
-            [
-                (Path(item.key), titles.get(item.key) or Path(item.key).stem, item.reasons)
-                for item in found
-            ]
-        )
-
-    def _related_signals(self, rows: list[NoteRow]) -> list[related.Signal]:
-        """索引から根拠を集める（L-3）。**理由の文言もここで決める。**"""
-        note = self._note
-        if note is None:
-            return []
-        note_id = note_key(note, self._vault.root)
-        found: list[related.Signal] = []
-
-        # 手で結んだものがいちばん強い（`[[…]]`）
-        for row in self._db.backlinks(note.title):
-            found.append(related.Signal(str(row.path), "このノートを指している", related.LINK))
-
-        by_title = {normalize(row.title): row for row in rows}
-        for target in self._db.links_of(note_id):
-            row = by_title.get(normalize(target))
-            if row is not None:
-                found.append(
-                    related.Signal(str(row.path), f"[[{target}]] で指している", related.LINK)
-                )
-
-        for tag in self._db.tags_of(note_id):
-            for row in self._db.notes_sharing_tags([tag]):
-                found.append(related.Signal(str(row.path), f"同じタグ #{tag}", related.SHARED_TAG))
-
-        # 題名が本文に出てくる（手で結んでいなくても言及は関係の印）
-        if note.title:
-            for hit in self._db.search(note.title, limit=related.DEFAULT_LIMIT):
-                found.append(related.Signal(str(hit.path), "題名が本文に出てくる", related.TEXT))
-        return found
+        """関係するノートを並べる（L-3）。実体は AssistantActions。"""
+        self._assistant_actions.show_related()
 
     def ask_question(self, question: str) -> None:
-        """vault 全体に質問する（L-2 / ADR-0025）。
-
-        **材料はこちらが選ぶ。** 索引で候補を引き、その本文を渡す。
-        モデルは探せないし、**出典を作文させない**ため、実際に渡した
-        ノートだけを画面に並べる。
-
-        当たりが 1 つも無ければ**読ませない**（材料の無い問いに答えさせると
-        作り話が出る。GPU を回す意味もない）。
-        """
-        if self._assistant.is_running():
-            return
-        hits = self._sources_for(question)
-        if not hits:
-            self._assistant.set_sources([])
-            return
-
-        # **出典は答えより先に出す。** 待っている間、何を見ているのか分かる
-        self._assistant.set_sources([(hit.path, hit.title) for hit in hits])
-
-        sources = llm_module.pack([(hit.title, self._read_for_llm(hit.path)) for hit in hits])
-        prompt = llm_module.build_question_prompt(question, sources)
-        if prompt is None:
-            return
-        self._start_assistant(prompt, keep_notes=True)
-
-    def _sources_for(self, question: str) -> list:
-        """質問に答える材料を索引から集める（L-2）。
-
-        **質問をそのまま探さない。** 全文検索は打った通りの並びを探すので、
-        「予算について何が決まった？」ではどのノートにも当たらない（実測で
-        0 件だった）。`core/keywords` で語に切り、**1 語ずつ探して束ねる**。
-
-        タグと日付の絞り込み（`#仕事` `after:`）は検索欄と同じ書き方が効く。
-        """
-        parsed = searchquery.parse(question)
-        found: list = []
-        seen: set[str] = set()
-
-        def collect(text: str) -> None:
-            for hit in self._db.search(
-                text,
-                tags=parsed.tags,
-                after=parsed.after,
-                before=parsed.before,
-                limit=llm_module.SOURCE_LIMIT,
-            ):
-                key = str(hit.path)
-                if key not in seen:
-                    seen.add(key)
-                    found.append(hit)
-
-        words = keywords.terms(parsed.text)
-        for word in words:
-            collect(word)
-        if not words:
-            # 語が取り出せない問い（記号だけ・ひらがなだけ）は打った通りに探す。
-            # タグだけの絞り込み（`#仕事`）もここを通る
-            collect(parsed.text)
-        return found[: llm_module.SOURCE_LIMIT]
-
-    def _read_for_llm(self, relative: Path) -> str:
-        """材料として渡す本文。**front matter は外す**（画面に見えていない）。"""
-        try:
-            text = (self._vault.root / relative).read_text(encoding="utf-8")
-        except OSError:
-            return ""
-        return frontmatter.split(text).body.strip()
+        """vault 全体に質問する（L-2）。実体は AssistantActions。"""
+        self._assistant_actions.ask_question(question)
 
     def stop_assistant(self) -> None:
-        """待つのをやめる。**書きかけは残す**（そこまでは読める）。
-
-        番号を進めるだけで止まる（走っている回は自分の番号と見比べている）。
-        """
-        self._assistant_run += 1
-        self._assistant.cancel()
-
-    def _on_assistant_failed(self, reason: str) -> None:
-        """うまくいかなかった理由を**日本語で**出す。
-
-        生の英語（Connection refused など）は出さないが、**何が起きたかで
-        言うことは変える**。時間切れを「動いているか確かめてください」と
-        案内すると、動いているのに動いていないと言われて辿り着けない
-        （ユーザー報告 2026-08-24）。
-        """
-        if reason == llm_module.TimedOut.__name__:
-            minutes = self._config.llm_timeout_minutes
-            self._assistant.fail(
-                f"{minutes} 分待っても答えが返りませんでした。"
-                "大きいモデルは読み込みだけで数分かかります"
-                "（設定の「アシスタント」で待ち時間を延ばせます）。"
-            )
-        else:
-            self._assistant.fail("Ollama に繋がりませんでした。動いているか確かめてください。")
-        self._assistant.set_available(self._llm.available())
+        """待つのをやめる。実体は AssistantActions。"""
+        self._assistant_actions.stop_assistant()
 
     def history_root(self) -> Path:
         """版の置き場。実体は HistoryActions。"""
