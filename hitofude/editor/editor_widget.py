@@ -27,6 +27,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QListWidget, QMenu, QPlainTextEdit, QTextEdit, QWidget
 
 from hitofude.app import style_menu
+from hitofude.config import DEFAULT_FONT_FAMILY, DEFAULT_POINT_SIZE, DEFAULT_TAB_WIDTH
 from hitofude.core import code_langs, frontmatter, notelink, search, table, tags
 from hitofude.core.activation import ActivationKind, activation_at
 from hitofude.core.document import plain_text
@@ -54,8 +55,8 @@ _EDITING_KEYS = frozenset(
     }
 )
 
-DEFAULT_FONT_FAMILY = "Hiragino Sans"
-DEFAULT_POINT_SIZE = 15.0
+# 既定のフォントとタブ幅は config が正（レビュー 2026-08-25。同値の
+# 別定義が 2 系統で流れ、片方だけ変える事故を待っている状態だった）
 
 # 本文の周りの余白（`QTextDocument.documentMargin`）。
 #
@@ -73,8 +74,6 @@ CONTENT_MARGIN = 12.0
 # 見出しの見た目（`# 〜 ###### ` 始まり）。textChanged はハイライトより先に
 # 届きうるので、折りたたみ解除の判定は BlockData だけに頼らない
 _HEADING_MARKER_RE = re.compile(r"^#{1,6} ")
-# タブ幅（文字数）。既定は `config.DEFAULT_TAB_WIDTH` と揃える
-DEFAULT_TAB_WIDTH = 4
 
 # タグ補完のポップアップ（C-4）
 TAG_POPUP_ROWS = 8

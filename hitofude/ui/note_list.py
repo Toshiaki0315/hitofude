@@ -430,25 +430,24 @@ class NoteListView(QListView):
 
     # ------------------------------------------------- ドラッグ＆ドロップ
 
-    def dragEnterEvent(self, event) -> None:
+    def _decide_drag(self, event) -> bool:
+        """入ってきたドラッグの受け方。決めたら True（Enter と Move で同じ）。"""
         if dropped_markdown(event.mimeData()):
             event.acceptProposedAction()
-            return
+            return True
         if dropped_note(event.mimeData()) is not None:
             # 自分から出たノート。一覧の中に落としても行き先が無い
             event.ignore()
-            return
-        super().dragEnterEvent(event)
+            return True
+        return False
+
+    def dragEnterEvent(self, event) -> None:
+        if not self._decide_drag(event):
+            super().dragEnterEvent(event)
 
     def dragMoveEvent(self, event) -> None:
-        if dropped_markdown(event.mimeData()):
-            event.acceptProposedAction()
-            return
-        if dropped_note(event.mimeData()) is not None:
-            # 自分から出たノート。一覧の中に落としても行き先が無い
-            event.ignore()
-            return
-        super().dragMoveEvent(event)
+        if not self._decide_drag(event):
+            super().dragMoveEvent(event)
 
     def dropEvent(self, event) -> None:
         found = dropped_markdown(event.mimeData())

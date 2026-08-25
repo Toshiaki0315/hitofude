@@ -554,10 +554,10 @@ class Vault:
             # K-1 で path.parent 由来になったぶん、保証を明示する
             raise ValueError(f"保管フォルダの外: {path}")
         folder = path.parent
-        target = folder / f"{sanitize_filename(title)}.md"
-        if target == path:
-            return path
-        target = unique_path(folder, sanitize_filename(title))
+        stem = sanitize_filename(title)
+        if folder / f"{stem}.md" == path:
+            return path  # 同じ名前。動かす意味が無い
+        target = unique_path(folder, stem)
         before = path.relative_to(self.root).as_posix()
         path.replace(target)
         self._follow_history(before, target)

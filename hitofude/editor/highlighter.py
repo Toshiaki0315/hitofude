@@ -24,6 +24,8 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QPlainTextDocumentLayout
 
+# 既定の等幅は config が正（editor_widget の既定と同じ理由）
+from hitofude.config import DEFAULT_MONO_FAMILY
 from hitofude.core.block_parser import classify_line
 from hitofude.core.code_tokens import tokenize
 from hitofude.core.inline_scanner import image_only_line, scan
@@ -117,8 +119,6 @@ def line_height_ratio(font: QFont) -> float:
     _HEIGHT_RATIOS[key] = ratio
     return ratio
 
-
-DEFAULT_MONO_FAMILY = "Menlo"
 
 # `SF Mono` は spec §5.2 の指定だが、macOS はアプリに公開していないため
 # 指定しても解決されない（Qt が "missing font family" を警告する）。
