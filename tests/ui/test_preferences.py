@@ -979,3 +979,61 @@ class TestKeepAlive:
         dialog.keep_alive_box.setCurrentIndex(dialog.keep_alive_box.findData(30))
         dialog.reset_to_defaults()
         assert dialog.keep_alive_box.currentData() == KEEP_ALIVE_MINUTES
+
+
+class TestHistoryUsage:
+    """履歴の使用量を見せる（ADR-0023 の宿題）。
+
+    版の履歴はディスクを食う（実測: 5 万字の記事 50 版で 6.3MB）。
+    「見えないところで太らせない」と決めて `history.total_bytes()` を
+    用意してあったのに、出す場所が無いままだった（レビュー 2026-08-25）。
+    """
+
+    def dialog(self, qtbot, tmp_path, *, versions: int = 0, size: int = 2048):
+        from PySide6.QtCore import QSettings
+
+        from hitofude.config import Config
+        from hitofude.ui.preferences import PreferencesDialog
+
+        config = Config(QSettings(str(tmp_path / "t.ini"), QSettings.Format.IniFormat))
+        config.vault_path = tmp_path / "Notes"
+        store = tmp_path / "Notes" / ".hitofude" / "history" / "01TEST"
+        for index in range(versions):
+            store.mkdir(parents=True, exist_ok=True)
+            (store / f"2026-08-2{index}T10-00-00.md").write_bytes(b"x" * size)
+        found = PreferencesDialog(config)
+        qtbot.addWidget(found)
+        return found
+
+    def test_使用量が出る(self, qtbot, tmp_path) -> None:
+        dialog = self.dialog(qtbot, tmp_path, versions=3, size=1024)
+        assert dialog.history_usage_text() == "3KB"
+
+    def test_無ければ0(self, qtbot, tmp_path) -> None:
+        assert self.dialog(qtbot, tmp_path).history_usage_text() == "0KB"
+
+    def test_一般のページにある(self, qtbot, tmp_path) -> None:
+        """「履歴を残す間隔」の隣（同じ「ノートの置き場所」の節）。"""
+        dialog = self.dialog(qtbot, tmp_path)
+        assert dialog.tabs.indexOf(dialog.history_usage_label.parentWidget()) == 0
+
+
+class TestFormatBytes:
+    """量の見せ方。ADR-0023 の表記（69KB / 6.3MB）と揃える。"""
+
+    @pytest.mark.parametrize(
+        ("size", "shown"),
+        [
+            (0, "0KB"),
+            (1, "1KB 未満"),
+            (1023, "1KB 未満"),
+            (1024, "1KB"),
+            (70_656, "69KB"),
+            (6_605_931, "6.3MB"),
+            (2_147_483_648, "2.0GB"),
+        ],
+    )
+    def test_読める形になる(self, size: int, shown: str) -> None:
+        from hitofude.ui.preferences import format_bytes
+
+        assert format_bytes(size) == shown

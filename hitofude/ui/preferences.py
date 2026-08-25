@@ -59,6 +59,8 @@ from hitofude.core.llm import (
     KEEP_ALIVE_MINUTES,
 )
 from hitofude.core.ocr import DEFAULT_ENGINE, Engine
+from hitofude.storage import history
+from hitofude.storage.vault import MANAGED_DIR
 from hitofude.theme import ThemeMode
 from hitofude.ui import tooltip
 
@@ -112,6 +114,22 @@ NUMBER_FIELD = 110
 # 単位のラベルが隣に付く欄。**数字の左に残る余りを半分に詰める**
 # （ユーザー要望 2026-08-24）。単位が外に出ているぶん短くて足りる
 UNIT_FIELD = 82
+
+
+def format_bytes(size: int) -> str:
+    """量を読める形にする（ADR-0023 の表記と揃える: 69KB / 6.3MB）。
+
+    1KB 未満を丸めて 0 にしない——「まだ何も無い」と「少しある」は違う。
+    """
+    if size <= 0:
+        return "0KB"
+    if size < 1024:
+        return "1KB 未満"
+    if size < 1024**2:
+        return f"{size / 1024:.0f}KB"
+    if size < 1024**3:
+        return f"{size / 1024**2:.1f}MB"
+    return f"{size / 1024**3:.1f}GB"
 
 
 def _resolve_vault(text: str) -> Path | None:
@@ -351,6 +369,17 @@ class PreferencesDialog(QDialog):
         )
         vault_form.addRow(_label("履歴を残す間隔"), self._history)
 
+        # 履歴の使用量（ADR-0023 の宿題）。版はディスクを食う（実測: 5 万字の
+        # 記事 50 版で 6.3MB）ので、**見えないところで太らせない**
+        self._history_usage = QLabel(
+            format_bytes(history.total_bytes(history.store_root(config.vault_path / MANAGED_DIR)))
+        )
+        self._history_usage.setToolTip(
+            "版の履歴（.hitofude/history）が使っている量。"
+            "1 ノートにつき 50 版まで、30 日で消えます。"
+        )
+        vault_form.addRow(_label("履歴の使用量"), self._history_usage)
+
         # ------------------------------------------------- ローカルLLM
         # **毛色が違うものを同じ列に並べない**（ユーザー要望）。フォントや
         # 行間は「見え方」で、ここは「誰に読ませるか」。ページを分ける
@@ -512,6 +541,15 @@ class PreferencesDialog(QDialog):
     @property
     def timeout_box(self) -> QSpinBox:
         return self._timeout
+
+    @property
+    def history_usage_label(self) -> QLabel:
+        """履歴の使用量。**見せるだけ**（消す道は付けない。版は勝手に
+        期限で消える。手で全部消す操作は「戻せない」を 1 押しで作る）。"""
+        return self._history_usage
+
+    def history_usage_text(self) -> str:
+        return self._history_usage.text()
 
     @property
     def history_box(self) -> QComboBox:

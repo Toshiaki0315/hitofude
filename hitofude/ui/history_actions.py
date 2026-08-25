@@ -26,7 +26,7 @@ class HistoryActions:
 
     def root(self) -> Path:
         """版の置き場（ADR-0023）。`.hitofude` の中で、一覧にも検索にも出ない。"""
-        return self._window._vault.managed_dir / "history"
+        return history.store_root(self._window._vault.managed_dir)
 
     def prune(self) -> None:
         """多すぎる版と古すぎる版を捨てる。起動時に 1 回。"""
