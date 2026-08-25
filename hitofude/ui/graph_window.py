@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 from hitofude.config import MAX_GRAPH_DEPTH, MIN_GRAPH_DEPTH
 from hitofude.core import graph
 from hitofude.theme import LIGHT, ThemeColors
+from hitofude.ui import tooltip
 from hitofude.ui.format_toolbar import BUTTON_RADIUS
 from hitofude.ui.icons import Glyph, glyph_icon
 from hitofude.ui.quick_open import CLOSE_ICON
@@ -326,6 +327,7 @@ class GraphWindow(QDialog):
         self.close_button.setIcon(glyph_icon(Glyph.CLOSE, theme.muted_foreground))
         self.close_button.setIconSize(QSize(CLOSE_ICON, CLOSE_ICON))
         self.close_button.setToolTip("閉じる（Esc）")
+        tooltip.adopt(self)  # 自前のツールチップ（黒地に白・角丸）
         self.close_button.setStyleSheet(
             f"QPushButton {{ color: {theme.muted_foreground}; "
             f"border: 1px solid {theme.rule}; border-radius: {BUTTON_RADIUS}px; "

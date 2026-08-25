@@ -62,6 +62,7 @@ from hitofude.storage.vault import (
 )
 from hitofude.storage.watcher import ChangeKind, VaultWatcher
 from hitofude.theme import ThemeColors, ThemeMode
+from hitofude.ui import tooltip
 from hitofude.ui.assistant_pane import AssistantPane
 from hitofude.ui.backlink_bar import Backlink
 from hitofude.ui.editor_pane import EditorPane
@@ -199,6 +200,9 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
         self._build_menus()
+        # ツールチップを自前の窓（黒地に白・角丸）で出す（ユーザー要望
+        # 2026-08-24）。**組み終えてから 1 回**。個別に張ると張り漏れる
+        tooltip.adopt(self)
         self._restore_layout()
 
         # 保存フロー（デバウンス・競合・退避）は束ごと切り出してある

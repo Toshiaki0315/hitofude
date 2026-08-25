@@ -60,6 +60,7 @@ from hitofude.core.llm import (
 )
 from hitofude.core.ocr import DEFAULT_ENGINE, Engine
 from hitofude.theme import ThemeMode
+from hitofude.ui import tooltip
 
 THEME_LABELS = {
     ThemeMode.SYSTEM: "システムに合わせる",
@@ -477,6 +478,8 @@ class PreferencesDialog(QDialog):
         layout.addWidget(buttons)
 
         self._pending_vault: Path | None = None
+        # 自前のツールチップ（黒地に白・角丸）。組み終えてから 1 回
+        tooltip.adopt(self)
 
     # ------------------------------------------------------------------ 参照
 

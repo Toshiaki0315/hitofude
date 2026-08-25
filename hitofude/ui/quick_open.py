@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 
 from hitofude.storage.index_db import HIGHLIGHT_END, HIGHLIGHT_START
 from hitofude.theme import LIGHT, ThemeColors
+from hitofude.ui import tooltip
 from hitofude.ui.format_toolbar import BUTTON_RADIUS  # 丸みは 1 か所から引く
 from hitofude.ui.icons import Glyph, glyph_icon
 
@@ -142,6 +143,7 @@ class Palette(QDialog):
         self._close.setIcon(glyph_icon(Glyph.CLOSE, theme.muted_foreground))
         self._close.setIconSize(QSize(CLOSE_ICON, CLOSE_ICON))
         self._close.setToolTip("閉じる（Esc）")
+        tooltip.adopt(self)  # 自前のツールチップ（黒地に白・角丸）
         # 一覧のボタン（ソート・新規）と同じ形。**押せるものだと分かる形を
         # アプリの中で 1 つに揃える。** 色は増やさない
         self._close.setStyleSheet(
