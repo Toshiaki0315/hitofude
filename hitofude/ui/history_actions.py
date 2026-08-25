@@ -102,7 +102,10 @@ class HistoryActions:
         return dialog
 
     def show_history(self) -> None:
-        """`Cmd+Shift+H`。版の履歴を開く（ADR-0023）。"""
+        """版の履歴を開く（ADR-0023）。**キーは付けていない**——
+        `Cmd+Shift+H` はエディタがマーカーに使っている（2026-08-23 に取り下げ、
+        2026-08-25 に `編集 → 書式 → マーカー` へ正式に付いた）。
+        """
         dialog = self.build_history_dialog()
         if dialog is None:
             self._window.notify("ノートを開いてから使ってください")

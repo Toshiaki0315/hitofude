@@ -32,6 +32,10 @@ CHOSEN = {
     # メニューを畳んだときの名前（2026-08-25）。最初「手入れ」にしたが、
     # 上の 3 つと同じく**一般に通じる言葉**を採る
     "メンテナンス": "手入れ",
+    # 書式の名前（2026-08-25）。**ボタンとメニューの言葉に揃える** —
+    # 使い方のノートだけ「取り消し線」「ハイライト」と別の言葉だった
+    "打ち消し": "取り消し線",
+    "マーカー": "ハイライト",
 }
 
 
@@ -40,17 +44,20 @@ def ui_strings() -> list[tuple[str, str]]:
 
     **docstring とコメントは見ない。** 開発者向けの言葉まで縛ると、
     直す理由の説明ができなくなる。
+
+    **属性の docstring も docstring。** 最初はモジュール・クラス・関数の
+    先頭だけを外していたが、この書き方（値の直後に置く説明文）を
+    このコードは至る所で使っている。外し漏れていたため、
+    `painter_overlay.py` の説明文が「画面に出る言葉」として引っかかった
+    （2026-08-25 に気づいた）。**式として置かれた文字列はすべて説明文**。
     """
     found: list[tuple[str, str]] = []
     for path in sorted(UI_DIR.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         docstrings = {
-            id(node.body[0].value)
+            id(node.value)
             for node in ast.walk(tree)
-            if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef)
-            and node.body
-            and isinstance(node.body[0], ast.Expr)
-            and isinstance(node.body[0].value, ast.Constant)
+            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)
         }
         for node in ast.walk(tree):
             written = isinstance(node, ast.Constant) and isinstance(node.value, str)
