@@ -574,3 +574,27 @@ class TestClipboardHtml:
         from PySide6.QtWidgets import QApplication
 
         assert "data:image/png;base64," in QApplication.clipboard().mimeData().html()
+
+
+class TestDarkCode:
+    """暗いテーマでの書き出しはコードの色分けも暗い配色にする（B-6）。
+
+    `_rendered_body` が `dark` を受け取るだけで `render` に渡しておらず、
+    docstring の警告どおり「黒地に黒い字」になりうる状態だった
+    （コードレビュー 2026-08-25）。
+    """
+
+    CODE = "# 見本\n\n```python\ndef f():\n    return 1\n```\n"
+
+    def test_HTMLの色分けがテーマで変わる(self, qapp) -> None:
+        from hitofude.theme import DARK, LIGHT
+
+        light = to_html(self.CODE, theme=LIGHT)
+        dark = to_html(self.CODE, theme=DARK)
+        assert light != dark
+
+    def test_暗い配色の色が入る(self, qapp) -> None:
+        from hitofude.theme import DARK
+
+        # github-dark の予約語の色。明るい配色（default）には出ない
+        assert "#FF7B72" in to_html(self.CODE, theme=DARK).upper()

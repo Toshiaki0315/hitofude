@@ -91,7 +91,8 @@ def _rendered_body(
     `dark` はコードの色分けを暗い配色にする（B-6）。テーマの明暗に合わせないと、
     黒地に黒い字になる。
     """
-    return _embed_images(markdown_html.render(text, math_as_source=math_as_source), base_path)
+    rendered = markdown_html.render(text, math_as_source=math_as_source, dark=dark)
+    return _embed_images(rendered, base_path)
 
 
 def _to_document(text: str, *, theme: ThemeColors, base_point_size: float, base_path: Path | None):

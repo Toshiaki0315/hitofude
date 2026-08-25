@@ -30,8 +30,10 @@ PPTX_SUFFIX = ".pptx"
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".heic", ".tiff", ".tif"})
 """絵から文字を読む（ADR-0027）。**読み手が無ければ読み込めない。**"""
 
-# ファイル選択に出す絞り込み
-FILE_FILTER = "読み込める資料 (*.pdf *.pptx *.png *.jpg *.jpeg *.heic *.tiff)"
+# ファイル選択に出す絞り込み。**IMAGE_SUFFIXES から組み立てる。**
+# 手書きの一覧だと、対応を増やしたときにここだけ置いていかれる
+# （`.tif` が実際に漏れていた。レビュー 2026-08-25）
+FILE_FILTER = f"読み込める資料 (*.pdf *.pptx {' '.join(f'*{s}' for s in sorted(IMAGE_SUFFIXES))})"
 
 # 絵にするときの横幅。**大きすぎると遅く、小さすぎると読めない。**
 # 実測では A4 相当を 1,600px で読めている

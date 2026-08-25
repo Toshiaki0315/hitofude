@@ -170,6 +170,16 @@ class TestImages:
         assert "*.png" in importer.FILE_FILTER
         assert "*.jpg" in importer.FILE_FILTER
 
+    def test_読める拡張子は全部フィルタに出す(self) -> None:
+        """`.tif` は読めるのにダイアログに出てこなかった（レビュー 2026-08-25）。
+
+        対応を増やすときの付け忘れも、この検査が捕まえる。
+        """
+        from hitofude.editor import importer
+
+        for suffix in importer.IMAGE_SUFFIXES:
+            assert f"*{suffix}" in importer.FILE_FILTER, suffix
+
 
 class TestScannedPdf:
     """文字の無い PDF は絵から読む（ADR-0027）。"""
