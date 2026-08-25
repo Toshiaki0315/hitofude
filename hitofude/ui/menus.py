@@ -134,10 +134,10 @@ def _file_menu(window, bar) -> None:
     add(file_menu, "印刷…", QKeySequence.StandardKey.Print, window.print_note)
 
     file_menu.addSeparator()
-    # **たまに走らせる手入れは畳む**（ユーザー要望 2026-08-25）。ファイルが
+    # **たまに走らせるメンテナンスは畳む**（ユーザー要望 2026-08-25）。ファイルが
     # 20 項目まで太り、毎日使う新規・保存と同じ高さに並んでいた。
     # **キーは付けない。** 急ぐ操作ではないし、増やせば衝突の種になる
-    care_menu = _add_menu(window, file_menu, "手入れ")
+    care_menu = _add_menu(window, file_menu, "メンテナンス")
     # **Finder で直に触ることがある**（ユーザー要望）。監視は動いている間しか
     # 効かないので、押せば必ず合う道を置く
     add(care_menu, "最新の情報に同期", "", window.resync)

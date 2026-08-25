@@ -1,7 +1,7 @@
 """「ファイル」の並びを整える（ユーザー要望 2026-08-25）。
 
 **20 項目・区切り 7 本まで太っていた**（検索 7 / 編集 9 / 表示 13 / ヘルプ 3）。
-中身も混ざっていて、たまにしか走らせない手入れ（同期・索引の作り直し・
+中身も混ざっていて、たまにしか走らせないメンテナンス（同期・索引の作り直し・
 添付の片づけ・テンプレートの削除・モデルを降ろす）が、毎日使う
 新規・保存と同じ高さに並んでいた。
 
@@ -51,13 +51,13 @@ class TestSlimmer:
 
 
 class TestMaintenance:
-    """たまに走らせる手入れは 1 つに畳む。"""
+    """たまに走らせるメンテナンスは 1 つに畳む。"""
 
-    def test_手入れがサブメニューにある(self, window) -> None:
-        assert "手入れ" in window.menus
+    def test_メンテナンスがサブメニューにある(self, window) -> None:
+        assert "メンテナンス" in window.menus
 
     def test_中身がそろっている(self, window) -> None:
-        found = labels(window.menus["手入れ"])
+        found = labels(window.menus["メンテナンス"])
         assert set(found) == {
             "最新の情報に同期",
             "索引を作り直す",
@@ -97,9 +97,9 @@ class TestEverydayFirst:
     def test_新規が一番上(self, window) -> None:
         assert labels(window.menus["ファイル"])[0] == "新規ノート"
 
-    def test_保存が手入れより上(self, window) -> None:
+    def test_保存がメンテナンスより上(self, window) -> None:
         found = rows(window.menus["ファイル"])
-        assert found.index("保存") < found.index("手入れ")
+        assert found.index("保存") < found.index("メンテナンス")
 
     def test_設定は一番下(self, window) -> None:
         """macOS の慣習（アプリメニューへ移されるが、並びは末尾に置く）。"""
@@ -140,7 +140,7 @@ class TestNothingLost:
 
     def test_項目は全部どこかにある(self, window) -> None:
         found: set[str] = set()
-        for title in ("ファイル", "書き出す", "手入れ"):
+        for title in ("ファイル", "書き出す", "メンテナンス"):
             found |= set(labels(window.menus[title]))
-        found -= {"書き出す", "手入れ"}  # 畳んだ入口そのもの
+        found -= {"書き出す", "メンテナンス"}  # 畳んだ入口そのもの
         assert found == EXPECTED
