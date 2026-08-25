@@ -8,11 +8,12 @@
 
 from functools import partial
 
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QIcon, QKeySequence
 from PySide6.QtWidgets import QMenu
 
 from hitofude import APP_NAME
 from hitofude.app import style_menu
+from hitofude.ui.icons import MENU_ICONS
 
 
 def build_menus(window) -> None:
@@ -34,6 +35,9 @@ def build_menus(window) -> None:
 
     def add_menu(parent, title: str):
         menu = parent.addMenu(title)
+        name = MENU_ICONS.get(title)
+        if name:
+            menu.setIcon(QIcon.fromTheme(name))
         window.menus[title] = menu
         return menu
 
@@ -41,6 +45,12 @@ def build_menus(window) -> None:
 
     def add(menu, label: str, shortcut, slot) -> QAction:
         action = QAction(label, window)
+        # **メニューバーにも絵を付ける**（ユーザー要望 2026-08-24）。
+        # 右クリックと同じ台帳を引く（同じ言葉には同じ絵）。チェック印の
+        # 付く項目は台帳に入れていない（印が絵を隠すため。`MENU_ICONS`）
+        name = MENU_ICONS.get(label)
+        if name:
+            action.setIcon(QIcon.fromTheme(name))
         action.setShortcut(QKeySequence(shortcut))
         action.triggered.connect(slot)
         menu.addAction(action)

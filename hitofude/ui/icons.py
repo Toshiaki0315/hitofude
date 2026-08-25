@@ -24,6 +24,8 @@ from PySide6.QtGui import (
     QPixmap,
 )
 
+from hitofude import APP_NAME
+
 # 描画は倍率をかけた大きさで行い、表示側で縮小する。線が滑らかになる
 # 上部のバー（一覧の並び順・新規、本文の書式ツールバー）の倍率。
 # **1 か所に持つ。** 各ファイルに数字を散らすと、直すときに片方だけ残る。
@@ -421,3 +423,77 @@ _DRAW = {
     Glyph.CHECKBOX: _draw_checkbox,
     Glyph.QUOTE: _draw_quote,
 }
+
+
+MENU_ICONS = {
+    # **アイコンは OS からもらう**（`QIcon.fromTheme`）。自分で描くと
+    # SF Symbols と並んだときに浮く。macOS 以外や offscreen では空の
+    # アイコンが返り、**付かないだけ**で何も壊れない。
+    #
+    # **チェック印の付く項目には付けない**（ユーザー要望 2026-08-24 の
+    # 際に実測）。印は絵と同じ場所に描かれるので、入のときは絵が消え、
+    # 切のときだけ絵が出る。切り替えるたびに見た目が変わって分かりにくい。
+    #
+    # 右クリックとメニューバーで**同じ言葉には同じ絵**を使う。
+    # 一覧・サイドバーの右クリック
+    "ピン留め": "emblem-favorite",
+    "ピン留めを外す": "emblem-favorite",
+    "名前を変更…": "document-properties",
+    "複製": "edit-copy",
+    "テンプレートに登録…": "document-new",
+    "フォルダへ移動…": "go-next",
+    "リンクをコピー": "insert-link",
+    "Finder で表示": "system-file-manager",
+    "Finder で開く": "system-file-manager",
+    "ゴミ箱へ移動": "user-trash",
+    "元に戻す": "edit-undo",
+    "完全に削除…": "edit-delete",
+    "新しいフォルダ…": "folder-new",
+    "フォルダを削除…": "edit-delete",
+    "ゴミ箱を空にする…": "user-trash",
+    "この検索を削除…": "edit-delete",
+    # ファイル
+    "新規ノート": "document-new",
+    "テンプレートから新規…": "list-add",
+    "テンプレートを削除…": "edit-delete",
+    "今日のノート": "appointment-new",
+    "前の日のノート": "go-previous",
+    "次の日のノート": "go-next",
+    "保存": "document-save",
+    "最新の情報に同期": "view-refresh",
+    "索引を作り直す": "system-search",
+    "モデルを降ろす": "media-eject",
+    "版の履歴…": "document-open-recent",
+    "読み込む…": "document-open",
+    "書き出す": "document-send",
+    "印刷…": "document-print",
+    "ブラウザで確認": "applications-internet",
+    "HTML をコピー": "edit-copy",
+    "使っていない添付を片づける…": "edit-clear",
+    # 検索
+    "クイックオープン": "document-open",
+    "全文検索": "system-search",
+    "検索を保存…": "document-save",
+    "このノート内を検索": "edit-find",
+    "次を検索": "go-down",
+    "前を検索": "go-up",
+    # 編集
+    "取り消す": "edit-undo",
+    "やり直す": "edit-redo",
+    "切り取り": "edit-cut",
+    "コピー": "edit-copy",
+    "貼り付け": "edit-paste",
+    "表を整形": "format-justify-fill",
+    "選択範囲をノートにする": "document-new",
+    # 表示
+    "直前のノートへ戻る": "go-previous",
+    "文字を大きく": "zoom-in",
+    "文字を小さく": "zoom-out",
+    # ヘルプ
+    f"{APP_NAME} について": "help-about",
+}
+"""メニューの項目名 → OS のアイコン名（`QIcon.fromTheme`）。
+
+ここに無い言葉には絵を付けない。**無理に付けない**——意味の合う絵が
+無いもの（「見出しへ飛ぶ」「標準の大きさ」「設定…」など）は文字だけで出す。
+"""

@@ -508,3 +508,62 @@ class TestExportSubmenu:
         top = self.labels(window, "ファイル")
         assert "印刷…" in top
         assert "ブラウザで確認" in top
+
+
+class TestMenuBarIcons:
+    """メニューバーのメニューにも絵を付ける（ユーザー要望 2026-08-24）。
+
+    右クリックには付いていて、上のメニューだけ文字ばかりだった。
+    **同じ言葉には同じ絵**を使う（台帳は `ui/icons.MENU_ICONS` の 1 つ）。
+    """
+
+    COVERED = (
+        "新規ノート",
+        "保存",
+        "読み込む…",
+        "印刷…",
+        "ゴミ箱へ移動",
+        "版の履歴…",
+        "モデルを降ろす",
+        "全文検索",
+        "このノート内を検索",
+        "取り消す",
+        "コピー",
+        "貼り付け",
+        "文字を大きく",
+    )
+
+    def test_主な項目が台帳にある(self, window) -> None:
+        from hitofude.ui.icons import MENU_ICONS
+
+        missing = [label for label in self.COVERED if label not in MENU_ICONS]
+        assert missing == [], missing
+
+    def test_台帳の言葉には絵が付く(self, window) -> None:
+        """**付け忘れない。** 台帳に載せた言葉は、メニューを組むときに引かれる。
+
+        絵そのものは OS 依存（`QIcon.fromTheme`）なので、ここでは
+        「アイコンを設定しようとしたか」を見る。offscreen では空が返る。
+        """
+        from PySide6.QtGui import QIcon
+
+        if QIcon.fromTheme("document-new").isNull():
+            pytest.skip("この環境には OS のアイコンが無い")
+        for label in self.COVERED:
+            assert not window.menu_actions[label].icon().isNull(), label
+
+    def test_チェック印の項目には付けない(self, window) -> None:
+        """印は絵と同じ場所に描かれる（実測）。入のときだけ絵が消えると、
+        切り替えるたびに見た目が変わって分かりにくい。"""
+        from hitofude.ui.icons import MENU_ICONS
+
+        checkable = [label for label, action in window.menu_actions.items() if action.isCheckable()]
+        assert checkable, "チェック印の項目が 1 つも無い"
+        assert [label for label in checkable if label in MENU_ICONS] == []
+
+    def test_書き出すのサブメニューにも絵(self, window) -> None:
+        from PySide6.QtGui import QIcon
+
+        if QIcon.fromTheme("document-send").isNull():
+            pytest.skip("この環境には OS のアイコンが無い")
+        assert not window.menus["書き出す"].icon().isNull()

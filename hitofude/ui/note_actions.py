@@ -20,6 +20,7 @@ from hitofude.core.document import Note, with_title
 from hitofude.core.template import daily_title
 from hitofude.storage.index_db import ROOT_FOLDER, NoteRow
 from hitofude.storage.vault import MARKDOWN_SUFFIXES, sanitize_filename, unique_path
+from hitofude.ui.icons import MENU_ICONS
 from hitofude.ui.note_list import NoteRole
 from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
 from hitofude.ui.sidebar import Filter, FilterKind
@@ -36,24 +37,6 @@ ROOT_FOLDER_CHOICE = "（保管フォルダ直下）"
 # **本文の右クリック（Qt のネイティブメニュー）に合わせる。** 自分で描くと
 # SF Symbols と並んだときにまた浮く。macOS 以外や offscreen では空が返り、
 # **付かないだけ**で何も壊れない
-MENU_ICONS = {
-    "ピン留め": "emblem-favorite",
-    "ピン留めを外す": "emblem-favorite",
-    "名前を変更…": "document-properties",
-    "複製": "edit-copy",
-    "テンプレートに登録…": "document-new",
-    "フォルダへ移動…": "go-next",
-    "リンクをコピー": "insert-link",
-    "Finder で表示": "system-file-manager",
-    "Finder で開く": "system-file-manager",
-    "ゴミ箱へ移動": "user-trash",
-    "元に戻す": "edit-undo",
-    "完全に削除…": "edit-delete",
-    "新しいフォルダ…": "folder-new",
-    "フォルダを削除…": "edit-delete",
-    "ゴミ箱を空にする…": "user-trash",
-    "この検索を削除…": "edit-delete",
-}
 
 
 def _new_menu(window) -> QMenu:
