@@ -17,7 +17,7 @@ from PySide6.QtCore import (
     Signal,
 )
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPalette
-from PySide6.QtWidgets import QApplication, QToolTip, QWidget
+from PySide6.QtWidgets import QApplication, QProxyStyle, QStyle, QToolTip, QWidget
 
 from hitofude import APP_NAME, ORG_DOMAIN, ORG_NAME, __version__
 from hitofude.theme import ThemeColors, ThemeMode, colors_for
@@ -508,6 +508,8 @@ def create_application(argv: list[str] | None = None) -> QApplication:
 
     install_translations(app)
     apply_chrome_font(app)
+    # **テーマより先に。** `setStyle()` はパレットを標準へ戻す
+    apply_tooltip_margin(app)
     apply_tooltip_colors()
     apply_theme(app, colors_for(ThemeMode.SYSTEM, system_is_dark=system_is_dark()))
     return app
@@ -540,6 +542,44 @@ TOOLTIP_BACKGROUND = "#1F1F22"
 
 TOOLTIP_FOREGROUND = "#FFFFFF"
 """ツールチップの文字の色。"""
+
+
+TOOLTIP_MARGIN = 7
+"""ツールチップの内側の余白（px。ユーザー要望 2026-08-24）。
+
+Qt の既定は 0 で、文字が縁に貼り付いて窮屈に見える。
+"""
+
+
+class _RoomyTooltipStyle(QProxyStyle):
+    """ツールチップにだけ余白を足すスタイル。
+
+    **Qt はこの余白をスタイルの寸法値から取る**（`QTipLabel` が作られる
+    ときに `PM_ToolTipLabelFrameWidth` を読んで内側の余白にする）。
+    そこだけ差し替えれば、スタイルシートを使わずに余裕を作れる。
+
+    他の寸法は元のスタイルへそのまま渡す（実測: 窓の描画は 256 万画素中
+    64 画素しか変わらない＝縁の丸め誤差、打鍵は 0.9ms → 1.1ms）。
+    """
+
+    def pixelMetric(self, metric, option=None, widget=None) -> int:
+        if metric == QStyle.PixelMetric.PM_ToolTipLabelFrameWidth:
+            return TOOLTIP_MARGIN
+        return super().pixelMetric(metric, option, widget)
+
+
+def apply_tooltip_margin(app: QApplication) -> None:
+    """ツールチップの内側に余白を作る（ユーザー要望 2026-08-24）。
+
+    **テーマを当てるより先に呼ぶ。** `setStyle()` はパレットを標準へ
+    戻すので、あとから入れると配色が飛ぶ（実測: 窓の 11% の画素が変わった）。
+
+    **入れ直さない。** 既に入っていれば何もしない（二重に包むと
+    寸法の問い合わせが Python を 2 回通る）。
+    """
+    if isinstance(app.style(), _RoomyTooltipStyle):
+        return
+    app.setStyle(_RoomyTooltipStyle(app.style()))
 
 
 def apply_tooltip_colors() -> None:

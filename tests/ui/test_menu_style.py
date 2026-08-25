@@ -175,3 +175,49 @@ class TestTooltip:
         apply_tooltip_colors()
         assert "QToolTip" not in qapp.styleSheet()
         assert "QToolTip" not in window.styleSheet()
+
+
+class TestTooltipMargin:
+    """ツールチップの内側に余白を作る（ユーザー要望 2026-08-24）。
+
+    Qt の既定は 0 で、文字が縁に貼り付いて窮屈に見える。**スタイルの
+    寸法値**（`PM_ToolTipLabelFrameWidth`）を差し替えて作る——スタイル
+    シートは置ける場所がどこも壊れるため（`TestTooltip` の説明）。
+    """
+
+    def test_余白の寸法値を返す(self, qapp) -> None:
+        from PySide6.QtWidgets import QStyle
+
+        from hitofude.app import TOOLTIP_MARGIN, apply_tooltip_margin
+
+        apply_tooltip_margin(qapp)
+        assert (
+            qapp.style().pixelMetric(QStyle.PixelMetric.PM_ToolTipLabelFrameWidth) == TOOLTIP_MARGIN
+        )
+
+    def test_他の寸法は元のまま(self, qapp) -> None:
+        """**ツールチップ以外には触らない。** 元のスタイルへそのまま渡す。"""
+        from PySide6.QtWidgets import QStyle
+
+        from hitofude.app import _RoomyTooltipStyle, apply_tooltip_margin
+
+        apply_tooltip_margin(qapp)
+        wrapper = qapp.style()
+        assert isinstance(wrapper, _RoomyTooltipStyle)
+        base = wrapper.baseStyle()
+        for metric in (
+            QStyle.PixelMetric.PM_ButtonMargin,
+            QStyle.PixelMetric.PM_MenuPanelWidth,
+            QStyle.PixelMetric.PM_ScrollBarExtent,
+            QStyle.PixelMetric.PM_SmallIconSize,
+        ):
+            assert wrapper.pixelMetric(metric) == base.pixelMetric(metric), metric
+
+    def test_二度入れない(self, qapp) -> None:
+        """包み直すと、寸法の問い合わせが Python を通る回数だけ増える。"""
+        from hitofude.app import apply_tooltip_margin
+
+        apply_tooltip_margin(qapp)
+        first = qapp.style()
+        apply_tooltip_margin(qapp)
+        assert qapp.style() is first
