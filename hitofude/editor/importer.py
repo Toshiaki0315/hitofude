@@ -44,6 +44,19 @@ FILE_FILTER = f"読み込める資料 (*.pdf *.pptx {' '.join(f'*{s}' for s in s
 PAGE_WIDTH = 1600
 
 
+class Cancelled(Exception):
+    """途中でやめた（`should_stop` が True を返した）。
+
+    背景スレッドで読むため（レビュー 2026-08-25）。窓を閉じたあとも
+    ページを読み続けないよう、区切りごとに合図を見る。
+    """
+
+
+def _check_stop(should_stop) -> None:
+    if should_stop is not None and should_stop():
+        raise Cancelled
+
+
 def pdf_pages(path: Path) -> list[str]:
     """PDF のページごとの文字。読めなければ空。
 
@@ -125,7 +138,7 @@ def pdf_images(path: Path) -> dict[int, list[tuple[str, bytes, int, int]]]:
     return found
 
 
-def to_markdown(path: Path, *, save_image=None, ocr=None) -> str:
+def to_markdown(path: Path, *, save_image=None, ocr=None, on_page=None, should_stop=None) -> str:
     """資料 1 つを Markdown にする。読めなければ空。
 
     **題名はファイル名**（`講演資料.pdf` → `# 講演資料`）。中身から題を
@@ -133,13 +146,20 @@ def to_markdown(path: Path, *, save_image=None, ocr=None) -> str:
 
     `save_image` は PowerPoint の画像を保管フォルダへ置く関数
     （`MainWindow.save_attachment`）。PDF では使わない（画像は取らない）。
+
+    `on_page(何枚目, 全体)` は**文字の読み取りに回したページ**の進捗
+    （実測 17 秒/ページ。背景スレッドから知らせるための口）。
+    `should_stop` が True を返したら `Cancelled` を上げて途中でやめる。
     """
+    _check_stop(should_stop)
     suffix = path.suffix.lower()
     if suffix == PPTX_SUFFIX:
         # PowerPoint は構造を持っているので、ページの文字に均さず直に組む
         return pptx_import.to_markdown(path, save_image=save_image)
     if suffix in OCR_SUFFIXES:
-        return _from_images([path], title=path.stem, reader=ocr)
+        return _from_images(
+            [path], title=path.stem, reader=ocr, on_page=on_page, should_stop=should_stop
+        )
     if suffix == PDF_SUFFIX:
         pages = pdf_pages(path)
     else:
@@ -152,7 +172,9 @@ def to_markdown(path: Path, *, save_image=None, ocr=None) -> str:
     # **ページごとに切り分ける**（ユーザー指摘 2026-08-23）。文書ごとに
     # 見ていたので、1 ページでも文字があると絵のページが丸ごと落ちていた
     blanks = _blank_pages(pages)
-    pages = _fill_blank_pages(path, pages, blanks, reader=ocr)
+    pages = _fill_blank_pages(
+        path, pages, blanks, reader=ocr, on_page=on_page, should_stop=should_stop
+    )
     if not any(page.strip() for page in pages):
         logger.warning("文字を取り出せなかった: %s", path)
         return ""
@@ -180,7 +202,9 @@ def _blank_pages(pages: list[str]) -> set[int]:
     return {number for number, page in enumerate(pages) if len(page.strip()) < MIN_PAGE_CHARS}
 
 
-def _fill_blank_pages(path: Path, pages: list[str], blank: set[int], *, reader) -> list[str]:
+def _fill_blank_pages(
+    path: Path, pages: list[str], blank: set[int], *, reader, on_page=None, should_stop=None
+) -> list[str]:
     """文字の取れなかったページだけ、絵から読んで埋める（ADR-0027）。
 
     **読めたページは捨てない。** 読み取りが使えなくても、文字のある
@@ -199,7 +223,10 @@ def _fill_blank_pages(path: Path, pages: list[str], blank: set[int], *, reader) 
         # 数が合わず、`zip` では 1 つずつずれて「5 ページ目の文字が
         # 3 ページ目に入る」になる（読み取った中身が別のページのものに
         # なるので、見ただけでは気づけない）
-        for number, image in pdf_page_images(path, Path(workspace), blanks):
+        for done, (number, image) in enumerate(pdf_page_images(path, Path(workspace), blanks)):
+            _check_stop(should_stop)
+            if on_page is not None:
+                on_page(done + 1, len(blanks))
             try:
                 found = reader.read(image)
             except Exception as error:  # 読み手の事情（道具が無い・モデルが違う）
@@ -212,7 +239,7 @@ def _fill_blank_pages(path: Path, pages: list[str], blank: set[int], *, reader) 
     return filled
 
 
-def _from_images(images: list[Path], *, title: str, reader) -> str:
+def _from_images(images: list[Path], *, title: str, reader, on_page=None, should_stop=None) -> str:
     """絵の並びを 1 つの Markdown にする。**読めなければ空。**
 
     題名だけのノートを作らない（読めたと誤解させる）。
@@ -220,7 +247,10 @@ def _from_images(images: list[Path], *, title: str, reader) -> str:
     if reader is None or not reader.available() or not images:
         return ""
     pages: list[str] = []
-    for image in images:
+    for done, image in enumerate(images):
+        _check_stop(should_stop)
+        if on_page is not None:
+            on_page(done + 1, len(images))
         try:
             pages.append(reader.read(image))
         except Exception as error:  # 読み手の事情（道具が無い・モデルが違う）

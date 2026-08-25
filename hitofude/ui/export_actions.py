@@ -14,13 +14,18 @@ import logging
 import subprocess
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import QThreadPool, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtPrintSupport import QPrintDialog
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox, QToolButton
 
 from hitofude.editor import exporter, importer, pptx_export
+from hitofude.ui.index_sync import ImportReporter, ImportTask
 from hitofude.ui.status_bar import NOTICE_MS
+
+# 取り込みの知らせは長めに出す。1 ページの読み取りに最長 17 秒かかるので、
+# 普通の知らせ（5 秒）だと進捗が消えて「固まった」ように見える
+IMPORT_NOTICE_MS = 60_000
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +60,9 @@ class ExportActions:
         self.export_timer.setSingleShot(True)
         self.export_timer.setInterval(NOTICE_MS)
         self.export_timer.timeout.connect(self.hide_notice)
+        # 取り込みが走っているか。**二重に始めない**ための旗
+        self.import_running = False
+        self._import_reporter: ImportReporter | None = None
 
     # ------------------------------------------------------------- 書き出し
 
@@ -237,27 +245,71 @@ class ExportActions:
 
     # ------------------------------------------------------------- 取り込み
 
-    def import_document(self) -> Path | None:
+    def import_document(self) -> None:
         """「ファイル」→「読み込む…」。資料をノートにして開く（F-2）。
 
         **元のファイルは触らない。** 読むだけで、移動も複製もしない。
         題名はファイル名を使う（`講演資料.pdf` → `講演資料`）。
 
+        **読むのは背景スレッド**（レビュー 2026-08-25）。文字認識付きの
+        PDF は実測 17 秒/ページで、GUI スレッドで読むと 10 ページの資料で
+        3 分固まる。ここでは始めるだけですぐ戻り、出来上がったら
+        `_on_imported` がノートを作って開く。
+
         **読めなければノートを作らない。** 空のノートが増えるほうが困る。
         """
         window = self._window
+        if self.import_running:
+            window.notify("いま別の資料を取り込んでいます。終わるまでお待ちください")
+            return
         window.flush()
         chosen, _ = QFileDialog.getOpenFileName(
             window, "読み込む", str(Path.home()), importer.FILE_FILTER
         )
         if not chosen:
-            return None
+            return
 
         source = Path(chosen)
-        # 画像と、文字の入っていない PDF は読み取りに回す（ADR-0027）
-        text = importer.to_markdown(
-            source, save_image=window.save_attachment, ocr=window.ocr_engine()
+        # **置き場は今のうちに決める。** 読み終わる数分の間に絞り込みを
+        # 変えても、選んだときのフォルダへ入る（驚かせない）
+        folder = window.creation_folder()
+
+        # **親を付けず、こちらで参照を持つ**（アシスタントと同じ作法。
+        # 窓の子にするとワーカーより先に壊れ、捨てると知らせが届かない）
+        reporter = ImportReporter()
+        self._import_reporter = reporter
+        self.import_running = True
+        reporter.progress.connect(
+            lambda done, total: window.notify(
+                f"「{source.name}」の文字を読み取っています… {done}/{total} ページ",
+                IMPORT_NOTICE_MS,
+            )
         )
+        reporter.finished.connect(lambda text: self._on_imported(source, folder, text))
+        reporter.failed.connect(lambda kind: self._on_import_failed(source, kind))
+
+        window.notify(f"「{source.name}」を読み込んでいます…", IMPORT_NOTICE_MS)
+        # 画像と、文字の入っていない PDF は読み取りに回す（ADR-0027）。
+        # `should_stop` で、窓を閉じたら次のページへ進まない
+        engine = window.ocr_engine()
+
+        def job() -> str:
+            return importer.to_markdown(
+                source,
+                save_image=window.save_attachment,
+                ocr=engine,
+                on_page=reporter.progress.emit,
+                should_stop=lambda: window._closing,
+            )
+
+        QThreadPool.globalInstance().start(ImportTask(job, reporter))
+
+    def _on_imported(self, source: Path, folder: str | None, text: str) -> None:
+        """読み終わった。**ここは GUI スレッド**（シグナル経由で戻る）。"""
+        window = self._window
+        self.import_running = False
+        if window._closing:
+            return  # 閉じたあとに届いた結果は捨てる
         if not text.strip():
             QMessageBox.warning(
                 window,
@@ -266,10 +318,16 @@ class ExportActions:
                 "設定の「文字の読み取り」を確かめてください"
                 "（保護されたファイルや、文字の無い絵かもしれません）。",
             )
-            return None
+            return
 
-        # **選んでいるフォルダへ**（ユーザー要望 2026-08-23。新規作成と同じ）
-        note = window._vault.create(source.stem, text, folder=window.creation_folder())
+        note = window._vault.create(source.stem, text, folder=folder)
         window._open_created(note)
         logger.info("取り込んだ: %s → %s", source.name, note.path.name)
-        return note.path
+
+    def _on_import_failed(self, source: Path, kind: str) -> None:
+        window = self._window
+        self.import_running = False
+        if window._closing or kind == "Cancelled":
+            return  # 自分でやめたときは騒がない
+        logger.warning("取り込みに失敗した: %s（%s）", source, kind)
+        window.notify(f"「{source.name}」を読み込めませんでした", NOTICE_MS * 2)

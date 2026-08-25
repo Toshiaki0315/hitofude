@@ -268,9 +268,10 @@ class TestImportIntoFolder:
             module.QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: (str(pdf), ""))
         )
         monkeypatch.setattr(module.importer, "to_markdown", lambda *a, **k: "# 講演資料\n\n中身\n")
-        found = window.import_document()
-        assert found is not None
-        assert found.parent == window.vault.root / "資料"
+        window.import_document()
+        assert window.wait_for_import(), "取り込みが終わらない"  # 背景スレッドに移った
+        assert window.current_note is not None
+        assert window.current_note.path.parent == window.vault.root / "資料"
 
     def test_ゴミ箱を選んでいるときは直下(self, window, tmp_path) -> None:
         """**ゴミ箱に読み込まない。** 捨てた場所に新しいものを置かない。"""

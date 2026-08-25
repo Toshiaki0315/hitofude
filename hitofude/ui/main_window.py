@@ -645,6 +645,17 @@ class MainWindow(QMainWindow):
         self.notify("索引を作り直しています…（ノートの数だけ時間がかかります）")
         return True
 
+    def wait_for_import(self, timeout_ms: int = 30000) -> bool:
+        """取り込みの完了を待つ。テストから使う（背景スレッドで読むため）。
+
+        完了の合図はキュー経由で主スレッドへ戻るので、ここで受け取り切る
+        （`wait_for_index_sync` と同じ理由）。
+        """
+        deadline = time.monotonic() + timeout_ms / 1000
+        while not self._closing and self._exports.import_running and time.monotonic() < deadline:
+            QCoreApplication.processEvents()
+        return not self._exports.import_running
+
     def wait_for_index_sync(self, timeout_ms: int = 30000) -> bool:
         """走査の完了を待つ。テストと終了処理から使う。
 
@@ -1579,9 +1590,9 @@ class MainWindow(QMainWindow):
         """一覧へドロップされた `.md` を取り込む。実体は NoteActions。"""
         return self._notes.import_note_files(paths)
 
-    def import_document(self) -> Path | None:
+    def import_document(self) -> None:
         """「ファイル」→「読み込む…」（F-2）。"""
-        return self._exports.import_document()
+        self._exports.import_document()
 
     def cleanup_attachments(self) -> int:
         """使っていない添付をゴミ箱へ移す（E-5）。実体は NoteActions。"""

@@ -5,6 +5,7 @@
 - `IndexSyncTask` … vault の走査
 - `StatsTask` … 文字数と行数の集計
 - `AssistantTask` … ローカルLLM の生成（L-1 / ADR-0025）
+- `ImportTask` … 資料の読み込み（F-2。文字認識は実測 17 秒/ページ）
 """
 
 import logging
@@ -134,3 +135,41 @@ class AssistantTask(QRunnable):
             self._reporter.failed.emit(type(error).__name__)
             return
         self._reporter.finished.emit()
+
+
+class ImportReporter(QObject):
+    """資料の読み込みの途中経過を Qt スレッドへ渡す口（F-2）。"""
+
+    progress = Signal(int, int)
+    """文字の読み取りに回したページの進捗（何枚目, 全体）。"""
+
+    finished = Signal(str)
+    """出来上がった Markdown。空文字は「読めなかった」。"""
+
+    failed = Signal(str)
+    """例外の種別名（`Cancelled` を含む）。生の英語は受け手が訳す。"""
+
+
+class ImportTask(QRunnable):
+    """資料を読む（F-2 / レビュー 2026-08-25）。
+
+    **打鍵の経路に入れない**（§6.6）。文字認識付きの PDF は実測
+    17 秒/ページで、GUI スレッドで読むと 10 ページの資料で 3 分固まる。
+
+    `job` はただの呼び出し（`importer.to_markdown` を包んだもの）。
+    ワーカーからウィジェットには触らない（他のタスクと同じ約束）。
+    """
+
+    def __init__(self, job, reporter: ImportReporter) -> None:
+        super().__init__()
+        self._job = job
+        self._reporter = reporter
+
+    def run(self) -> None:
+        try:
+            text = self._job()
+        except Exception as error:  # 途中でやめた（Cancelled）も、読めない資料も
+            logger.info("資料を読み込めなかった: %s", error)
+            self._reporter.failed.emit(type(error).__name__)
+            return
+        self._reporter.finished.emit(text)
