@@ -77,10 +77,10 @@ def _file_menu(window, bar) -> None:
         return _add(window, menu, label, shortcut, slot)
 
     file_menu = _add_menu(window, bar, "ファイル")
+
+    # **毎日使うものを上に。** 探す時間はここで決まる
     add(file_menu, "新規ノート", QKeySequence.StandardKey.New, window.new_note)
     add(file_menu, "テンプレートから新規…", "Ctrl+Shift+N", window.new_from_template)
-    # **キーは付けない。** 消す操作で急がない（読み込む… と同じ理由）
-    add(file_menu, "テンプレートを削除…", "", window.delete_template)
     # triggered(checked) の checked=False が day 引数に流れ込まないよう遮断する。
     # `daily_note` 側の `when = day or now()` が偶然吸収しているだけの脆い結合だった
     add(file_menu, "今日のノート", "Ctrl+T", lambda: window.open_daily_note())
@@ -97,37 +97,27 @@ def _file_menu(window, bar) -> None:
         "Ctrl+Shift+]",
         lambda: window.open_adjacent_daily(forward=True),
     )
+
+    file_menu.addSeparator()
     # **押したことを伝える。** 版を残す間隔を「なし」にしていても、
     # `Cmd+S` のときは 1 版残す（ユーザーの選択 2026-08-24）
     add(file_menu, "保存", QKeySequence.StandardKey.Save, lambda: window.flush(explicit=True))
-    file_menu.addSeparator()
-    # **Finder で直に触ることがある**（ユーザー要望）。監視は動いている間しか
-    # 効かないので、押せば必ず合う道を置く。**キーは付けない** — 急ぐ操作では
-    # ないし、増やせば衝突の種になる（`Cmd+Shift+X` の轍）
-    add(file_menu, "最新の情報に同期", "", window.resync)
-    # 索引そのものが疑わしいとき。**差分の 100 倍かかる**（実測 5,000 本で 19 秒）
-    add(file_menu, "索引を作り直す", "", window.rebuild_index)
-    # **今すぐメモリを空ける道**（ユーザー要望 2026-08-24）。索引の作り直しと
-    # 同じ「手で走らせる片づけ」なので隣に置く
-    add(file_menu, "モデルを降ろす", "", window.unload_model)
-    file_menu.addSeparator()
-    add(file_menu, "ピン留め", "Ctrl+Shift+P", window.toggle_pin_current)
-    add(file_menu, "ゴミ箱へ移動", "Ctrl+Backspace", window.trash_current)
-    # 版の履歴（ADR-0023）。**ファイルの仲間**（保存・ゴミ箱と同じ、
-    # ノートそのものの扱い）
+    # 版の履歴（ADR-0023）。**保存の隣**——同じ「書いたものの記録」の話。
     # **キーは付けない**（2026-08-23）。`Cmd+Shift+H` を割り当てていたが、
     # そのキーはエディタが `keyPressEvent` でハイライトに使っており、
     # **押すとハイライトになる**（実測）。`QAction` ではないので重複検査に
-    # 映らず、メニューには `⇧⌘H` と出たまま——**表示だけが嘘**だった。
-    # 版の履歴は急ぐ操作ではないので、キーを外してメニューに任せる
-    # （「テンプレートを削除…」と同じ理由）
+    # 映らず、メニューには `⇧⌘H` と出たまま——**表示だけが嘘**だった
     add(file_menu, "版の履歴…", "", window.show_history)
+
+    file_menu.addSeparator()
+    add(file_menu, "ピン留め", "Ctrl+Shift+P", window.toggle_pin_current)
+    add(file_menu, "ゴミ箱へ移動", "Ctrl+Backspace", window.trash_current)
+
     file_menu.addSeparator()
     # 取り込み（F-2）。**キーは付けない。** ファイルを選ぶ操作で急がない
     add(file_menu, "読み込む…", "", window.import_document)
-    file_menu.addSeparator()
-    # **書き出しは 2 段階**（ユーザー要望 2026-08-24）。形式が 4 つ直下に
-    # 並ぶとメニューが伸びる。用事は「書き出す」の 1 つなので畳む。
+    # **書き出しは 2 段階**（ユーザー要望 2026-08-24）。形式が直下に並ぶと
+    # メニューが伸びる。用事は「書き出す」の 1 つなので畳む。
     # 畳んでもショートカットは効く（`add` がウィンドウにも登録する）
     export_menu = _add_menu(window, file_menu, "書き出す")
     add(export_menu, "Markdown…", "Ctrl+Shift+M", window.export_markdown)
@@ -136,18 +126,35 @@ def _file_menu(window, bar) -> None:
     # パネルから「PDF として保存」も選べる。書き出しの入口はここに残す
     add(export_menu, "PDF…", "", window.export_pdf)
     add(export_menu, "PowerPoint…", "", window.export_pptx)
-    file_menu.addSeparator()
-    add(file_menu, "印刷…", QKeySequence.StandardKey.Print, window.print_note)
-    file_menu.addSeparator()
+    export_menu.addSeparator()
+    # **これも書き出し**（行き先がクリップボードなだけ。2026-08-25 に移した）
+    add(export_menu, "HTML をコピー", "", window.copy_as_html)
+    # **外で見る 2 つ**は書き出しの隣に置く（畳まない。どちらも 1 押しで済む）
     add(file_menu, "ブラウザで確認", "Ctrl+Shift+B", window.preview_in_browser)
-    add(file_menu, "HTML をコピー", "", window.copy_as_html)
+    add(file_menu, "印刷…", QKeySequence.StandardKey.Print, window.print_note)
 
+    file_menu.addSeparator()
+    # **たまに走らせる手入れは畳む**（ユーザー要望 2026-08-25）。ファイルが
+    # 20 項目まで太り、毎日使う新規・保存と同じ高さに並んでいた。
+    # **キーは付けない。** 急ぐ操作ではないし、増やせば衝突の種になる
+    care_menu = _add_menu(window, file_menu, "手入れ")
+    # **Finder で直に触ることがある**（ユーザー要望）。監視は動いている間しか
+    # 効かないので、押せば必ず合う道を置く
+    add(care_menu, "最新の情報に同期", "", window.resync)
+    # 索引そのものが疑わしいとき。**差分の 100 倍かかる**（実測 5,000 本で 19 秒）
+    add(care_menu, "索引を作り直す", "", window.rebuild_index)
+    care_menu.addSeparator()
+    # **キーを割り当てない。** 押し間違いでファイルが動く操作（E-5）
+    add(care_menu, "使っていない添付を片づける…", "", window.cleanup_attachments)
+    # **消す操作で急がない**（読み込む… と同じ理由）
+    add(care_menu, "テンプレートを削除…", "", window.delete_template)
+    care_menu.addSeparator()
+    # **今すぐメモリを空ける道**（ユーザー要望 2026-08-24）
+    add(care_menu, "モデルを降ろす", "", window.unload_model)
+
+    file_menu.addSeparator()
     # StandardKey.Preferences はこの環境で空を返し、キーボードから
     # 到達できなくなる。macOS の慣習どおり明示する
-    file_menu.addSeparator()
-    # **キーを割り当てない。** 押し間違いでファイルが動く操作（E-5）
-    add(file_menu, "使っていない添付を片づける…", "", window.cleanup_attachments)
-
     add(file_menu, "設定…", "Ctrl+,", window.open_preferences)
 
 

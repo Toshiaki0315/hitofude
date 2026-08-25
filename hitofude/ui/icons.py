@@ -503,6 +503,9 @@ MENU_ICONS = {
     "版の履歴…": "document-open-recent",
     "読み込む…": "document-open",
     "書き出す": "document-send",
+    # 手入れ（2026-08-25 に畳んだ）。**道具箱の絵**——同期・索引・添付・
+    # テンプレート・モデルの片づけがここに入る
+    "手入れ": "wrench.and.screwdriver",
     "印刷…": "document-print",
     "ブラウザで確認": "applications-internet",
     "HTML をコピー": "edit-copy",

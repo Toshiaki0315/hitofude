@@ -489,7 +489,12 @@ class TestExportSubmenu:
         assert "書き出す" in window.menus
 
     def test_形式が4つ入っている(self, window) -> None:
-        assert [label for label in self.labels(window, "書き出す") if label] == list(self.LABELS)
+        """**先頭は 4 つの形式。** 2026-08-25 に「HTML をコピー」を足した
+        （行き先がクリップボードなだけで、これも書き出し）。
+        """
+        found = [label for label in self.labels(window, "書き出す") if label]
+        assert found[: len(self.LABELS)] == list(self.LABELS)
+        assert found[len(self.LABELS) :] == ["HTML をコピー"]
 
     def test_ファイルの直下からは消えている(self, window) -> None:
         top = self.labels(window, "ファイル")
