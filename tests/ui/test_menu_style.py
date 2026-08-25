@@ -127,3 +127,51 @@ class TestRendering:
             assert middle.lightness() < 128, middle.name()
         finally:
             menu.hide()
+
+
+class TestTooltip:
+    """ツールチップは黒地に白（ユーザー要望 2026-08-24）。
+
+    Claude Desktop に合わせた。**テーマでは変えない**——黒地に白は明暗
+    どちらでも読めるし、本文と同じ色だと「浮いている小さな窓」に見えない。
+
+    **スタイルシートは使わない。** 角丸と余白は QSS でしか書けないが、
+    置ける場所がどこも壊れる（`app.apply_tooltip_colors` に実測を書いた）。
+    """
+
+    def colors(self, qapp):
+        from PySide6.QtGui import QPalette
+        from PySide6.QtWidgets import QToolTip
+
+        from hitofude.app import apply_tooltip_colors
+
+        apply_tooltip_colors()
+        palette = QToolTip.palette()
+        return (
+            palette.color(QPalette.ColorRole.ToolTipBase).name().upper(),
+            palette.color(QPalette.ColorRole.ToolTipText).name().upper(),
+        )
+
+    def test_黒地に白(self, qapp) -> None:
+        from hitofude.app import TOOLTIP_BACKGROUND, TOOLTIP_FOREGROUND
+
+        assert self.colors(qapp) == (TOOLTIP_BACKGROUND.upper(), TOOLTIP_FOREGROUND.upper())
+
+    def test_テーマを変えても黒地のまま(self, qapp) -> None:
+        """`apply_theme` はアプリのパレットを塗るが、`QToolTip` の指定が勝つ。"""
+        from hitofude.app import TOOLTIP_BACKGROUND, apply_tooltip_colors
+
+        apply_tooltip_colors()
+        apply_theme(qapp, LIGHT)
+        assert self.colors(qapp)[0] == TOOLTIP_BACKGROUND.upper()
+        apply_theme(qapp, DARK)
+        assert self.colors(qapp)[0] == TOOLTIP_BACKGROUND.upper()
+
+    def test_スタイルシートには触らない(self, qapp, window) -> None:
+        """**置ける場所がどこも壊れる**（アプリ全体は落ちる、窓はテーマの
+        伝播が止まる）。触っていないことを固定する。"""
+        from hitofude.app import apply_tooltip_colors
+
+        apply_tooltip_colors()
+        assert "QToolTip" not in qapp.styleSheet()
+        assert "QToolTip" not in window.styleSheet()

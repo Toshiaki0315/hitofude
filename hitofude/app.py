@@ -8,7 +8,14 @@ from typing import cast
 # QtWebEngine（Mermaid の描画・ADR-0021）は QApplication より先に import
 # されている必要がある。忘れると WebEngine の初期化で警告や落ちが出る
 import PySide6.QtWebEngineWidgets  # noqa: F401
-from PySide6.QtCore import QLibraryInfo, QLockFile, QObject, Qt, QTranslator, Signal
+from PySide6.QtCore import (
+    QLibraryInfo,
+    QLockFile,
+    QObject,
+    Qt,
+    QTranslator,
+    Signal,
+)
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPalette
 from PySide6.QtWidgets import QApplication, QToolTip, QWidget
 
@@ -501,6 +508,7 @@ def create_application(argv: list[str] | None = None) -> QApplication:
 
     install_translations(app)
     apply_chrome_font(app)
+    apply_tooltip_colors()
     apply_theme(app, colors_for(ThemeMode.SYSTEM, system_is_dark=system_is_dark()))
     return app
 
@@ -521,6 +529,41 @@ def apply_menu_font(menu: QWidget) -> None:
     font = QFont(menu.font())
     font.setPointSizeF(font.pointSizeF() + MENU_FONT_STEP)
     menu.setFont(font)
+
+
+TOOLTIP_BACKGROUND = "#1F1F22"
+"""ツールチップの地の色（ユーザー要望 2026-08-24）。
+
+**テーマでは変えない。** 黒地に白は明るいテーマでも暗いテーマでも読めるし、
+本文と同じ色で出すと「浮いている小さな窓」に見えず下の文字と混ざる。
+"""
+
+TOOLTIP_FOREGROUND = "#FFFFFF"
+"""ツールチップの文字の色。"""
+
+
+def apply_tooltip_colors() -> None:
+    """ツールチップを黒地に白にする（ユーザー要望 2026-08-24）。
+
+    **`QToolTip` のパレットで塗る。スタイルシートは使わない。** 角丸と
+    余白は QSS でしか書けないが、置ける場所がどこも壊れる:
+
+    - `QApplication.setStyleSheet()` … 既にあるウィジェットを全部塗り直す。
+      長い走行では**消えかけの相手まで塗り直して落ちる**（実測 segfault）
+    - 窓に置く … その窓の中の**パレットの伝播が止まる**。テーマを暗くしても
+      サイドバーと一覧が明るいままになった（既存の試験 5 件が捕まえた）
+
+    角の丸みも見送った。Qt はツールチップの窓を不透明に描くので、
+    丸くするには出るたびに `WA_TranslucentBackground` を入れ直すしかなく、
+    その足がかり（アプリ全体のイベントフィルタ）は**空でも**この試験群を
+    落とす（PySide が消えかけの相手まで包むため）。
+
+    パレットならこの 3 つのどれにも触らない。テーマを変えても残る（実測）。
+    """
+    palette = QToolTip.palette()
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(TOOLTIP_BACKGROUND))
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor(TOOLTIP_FOREGROUND))
+    QToolTip.setPalette(palette)
 
 
 def apply_chrome_font(app: QApplication) -> None:
