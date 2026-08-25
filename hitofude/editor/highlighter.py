@@ -607,26 +607,10 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         絵が出来ていない間（size が None）は生のまま見せ、出来た時点で
         エディタが掛け直す（`MermaidCache.rendered`）。
         """
-        run = self._mermaid_run(info)
-        if run is None:
-            return False
-        start, end, source = run
-        if not source.strip() or self._caret_in_lines(start, end):
-            return False
-        size = self._mermaid_size(source)
-        if size is None:
-            return False  # 依頼中か、描けない図。生のまま
-        self._hide(0, len(text))
-        number = self.currentBlock().blockNumber()
-        if number == start + 1:
-            tall = QTextCharFormat()
-            tall.setFontPointSize(self._point_size_for(size.height() + IMAGE_PADDING * 2))
-            tall.setForeground(QColor("transparent"))
-            self.setFormat(0, 1, tall)
-            self._pending_diagram = source
-        elif number == start:
-            self._pad_band_edge(text)  # 開きのフェンスは帯の縁の余白になる
-        return True
+        # 依頼中か描けない図（size が None）は生のまま
+        return self._apply_figure(
+            text, self._mermaid_run(info), self._mermaid_size, "_pending_diagram"
+        )
 
     def _math_run(self) -> tuple[int, int, str] | None:
         """この行が属する数式ブロックの（開始行, 終了行, LaTeX）。
@@ -669,16 +653,26 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         キャレットがどの行に入っても式全体が生の LaTeX に戻る。
         途中の行だけ生に戻ると、式の断片と絵が同時に見えて読めない。
         """
-        run = self._math_run()
+        # 壊れた式（size が None）は生のまま見せて直せるようにする
+        return self._apply_figure(text, self._math_run(), self._math_size, "_pending_figure")
+
+    def _apply_figure(self, text: str, run, size_of, remember_as: str) -> bool:
+        """図の行の隠しと高さの予約（数式と Mermaid で同じ形）。
+
+        `run` は `(開始行, 終了行, 中身)`。キャレットが範囲に触れていれば
+        生のまま（**式・図の全体で**リビールする。途中の行だけ生に戻ると、
+        断片と絵が同時に見えて読めない）。開きの行（start）は帯の縁の
+        余白になり、その次の行の 1 文字目を透明なまま大きくして絵の高さを
+        予約する（画像 ADR-0004 と同じ手）。
+        """
         if run is None:
             return False
-        start, end, latex = run
-        if not latex.strip() or self._caret_in_lines(start, end):
+        start, end, source = run
+        if not source.strip() or self._caret_in_lines(start, end):
             return False
-        size = self._math_size(latex)
+        size = size_of(source)
         if size is None:
-            return False  # 壊れた式。生のまま見せて直せるようにする
-
+            return False
         self._hide(0, len(text))
         number = self.currentBlock().blockNumber()
         if number == start + 1:
@@ -686,9 +680,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             tall.setFontPointSize(self._point_size_for(size.height() + IMAGE_PADDING * 2))
             tall.setForeground(QColor("transparent"))
             self.setFormat(0, 1, tall)
-            self._pending_figure = latex
+            setattr(self, remember_as, source)
         elif number == start:
-            self._pad_band_edge(text)  # 開きの $$ は帯の縁の余白になる
+            self._pad_band_edge(text)
         return True
 
     def _caret_in_lines(self, start: int, end: int) -> bool:
@@ -1030,15 +1024,10 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         チェックの箱（`_hide_checkbox_slot`）と同じ手。字送りで幅を作るので
         文字は足さず、キャレット位置とソースのオフセットは 1:1（R4）。
         """
-        pad = self._bullet_pad
-        if pad is None:
+        if self._bullet_pad is None:
             reserve = bullet_size(self.document().defaultFont()) * (1 + BULLET_GAP_RATIO)
-            pad = QTextCharFormat()
-            pad.setFontPointSize(HIDDEN_POINT_SIZE)
-            pad.setFontLetterSpacingType(QFont.SpacingType.AbsoluteSpacing)
-            pad.setFontLetterSpacing(reserve)
-            self._bullet_pad = pad
-        self.setFormat(start, 1, pad)
+            self._bullet_pad = self._slot_pad(reserve, chars=1)
+        self.setFormat(start, 1, self._bullet_pad)
 
     def _hide_checkbox_slot(self, start: int) -> None:
         """`[ ]` を潰しつつ、**箱を置く幅だけ残す**。
@@ -1050,15 +1039,22 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         文字を足さないのでキャレット位置とソースのオフセットは 1:1 のまま
         （R4）。`QTextBlockFormat` のインデントは使えない（R5）。
         """
-        pad = self._checkbox_pad
-        if pad is None:
+        if self._checkbox_pad is None:
             reserve = checkbox_size(self.document().defaultFont()) * (1 + CHECKBOX_GAP_RATIO)
-            pad = QTextCharFormat()
-            pad.setFontPointSize(HIDDEN_POINT_SIZE)
-            pad.setFontLetterSpacingType(QFont.SpacingType.AbsoluteSpacing)
-            pad.setFontLetterSpacing(reserve / CHECKBOX_SLOT_CHARS)
-            self._checkbox_pad = pad
-        self.setFormat(start, CHECKBOX_SLOT_CHARS, pad)
+            self._checkbox_pad = self._slot_pad(reserve, chars=CHECKBOX_SLOT_CHARS)
+        self.setFormat(start, CHECKBOX_SLOT_CHARS, self._checkbox_pad)
+
+    def _slot_pad(self, reserve: float, *, chars: int) -> QTextCharFormat:
+        """潰した文字に**字送りで**幅を持たせる書式（点と箱で同じ手）。
+
+        文字を足さないのでキャレット位置とソースのオフセットは 1:1 のまま
+        （R4）。`QTextBlockFormat` のインデントは使えない（R5）。
+        """
+        pad = QTextCharFormat()
+        pad.setFontPointSize(HIDDEN_POINT_SIZE)
+        pad.setFontLetterSpacingType(QFont.SpacingType.AbsoluteSpacing)
+        pad.setFontLetterSpacing(reserve / chars)
+        return pad
 
     def _hide(self, start: int, length: int) -> None:
         if length <= 0:

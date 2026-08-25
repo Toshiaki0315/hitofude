@@ -1783,10 +1783,17 @@ class MarkdownEditor(QPlainTextEdit):
             return
         self._table_columns = columns
         self._highlighter.set_table_columns(columns)
+        self._rehighlight_where(lambda text: "|" in text)
 
+    def _rehighlight_where(self, predicate) -> None:
+        """条件に合う行だけ掛け直す。**全体再ハイライトはしない**（R7）。
+
+        表の桁数や画像の幅が変わったときに使う。本文の大半は表でも画像でも
+        ないので、行の文字列で足切りすれば十分に安い。
+        """
         block = self.document().firstBlock()
         while block.isValid():
-            if "|" in block.text():
+            if predicate(block.text()):
                 self._highlighter.rehighlightBlock(block)
             block = block.next()
 
@@ -1814,11 +1821,7 @@ class MarkdownEditor(QPlainTextEdit):
         追従するが、ハイライタが予約した**行の高さ**は掛け直すまで残る。
         """
         if self._highlighter.set_image_width(self.image_width()):
-            block = self.document().firstBlock()
-            while block.isValid():
-                if image_only_line(block.text()) is not None:
-                    self._highlighter.rehighlightBlock(block)
-                block = block.next()
+            self._rehighlight_where(lambda text: image_only_line(text) is not None)
 
     def _update_content_margins(self) -> None:
         """本文を中央寄せし、最大幅を超えないようにする（§5.1）。"""
