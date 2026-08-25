@@ -119,12 +119,17 @@ class TestRendering:
         """角だけが抜けている（全部が抜けているのではない）。
 
         色そのものは見ない。Qt は本体の上に薄い板を重ねることがある。
+
+        **標本はど真ん中ではなく上端の余白の中**（(w/2, 7)。QMenu の
+        padding 5px の内側）。真ん中はフォントの背丈しだいで白い文字の
+        画素に当たる——手元では行間に落ちて通り、CI のランナー（別の
+        代替フォント）では #dedee0 を拾って落ちた（2026-08-25）。
         """
         menu = self.menu(qapp)
         try:
             image = menu.grab().toImage()
-            middle = image.pixelColor(image.width() // 2, image.height() // 2)
-            assert middle.lightness() < 128, middle.name()
+            ground = image.pixelColor(image.width() // 2, 7)
+            assert ground.lightness() < 128, ground.name()
         finally:
             menu.hide()
 

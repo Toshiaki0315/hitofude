@@ -20,6 +20,34 @@ jobs:
       - name: Sync dependencies
         run: uv sync --all-groups
 
+      # 表は BIZ UDGothic で描く（ADR-0003:「全角＝半角×2」の前提）。
+      # ランナーには入っていないので Google Fonts（SIL OFL）から入れる。
+      # **コミットを固定**——main を追うと、フォント側の改版で桁の実測が
+      # 静かに変わり、時期をまたいだ比較ができなくなる
+      - name: Install table font (BIZ UDGothic, SIL OFL)
+        run: |
+          FONTS=https://raw.githubusercontent.com/google/fonts/6ce172f74aa355ea43eb964fa4a91570a4d3064d/ofl/bizudgothic
+          mkdir -p ~/Library/Fonts
+          curl -sfL "$FONTS/BIZUDGothic-Regular.ttf" -o ~/Library/Fonts/BIZUDGothic-Regular.ttf
+          curl -sfL "$FONTS/BIZUDGothic-Bold.ttf" -o ~/Library/Fonts/BIZUDGothic-Bold.ttf
+
+      # フォントが本当に引けることを**テストより先に**確かめる。入って
+      # いないと Menlo に落ち、表の検査 4 件が桁ずれの形で分かりにくく落ちる
+      - name: Verify table font resolves
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          uv run python - <<'CHECK'
+          from PySide6.QtWidgets import QApplication
+          from PySide6.QtGui import QFont, QFontInfo
+          app = QApplication([])
+          font = QFont()
+          font.setFamilies(["BIZ UDGothic"])
+          resolved = QFontInfo(font).family()
+          assert resolved == "BIZ UDGothic", f"表のフォントが引けない: {resolved}"
+          print("BIZ UDGothic OK")
+          CHECK
+
       - name: Lint
         run: |
           uv run ruff check .
