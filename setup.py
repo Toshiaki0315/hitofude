@@ -38,24 +38,20 @@ APP = ["hitofude/__main__.py"]
 
 # PySide6 は巨大なので、使わないモジュールを落とさないと 1GB 級になる（§8.1）
 EXCLUDES = [
-    "PySide6.QtWebEngineCore",
-    "PySide6.QtWebEngineWidgets",
-    "PySide6.QtWebEngineQuick",
+    # **QtWebEngine は落とさない**（ADR-0030）。Mermaid の図（ADR-0021）が
+    # これで描かれる。落としていたせいで `.app` が起動しなかった
+    # （`app.py` の先読み import が ModuleNotFoundError。ユーザー報告 2026-08-26）
     "PySide6.Qt3DCore",
     "PySide6.Qt3DRender",
     "PySide6.Qt3DAnimation",
     "PySide6.Qt3DExtras",
-    "PySide6.QtQuick",
     "PySide6.QtQuick3D",
-    "PySide6.QtQuickWidgets",
-    "PySide6.QtQml",
     "PySide6.QtCharts",
     "PySide6.QtMultimedia",
     "PySide6.QtMultimediaWidgets",
     "PySide6.QtDataVisualization",
     "PySide6.QtBluetooth",
     "PySide6.QtNfc",
-    "PySide6.QtPositioning",
     "PySide6.QtLocation",
     "PySide6.QtSensors",
     "PySide6.QtSerialPort",
@@ -82,6 +78,14 @@ OPTIONS = {
         "mdit_py_plugins",
         "pygments",
         "latex2mathml",
+        # **数式（ADR-0020）。** `ziamath` はフォントを同梱していて、
+        # 実行時に `importlib.resources` で読む。`packages` に入れないと
+        # py2app は `.py` だけ拾って `fonts/` を置いていかず、`.app` の中で
+        # `No module named 'ziamath.fonts'` で**起動ごと死ぬ**
+        # （ユーザー報告 2026-08-26）
+        "ziamath",
+        "ziafont",
+        "pypdf",
         "yaml",
         "watchdog",
         "hitofude",

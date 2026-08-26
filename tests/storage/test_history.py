@@ -232,3 +232,23 @@ class TestRekey:
         history.rekey(root, "path:元.md", "path:先.md")
         assert len(history.versions(root, "path:先.md")) == 2
         assert history.versions(root, "path:元.md") == []
+
+
+class TestUnreadable:
+    """読めない置き場（ユーザー報告 2026-08-26）。
+
+    `.app` を初めて開くと macOS が書類フォルダの許可を尋ねる。**許可しない**と
+    `iterdir()` が PermissionError を投げ、掃除の途中でアプリごと落ちていた
+    （py2app の "Launch error"）。掃除は片付けであって、**起動を止めてよい
+    理由にはならない**。
+    """
+
+    def test_権限が無くても落ちない(self, tmp_path, monkeypatch) -> None:
+        root = tmp_path / "history"
+        (root / "note").mkdir(parents=True)
+
+        def denied(self):
+            raise PermissionError(1, "Operation not permitted", str(self))
+
+        monkeypatch.setattr(Path, "iterdir", denied)
+        assert history.prune(root, now=datetime(2026, 8, 26, 12, 0)) == []

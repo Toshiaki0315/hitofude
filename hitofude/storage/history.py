@@ -198,9 +198,18 @@ def prune(root: Path, *, now: datetime) -> list[Path]:
     if not root.is_dir():
         return []
 
+    try:
+        folders = sorted(root.iterdir())
+    except OSError as error:
+        # 読めない置き場（許可していない書類フォルダなど）。**掃除は
+        # 片付けであって、起動を止めてよい理由にはならない**
+        # （ユーザー報告 2026-08-26。`.app` が起動と同時に落ちた）
+        logger.warning("履歴の置き場を掃除できません: %s", error)
+        return []
+
     deadline = now - timedelta(days=MAX_DAYS)
     removed: list[Path] = []
-    for folder in sorted(root.iterdir()):
+    for folder in folders:
         if not folder.is_dir():
             continue
         # `folder.name` は既にフォルダ名（鍵ではない）。`versions()` は鍵を

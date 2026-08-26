@@ -22,6 +22,18 @@ from PySide6.QtCore import QObject, QSize, Qt, QTimer, QUrl, Signal
 
 logger = logging.getLogger(__name__)
 
+
+def web_engine_view_class():
+    """`QWebEngineView` を取り出す。**ここだけが QtWebEngine を知る**。
+
+    無い組み方（Chromium を同梱しない `.app`）では ImportError が飛ぶ。
+    呼び出し側はそれを「描けなかった」として扱う（ユーザー報告 2026-08-26）。
+    """
+    from PySide6.QtWebEngineWidgets import QWebEngineView
+
+    return QWebEngineView
+
+
 # **GPU 描画を切る（実測）。** GPU 合成だと、画面に出していない
 # QWebEngineView の grab() が真っ白になる（実機 cocoa で再現。offscreen の
 # テストはもともとソフトウェア描画なので気づけない）。図のスナップショット
@@ -147,7 +159,14 @@ class MermaidCache(QObject):
         if self._current is not None or not self._queue:
             return
         self._current = self._queue.popleft()
-        self._ensure_view()
+        try:
+            self._ensure_view()
+        except ImportError as error:
+            # QtWebEngine が無い組み方。**失敗として覚える**ので、
+            # 同じ図で何度も立ち上げを試さない
+            logger.warning("QtWebEngine が無いので図は描けません: %s", error)
+            self._finish(None)
+            return
         if not self._page_ready:
             return  # ページの読み込み完了（_on_title "ready"）から続く
         self._run_current()
@@ -163,9 +182,7 @@ class MermaidCache(QObject):
             return self._view
         # ここまで来て初めて Chromium が立ち上がる。図の無いノートしか
         # 開かない人にはこのコストを払わせない
-        from PySide6.QtWebEngineWidgets import QWebEngineView
-
-        view = QWebEngineView()
+        view = web_engine_view_class()()
         view.resize(_VIEW_SIZE)
         view.titleChanged.connect(self._on_title)
         # **見えないまま描かせる。** show() しないと Chromium が描画せず、

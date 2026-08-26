@@ -1,13 +1,11 @@
 """QApplication のセットアップとテーマ適用（spec §5.3）。"""
 
+import importlib
 import logging
 import sys
 from pathlib import Path
 from typing import cast
 
-# QtWebEngine（Mermaid の描画・ADR-0021）は QApplication より先に import
-# されている必要がある。忘れると WebEngine の初期化で警告や落ちが出る
-import PySide6.QtWebEngineWidgets  # noqa: F401
 from PySide6.QtCore import (
     QLibraryInfo,
     QLockFile,
@@ -23,6 +21,25 @@ from hitofude import APP_NAME, ORG_DOMAIN, ORG_NAME, __version__
 from hitofude.theme import ThemeColors, ThemeMode, colors_for
 
 logger = logging.getLogger(__name__)
+
+
+def preload_web_engine() -> bool:
+    """QtWebEngine を QApplication より先に読み込む（ADR-0021）。
+
+    Mermaid の描画に使う。**先に読まないと**初期化で警告や落ちが出るので、
+    ここで済ませる。
+
+    **無くても起動する**（ユーザー報告 2026-08-26）。Chromium は 500MB 級で、
+    同梱しない組み方があり得る。無ければ図を諦めるだけ——`.app` が
+    py2app の "Launch error" で立ち上がらないほうがずっと困る。
+    """
+    try:
+        importlib.import_module("PySide6.QtWebEngineWidgets")
+    except ImportError as error:  # 同梱されていない組み方
+        logger.warning("QtWebEngine が無いので Mermaid の図は出ません: %s", error)
+        return False
+    return True
+
 
 __all__ = [
     "APP_NAME",
@@ -493,6 +510,7 @@ def create_application(argv: list[str] | None = None) -> QApplication:
     # QApplication より先に。Qt はメニューバーを作るときにバンドル名を読む
     set_macos_app_name(APP_NAME)
     enable_key_repeat()
+    preload_web_engine()  # ADR-0021。無ければ図を諦めて先へ進む
 
     existing = QApplication.instance()
     if existing is None:

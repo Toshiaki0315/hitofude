@@ -855,10 +855,10 @@ OPTIONS = {
     "packages": ["PySide6", "markdown_it", "yaml", "watchdog"],
     "includes": ["sqlite3"],
     "excludes": [  # バンドルサイズ削減。PySide6 は巨大なので必須
-        "PySide6.QtWebEngineCore",
-        "PySide6.QtWebEngineWidgets",
+        # **QtWebEngine と QtQuick は落とせなくなった**（ADR-0030）。
+        # Mermaid（ADR-0021）がこれで描かれる。代わりに `lipo` で
+        # arm64 だけに削って全体を半分にしている
         "PySide6.Qt3D*",
-        "PySide6.QtQuick*",
         "PySide6.QtCharts",
         "PySide6.QtMultimedia*",
         "PySide6.QtDataVisualization",

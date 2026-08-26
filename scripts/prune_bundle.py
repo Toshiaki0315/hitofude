@@ -31,11 +31,42 @@ KEEP_FRAMEWORKS = {
     "QtSvg",
 }
 
+# Mermaid の図（ADR-0021 / 0030）。`QtWebEngineWidgets` が動くのに要るものを
+# **otool -L の実測で**並べた。Chromium 本体だけで 572MB あるが、同梱しないと
+# `.app` では図が出ない（ユーザーの選択 2026-08-26）
+WEB_ENGINE_FRAMEWORKS = {
+    "QtWebEngineCore",
+    "QtWebEngineWidgets",
+    "QtWebEngineQuick",  # qml の QtWebEngine モジュールが読む
+    "QtWebChannel",
+    "QtWebChannelQuick",
+    "QtQml",
+    "QtQmlMeta",
+    "QtQmlModels",
+    "QtQmlWorkerScript",
+    "QtQuick",
+    "QtQuickWidgets",
+    "QtOpenGL",
+    "QtPositioning",
+}
+KEEP_FRAMEWORKS |= WEB_ENGINE_FRAMEWORKS
+
+# 残す qml モジュール。WebEngine は QQuickWidget の上に載っているので、
+# QtQuick 一式が要る（qml を丸ごと消すと図のページが白いまま返る）
+KEEP_QML = {"Qt", "QtCore", "QtQml", "QtQuick", "QtWebChannel", "QtWebEngine", "QtNetwork"}
+
+# Chromium が読む翻訳。**使う言語だけ残す**（全部で 38MB、2 つなら 1MB 弱）
+KEEP_LOCALES = {"ja.pak", "en-US.pak"}
+
+# 残す CPU。**Apple Silicon 専用にする**（ADR-0030）。wheel の Qt は
+# universal（x86_64 + arm64）で、削ると全体がほぼ半分になる
+KEEP_ARCH = "arm64"
+
 # 残す Qt プラグイン。platforms が無いとウィンドウを作れず即座に落ちる
 KEEP_PLUGINS = {"platforms", "styles", "imageformats", "printsupport", "iconengines"}
 
-# 丸ごと消してよいディレクトリ
-DROP_DIRS = ["Qt/qml", "Qt/translations", "Qt/libexec", "Qt/resources", "scripts", "examples"]
+# 丸ごと消してよいディレクトリ。**qml は選んで残す**（KEEP_QML）
+DROP_DIRS = ["Qt/translations", "Qt/libexec", "Qt/resources", "scripts", "examples"]
 
 
 def _pyside_root(app: Path) -> Path:
@@ -51,6 +82,12 @@ def prune(app: Path) -> tuple[int, int]:
 
     for relative in DROP_DIRS:
         shutil.rmtree(root / relative, ignore_errors=True)
+
+    qml = root / "Qt" / "qml"
+    if qml.is_dir():
+        for directory in qml.iterdir():
+            if directory.is_dir() and directory.name not in KEEP_QML:
+                shutil.rmtree(directory, ignore_errors=True)
 
     lib = root / "Qt" / "lib"
     if lib.is_dir():
@@ -73,8 +110,95 @@ def prune(app: Path) -> tuple[int, int]:
         for path in root.rglob(junk):
             path.unlink(missing_ok=True)
 
+    _prune_web_engine(root)
+    _thin(app)
+    _sign_mach_o(app)
     _resign(app)
     return before, _size(app)
+
+
+def _prune_web_engine(root: Path) -> None:
+    """Chromium の付属物のうち、図を描くのに要らないものを落とす。
+
+    翻訳は 100 言語ぶんで 38MB。開発者ツールの資源（10MB）はページを
+    開いて調べるためのもので、絵にするだけなら要らない。
+    """
+    resources = root / "Qt" / "lib" / "QtWebEngineCore.framework" / "Versions" / "A" / "Resources"
+    if not resources.is_dir():
+        return
+
+    locales = resources / "qtwebengine_locales"
+    if locales.is_dir():
+        for pak in locales.glob("*.pak"):
+            if pak.name not in KEEP_LOCALES:
+                pak.unlink(missing_ok=True)
+
+    (resources / "qtwebengine_devtools_resources.pak").unlink(missing_ok=True)
+    # V8 のスナップショットは CPU ごとに 1 つ。残す CPU のぶんだけ置く
+    for snapshot in resources.glob("v8_context_snapshot.*.bin"):
+        if f".{KEEP_ARCH}." not in snapshot.name:
+            snapshot.unlink(missing_ok=True)
+
+
+def _thin(app: Path) -> None:
+    """universal のバイナリを `KEEP_ARCH` だけに削る（ADR-0030）。
+
+    wheel の Qt は x86_64 と arm64 の両方を含む。片方だけにすると
+    **全体がほぼ半分**になる（Chromium 本体は 448MB → 約半分）。
+    引き換えに Intel Mac では動かなくなる（ユーザーの選択 2026-08-26）。
+    """
+    thinned = 0
+    for path in app.rglob("*"):
+        if not _is_mach_o(path):
+            continue
+        archs = subprocess.run(
+            ["lipo", "-archs", str(path)], capture_output=True, text=True, check=False
+        ).stdout.split()
+        if KEEP_ARCH not in archs or len(archs) < 2:
+            continue  # 既に 1 つ、または残す CPU が入っていない
+        path.chmod(path.stat().st_mode | 0o200)
+        subprocess.run(
+            ["lipo", str(path), "-thin", KEEP_ARCH, "-output", str(path)],
+            capture_output=True,
+            check=True,
+        )
+        thinned += 1
+    print(f"  {KEEP_ARCH} だけに削った: {thinned} 個")
+
+
+def _sign_mach_o(app: Path) -> None:
+    """バンドルの中の実行コードを 1 つずつ署名し直す。
+
+    **`codesign --deep` では届かない。** PySide6 が持ち込む Qt の
+    フレームワークは `Contents/Resources/` の下——macOS から見れば
+    「入れ子のコード」ではなく**ただの資源**なので、封をするときに
+    ハッシュは取られるが、中身の署名は触られない。
+
+    `lipo` で CPU を削ると各バイナリの署名が合わなくなり、dyld が
+    読み込む瞬間に **SIGKILL (Code Signature Invalid)** で殺す
+    （ユーザー報告 2026-08-26 の crash report で確認）。深いものから
+    順に署名し直す。
+    """
+    targets = sorted(
+        (path for path in app.rglob("*") if _is_mach_o(path)),
+        key=lambda path: len(path.parts),
+        reverse=True,
+    )
+    failed = 0
+    for path in targets:
+        path.chmod(path.stat().st_mode | 0o200)
+        if not _sign(path):
+            failed += 1
+    print(f"  署名し直した: {len(targets) - failed} 個" + (f"（失敗 {failed}）" if failed else ""))
+
+
+def _is_mach_o(path: Path) -> bool:
+    if not path.is_file() or path.is_symlink():
+        return False
+    found = subprocess.run(
+        ["lipo", "-archs", str(path)], capture_output=True, text=True, check=False
+    )
+    return found.returncode == 0
 
 
 def _resign(app: Path) -> None:

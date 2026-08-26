@@ -80,3 +80,22 @@ class TestQuitBehavior:
 
         view = cache._ensure_view()
         assert view.testAttribute(Qt.WidgetAttribute.WA_QuitOnClose) is False
+
+
+class TestWithoutWebEngine:
+    """QtWebEngine が無い環境（ユーザー報告 2026-08-26。`.app` が起動しない）。
+
+    Chromium は 500MB 級なので、同梱しない組み方があり得る。**無ければ
+    図を諦めるだけ**で、アプリは動く。落ちてはいけない。
+    """
+
+    def test_図は諦めるが落ちない(self, qapp, monkeypatch) -> None:
+        from hitofude.editor import mermaid_cache as module
+
+        def missing():
+            raise ModuleNotFoundError("No module named 'PySide6.QtWebEngineWidgets'")
+
+        monkeypatch.setattr(module, "web_engine_view_class", missing)
+        found = MermaidCache()
+        assert found.pixmap(GRAPH, dark=False, max_width=600) is None
+        assert found.done(GRAPH, dark=False)  # 失敗として確定させる（何度も試さない）
