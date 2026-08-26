@@ -98,6 +98,19 @@ class TestPixels:
         inside = editor.viewportMargins().left() + 40
         assert self.color_at(window, inside) == QColor(LIGHT.background)
 
+    def test_暗いテーマでも外側が沈む(self, window, qtbot) -> None:
+        """**暗いほうへ沈む**（明るくすると外側が光って本文より目立つ）。
+
+        色の決め方は `TestThemeHasIt` が見ている。ここは**実際に塗れて
+        いるか**を画素で見る。
+        """
+        window.editor.set_theme(DARK)
+        editor = self.wide(window, qtbot)
+        assert editor.viewportMargins().left() > 50
+        outer = self.color_at(window, 10)
+        assert outer == QColor(DARK.page_background)
+        assert outer.lightness() < QColor(DARK.background).lightness()
+
     def test_幅いっぱいなら塗る場所が無い(self, window, qtbot) -> None:
         """`ContentWidth.FULL` は余白 0。**外側が無いので何も変わらない。**"""
         window._config.content_width = ContentWidth.FULL

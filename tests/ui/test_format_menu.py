@@ -113,3 +113,31 @@ class TestKeyStillWorks:
         window.editor.setFocus()
         qtbot.keyClick(window.editor, key, Qt.KeyboardModifier.ControlModifier)
         assert mark in window.editor.toPlainText()
+
+
+class TestToolbarHidden:
+    """**ツールバーを隠しても書式に手が届く**（この機能を入れた理由そのもの）。
+
+    `Cmd+3` で隠すと、以前は入口がキーだけになっていた——設定への入口が
+    消えていた件（歯車をステータスバーへ移した 2026-08-24）と同じ形。
+    """
+
+    def test_隠しても項目は残る(self, window) -> None:
+        window.toggle_toolbar()
+        assert not window._pane.toolbar_visible()
+        assert labels(window.menus["書式"]) == [a.label for a in FormatToolbar.ACTIONS]
+
+    def test_隠しても書式が付く(self, window, qtbot, activate) -> None:
+        activate(window)
+        window.toggle_toolbar()
+        assert not window._pane.toolbar_visible()
+
+        window.editor.setPlainText("会議メモ")
+        cursor = window.editor.textCursor()
+        cursor.select(cursor.SelectionType.Document)
+        window.editor.setTextCursor(cursor)
+        window.editor.setFocus()
+        qtbot.waitUntil(window.editor.hasFocus, timeout=2000)
+
+        window.menu_actions["太字"].trigger()
+        assert "**" in window.editor.toPlainText()

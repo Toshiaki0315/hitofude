@@ -195,10 +195,9 @@ def prune(root: Path, *, now: datetime) -> list[Path]:
 
     **古いほうから捨てる。** 直近の状態ほど戻したくなる。
     """
-    if not root.is_dir():
-        return []
-
     try:
+        if not root.is_dir():  # **ここも上げる**（3.13 は許可エラーを飲まない）
+            return []
         folders = sorted(root.iterdir())
     except OSError as error:
         # 読めない置き場（許可していない書類フォルダなど）。**掃除は
@@ -226,10 +225,21 @@ def prune(root: Path, *, now: datetime) -> list[Path]:
 
 
 def total_bytes(root: Path) -> int:
-    """履歴が使っている容量。**見えないところで太らせない**ために出す。"""
-    if not root.is_dir():
+    """履歴が使っている容量。**見えないところで太らせない**ために出す。
+
+    **読めなければ 0。** 数えられないことは、設定を開かせない理由に
+    ならない（ADR-0030。許可を断ったときに設定ダイアログごと落ちていた
+    ——**選び直す入口が塞がる**のがいちばん困る）。`prune` と同じ扱い。
+    """
+    try:
+        if not root.is_dir():
+            return 0
+        return sum(path.stat().st_size for path in root.rglob("*.md") if path.is_file())
+    except OSError as error:
+        # **`is_dir()` も上げる。** Python 3.13 は許可エラーを飲まない
+        # （最初 try の外に置いていて、そこで落ちた）
+        logger.info("履歴の容量を数えられなかった: %s", error)
         return 0
-    return sum(path.stat().st_size for path in root.rglob("*.md") if path.is_file())
 
 
 def _latest(root: Path, note_id: str) -> Version | None:

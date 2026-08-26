@@ -117,6 +117,12 @@ HUGE_NOTE_NOTICE = "大きなノートのため、装飾を無効にして開き
 
 # 終了時に索引の走査を待つ上限。索引は捨ててよいキャッシュ（R9）なので、
 # ここで粘るより窓が閉じるほうが大事
+LOCKED_VAULT_NOTICE = "保管フォルダを開けませんでした。設定で場所を選び直してください"
+
+MEMORY_DB = Path(":memory:")
+"""保管フォルダを開けないときの索引の置き場（ADR-0030）。**覚えない。**
+窓を出して設定へ辿り着かせるためだけのもの。"""
+
 CLOSE_INDEX_WAIT_MS = 3000
 
 BUSY_NOTICE = "いま同期しています。終わるまでお待ちください"
@@ -180,15 +186,17 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self._config = config if config is not None else Config()
         self._vault = Vault(self._config.vault_path)
-        self._vault.ensure_layout()
-        self._vault.purge_trash(self._config.trash_days)
         # 版の履歴（ADR-0023）は束ごと切り出してある（ui/history_actions.py）。
         # **`_history` と名乗らない**——それは「直前のノートへ戻る」のスタック
         self._versions = HistoryActions(self)
-        self._versions.prune()
-        self._vault.sweep_temp_files()  # クラッシュで残った .tmp の掃除（H-1）
+        self._vault_ready = self._prepare_vault()
 
-        self._db = IndexDb(self._vault.managed_dir / "index.sqlite")
+        # **開けない保管フォルダでも窓は出す**（ADR-0030 / ユーザー報告）。
+        # 索引は `.hitofude` の中なので、開けないときは覚えないだけにする。
+        # 一覧は空になるが、設定から別の場所を選び直せる
+        self._db = IndexDb(
+            self._vault.managed_dir / "index.sqlite" if self._vault_ready else MEMORY_DB
+        )
         self._note: Note | None = None
         self._loading = False
         self._opening = False
@@ -218,7 +226,10 @@ class MainWindow(QMainWindow):
 
         self._watcher = VaultWatcher(self._vault, self)
         self._watcher.changed.connect(self._on_external_change)
-        self._watcher.start()
+        # **開けない場所は見張らない**（ADR-0030）。始めようとすると
+        # そこでも `.trash` を作りにいって落ちる
+        if self._vault_ready:
+            self._watcher.start()
 
         # **親を付けない。** ウィンドウの子にすると、ワーカーが結果を返す前に
         # ウィンドウごと破棄されて "Signal source has been deleted" で落ちる。
@@ -235,11 +246,17 @@ class MainWindow(QMainWindow):
         self._history: list[Path] = []
         self._going_back = False
 
-        self._seed_manual()
-        self._vault.seed_templates()
+        # **書ける場所のときだけ整える**（ADR-0030）。許可を断ったときに
+        # ここで落ちて、窓が 1 つも出なかった
+        if self._vault_ready:
+            self._seed_manual()
+            self._vault.seed_templates()
+        else:
+            self.notify(LOCKED_VAULT_NOTICE, NOTICE_MS * 3)
         self.refresh()  # 前回の索引で先に描く。走査を待たずに操作できる
         self._reopen_last_note()
-        self.start_index_sync()
+        if self._vault_ready:
+            self.start_index_sync()
         self.offer_recovery()
 
     # ------------------------------------------------------------------ 構築
@@ -391,6 +408,27 @@ class MainWindow(QMainWindow):
         self._note_list.setFont(font)
         self._note_list.viewport().update()
 
+    def _prepare_vault(self) -> bool:
+        """保管フォルダを使える形にする。使えたら True（ADR-0030）。
+
+        **開けなくても窓は出す。** macOS は書類フォルダへの立ち入りを尋ね、
+        **断ると読めない**。そこで落ちていた——`ensure_layout()` が
+        `.trash` を作れずに例外を上げ、窓が 1 つも出なかった（実測）。
+        ADR-0030 は履歴の掃除だけを直していて、その手前が残っていた。
+
+        **図が出ないのは我慢できるが、起動しないのは我慢できない。**
+        開けないときは掃除も索引も諦めて、設定から選び直せる状態で出す。
+        """
+        try:
+            self._vault.ensure_layout()
+            self._vault.purge_trash(self._config.trash_days)
+            self._versions.prune()
+            self._vault.sweep_temp_files()  # クラッシュで残った .tmp の掃除（H-1）
+        except OSError as error:
+            logger.warning("保管フォルダを開けない: %s", error)
+            return False
+        return True
+
     def _build_menus(self) -> None:
         build_menus(self)
         # メニューを開く歯車（ユーザー要望）。置き場は**ステータスバー**。
@@ -512,7 +550,13 @@ class MainWindow(QMainWindow):
         return self._note
 
     def _seed_manual(self) -> None:
-        """初回起動なら使い方ノートを置いて開く（サンプル兼マニュアル）。"""
+        """初回起動なら使い方ノートを置いて開く（サンプル兼マニュアル）。
+
+        **書けない場所には置かない**（ADR-0030）。許可を断ったときに
+        ここで落ちていた。
+        """
+        if not self._vault_ready:
+            return
         note = self._vault.seed_manual()
         if note is None:
             return
