@@ -216,7 +216,8 @@ class TestActuallyPaints:
         found = any(
             with_quote.pixel(x, y) == bar
             for x in range(min(60, with_quote.width()))
-            for y in range(min(40, with_quote.height()))
+            # 上の余白（CONTENT_MARGIN）より下まで見る
+            for y in range(min(100, with_quote.height()))
         )
         assert found, "縦バーの色のピクセルが見つからない"
         assert with_quote != without
@@ -252,10 +253,12 @@ class TestQiitaNote:
         quote = of_kind(editor, DecorationKind.QUOTE_BAR)[0]
         assert quote.rect.left() >= note.rect.right()
 
-    def test_囲みの外の引用は元の位置(self, editor) -> None:
+    def test_囲みの外の引用は帯と同じ内寄せ(self, editor) -> None:
+        """紙の縁に貼り付けない（ユーザー要望 2026-08-26 の一環）。
+        帯（BAND_MARGIN）と同じだけ内側から始める。"""
         editor.setPlainText("> 引用")
         assert of_kind(editor, DecorationKind.QUOTE_BAR)[0].rect.left() == pytest.approx(
-            editor.contentsRect().left() + 2, abs=2
+            editor.contentsRect().left() + painter_overlay.BAND_MARGIN + LEFT_INSET, abs=2
         )
 
     def test_種類ごとに色が違う(self, editor) -> None:
@@ -418,8 +421,8 @@ class TestContentMargin:
         **数を直に書く。** `CONTENT_MARGIN` と比べると定数どうしの比較に
         なり、値を変えても落ちなかった（実測）。
         """
-        assert CONTENT_MARGIN == 24.0
-        assert editor.document().documentMargin() == 24.0
+        assert CONTENT_MARGIN == 40.0
+        assert editor.document().documentMargin() == 40.0
 
     def test_縦バーより広い(self, editor: MarkdownEditor) -> None:
         """**飾りと本文が重ならない条件**（ADR-0016）。縦バーは
@@ -430,8 +433,11 @@ class TestContentMargin:
     def test_広げすぎない(self, editor: MarkdownEditor) -> None:
         """本文の使える幅がそのぶん減る。**表は折り返す**ので崩れないが、
         減らしすぎると 1 行に入る字が目に見えて少なくなる。
+
+        40 は開閉三角の左右に 16px ずつ息をさせるための値
+        （ユーザー要望 2026-08-26。TestFoldMarkerBreathing）。
         """
-        assert CONTENT_MARGIN <= 32
+        assert CONTENT_MARGIN <= 40
 
 
 class TestBlockInset:
@@ -837,3 +843,26 @@ class TestBandCorners:
         assert image.pixelColor(0, 30).name().upper() != "#FFFFFF", "境目がくびれている"
         assert image.pixelColor(0, 59 - 2).name().upper() != "#FFFFFF" or True
         assert image.pixelColor(0, 0).name().upper() == "#FFFFFF"  # 上端の角は丸いまま
+
+
+class TestFoldMarkerBreathing:
+    """開閉三角の左右に息をさせる（ユーザー要望 2026-08-26）。
+
+    三角が紙の縁（x=2）に貼り付いて窮屈だった。本文の左余白を三角の
+    **左右に振り分ける**——縁→三角と三角→本文が同じだけ空く。
+    """
+
+    def marker(self, editor):
+        away(editor, "# 見出し\n\n本文")
+        return of_kind(editor, DecorationKind.FOLD_MARKER)[0]
+
+    def test_三角は余白の真ん中(self, editor) -> None:
+        marker = self.marker(editor)
+        margin = editor.document().documentMargin()
+        left_gap = marker.rect.left() - editor.contentOffset().x()
+        right_gap = margin - left_gap - marker.rect.width()
+        assert left_gap == pytest.approx(right_gap, abs=1)
+
+    def test_縁に貼り付かない(self, editor) -> None:
+        marker = self.marker(editor)
+        assert marker.rect.left() - editor.contentOffset().x() >= 12

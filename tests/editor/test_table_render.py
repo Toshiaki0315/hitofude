@@ -198,7 +198,8 @@ class TestGrid:
         rules = [d for d in visible_decorations(editor) if d.kind is DecorationKind.TABLE_RULE]
         assert rules, "表全体の線が消えている"
         block = editor.document().findBlockByNumber(2)
-        geometry = editor.blockBoundingGeometry(block)
+        # 装飾と同じビューポート座標に直す（contentOffset の y は余白ぶん動く）
+        geometry = editor.blockBoundingGeometry(block).translated(editor.contentOffset())
         texts = [
             d
             for d in visible_decorations(editor)

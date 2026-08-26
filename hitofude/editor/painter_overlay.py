@@ -523,7 +523,8 @@ def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decora
 
     # 囲みの中では引用の縦線を右へ逃がす。同じ位置だと 2 本が重なって
     # どちらも読めなくなる。囲みの帯が内寄せなら縦線も一緒に寄る
-    quote_inset = LEFT_INSET + (BAND_MARGIN + NOTE_BAR_WIDTH + LEFT_INSET if info.note_kind else 0)
+    # 縦線は紙の縁に貼り付けず、帯と同じだけ内側から始める（2026-08-26）
+    quote_inset = BAND_MARGIN + LEFT_INSET + (NOTE_BAR_WIDTH + LEFT_INSET if info.note_kind else 0)
     for depth in range(info.quote_depth):
         left = geometry.left() + quote_inset + depth * QUOTE_BAR_STEP
         result.append(
@@ -631,9 +632,12 @@ def _fold_marker(editor, block: QTextBlock, geometry: QRectF) -> Decoration | No
     height = QFontMetricsF(editor.font()).height()
     side = FOLD_MARKER_SIZE
     top = geometry.top() + max(0.0, (height - side)) / 2 + 2
+    # 余白の**真ん中**に置く（ユーザー要望 2026-08-26）。縁（x=2）に
+    # 貼り付けると、縁→三角→本文の左側だけ窮屈に見える
+    inset = (editor.document().documentMargin() - side) / 2
     return Decoration(
         DecorationKind.FOLD_MARKER,
-        QRectF(geometry.left() + LEFT_INSET, top, side, side),
+        QRectF(geometry.left() + inset, top, side, side),
         FOLDED if folded else OPEN,
     )
 
