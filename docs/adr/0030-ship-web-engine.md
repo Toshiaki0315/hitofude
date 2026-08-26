@@ -113,3 +113,23 @@ prune_bundle の KEEP_FRAMEWORKS / KEEP_BINDINGS に入っている」検査を
 
 - Chromium 本体 211MB（arm64 済み）— Mermaid の対価。これが総量の半分
 - ICU データ 10MB、Python 本体 13MB、PIL 14MB、lxml 11MB — いずれも実際に使う
+
+## 追記（同日）: 軽量版 `make app-lite`
+
+ユーザー要望で、Mermaid を使える版と使えない版を選べるようにした。
+
+| | `make app` | `make app-lite` |
+|---|---|---|
+| 大きさ | 435 MB | **132 MB** |
+| Mermaid の図 | 出る | コードのまま出る（落ちない） |
+| 数式（$$） | 出る | **出る**（ziamath + QtSvg。WebEngine と無関係） |
+| PDF 取り込み・書き出し・他の機能 | すべて同じ | すべて同じ |
+
+軽量版は `prune_bundle.py --lite` が WebEngine（Chromium）ごと削る。
+アプリ側は本文の「無いなら諦める」設計（この ADR の
+`preload_web_engine` / `mermaid_cache` の劣化経路）がそのまま効くので、
+**ビルドの引数 1 つの違いだけ**で成立する。
+
+軽量版のバンドル内で実測: 起動して保管フォルダを作る / QtPdf が
+読み込める / **数式が描ける（36x78）** / Mermaid は None を返して
+落ちない / `codesign --verify --deep --strict` が通る。

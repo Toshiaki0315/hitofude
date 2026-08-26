@@ -176,3 +176,30 @@ class TestPruneKeeps:
         prune = _prune_module()
         assert "QtPdf" in prune.KEEP_FRAMEWORKS
         assert "QtPdf" in prune.KEEP_BINDINGS
+
+
+class TestLiteVariant:
+    """Mermaid を諦める軽量版（ユーザー要望 2026-08-26）。
+
+    `make app-lite` は WebEngine（Chromium 約 300MB）ごと削る。
+    図が出ない以外は同じアプリで、**数式（ziamath + QtSvg）は残る**。
+    """
+
+    def test_liteはWebEngineを残さない(self) -> None:
+        prune = _prune_module()
+        frameworks, bindings = prune.keep_sets(lite=True)
+        assert not frameworks & prune.WEB_ENGINE_FRAMEWORKS
+        assert "QtWebEngineWidgets" not in bindings
+
+    def test_liteでも数式とPDFの部品は残る(self) -> None:
+        prune = _prune_module()
+        frameworks, bindings = prune.keep_sets(lite=True)
+        for name in ("QtSvg", "QtPdf", "QtPrintSupport"):
+            assert name in frameworks, name
+            assert name in bindings, name
+
+    def test_通常版は今まで通り(self) -> None:
+        prune = _prune_module()
+        frameworks, bindings = prune.keep_sets(lite=False)
+        assert frameworks == prune.KEEP_FRAMEWORKS
+        assert bindings == prune.KEEP_BINDINGS

@@ -94,6 +94,26 @@ PYSIDE_TOOLS = [
     "typesystems",
 ]
 
+# WebEngine の Python 束縛。軽量版（--lite）ではこれも削る
+WEB_ENGINE_BINDINGS = {"QtWebChannel", "QtWebEngineCore", "QtWebEngineWidgets"}
+
+
+def keep_sets(*, lite: bool) -> tuple[set[str], set[str]]:
+    """残すもの（フレームワーク, Python 束縛）。
+
+    軽量版（ユーザー要望 2026-08-26）は Mermaid を諦めて WebEngine
+    （Chromium 約 300MB）ごと削る。図が出ない以外は同じアプリで、
+    数式は ziamath + QtSvg なので残る。アプリ側は QtWebEngine が
+    無ければ図を諦めて動く（ADR-0030 の preload_web_engine）。
+    """
+    if not lite:
+        return set(KEEP_FRAMEWORKS), set(KEEP_BINDINGS)
+    return (
+        KEEP_FRAMEWORKS - WEB_ENGINE_FRAMEWORKS,
+        KEEP_BINDINGS - WEB_ENGINE_BINDINGS,
+    )
+
+
 # Chromium が読む翻訳。**使う言語だけ残す**（全部で 38MB、2 つなら 1MB 弱）
 KEEP_LOCALES = {"ja.pak", "en-US.pak"}
 
@@ -126,9 +146,10 @@ def _pyside_root(app: Path) -> Path:
     return candidates[0]
 
 
-def prune(app: Path) -> tuple[int, int]:
+def prune(app: Path, *, lite: bool = False) -> tuple[int, int]:
     before = _size(app)
     root = _pyside_root(app)
+    keep_frameworks, keep_bindings = keep_sets(lite=lite)
 
     for relative in DROP_DIRS:
         shutil.rmtree(root / relative, ignore_errors=True)
@@ -143,7 +164,7 @@ def prune(app: Path) -> tuple[int, int]:
     lib = root / "Qt" / "lib"
     if lib.is_dir():
         for framework in lib.glob("*.framework"):
-            if framework.stem not in KEEP_FRAMEWORKS:
+            if framework.stem not in keep_frameworks:
                 shutil.rmtree(framework, ignore_errors=True)
         # QtMultimedia（削除済み）の ffmpeg。WebEngine は自前の
         # コーデックを静的に持っていて、これは誰も読まない（36MB。
@@ -159,7 +180,7 @@ def prune(app: Path) -> tuple[int, int]:
 
     # Python から import しない束縛（QtOpenGL 等の .so）も落とす
     for module in root.glob("Qt*.abi3.so"):
-        if module.name.split(".")[0] not in KEEP_BINDINGS:
+        if module.name.split(".")[0] not in keep_bindings:
             module.unlink(missing_ok=True)
 
     for junk in ("*.pyi", "py.typed", "*.debug"):
@@ -321,12 +342,17 @@ def _size(path: Path) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("app", type=Path, help="アプリバンドル（dist/Hitofude.app）")
+    parser.add_argument(
+        "--lite",
+        action="store_true",
+        help="Mermaid を諦めて WebEngine ごと削る軽量版（数式は残る）",
+    )
     args = parser.parse_args()
 
     if not args.app.is_dir():
         sys.exit(f"見つからない: {args.app}")
 
-    before, after = prune(args.app)
+    before, after = prune(args.app, lite=args.lite)
     print(
         f"{args.app.name}: {before / 1024 / 1024:,.0f} MB → {after / 1024 / 1024:,.0f} MB "
         f"（{(1 - after / before) * 100:.0f}% 削減）"
