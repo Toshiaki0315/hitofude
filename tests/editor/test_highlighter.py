@@ -336,30 +336,12 @@ class TestMonoFallback:
         families = char_format(document, 0, 1).fontFamilies()
         assert len(families) > 1, "フォールバックが入っていない"
 
-    def test_表は日本語も等幅のフォントを使う(self, document, highlighter) -> None:
-        """通常の等幅フォントは CJK グリフを持たず、フォールバック先の全角幅が
-        半角のちょうど 2 倍にならないため桁がずれる（実測: Menlo は 1.66 倍）。
-        """
-        from hitofude.editor.highlighter import TABLE_FAMILIES
-
+    def test_表の行に等幅は当てない(self, document, highlighter) -> None:
+        """表は描画側が**本文フォント**で組む（ADR-0029）。ソースの行に
+        等幅（BIZ UDGothic）を当てていた時代の名残が戻らないこと。"""
         set_text(document, "| A | B |\n|---|---|\n| 1 | 2 |")
         families = char_format(document, 0, 2).fontFamilies()
-        assert families[0] == TABLE_FAMILIES[0]
-
-    def test_表のフォントは全角が半角のちょうど2倍(self, qapp) -> None:
-        from PySide6.QtGui import QFont, QFontDatabase, QFontMetricsF
-
-        from hitofude.editor.highlighter import TABLE_FAMILIES
-
-        family = TABLE_FAMILIES[0]
-        if family not in set(QFontDatabase.families()):
-            pytest.skip(f"{family} が無い環境")
-
-        font = QFont(family)
-        font.setPointSizeF(15.0)
-        metrics = QFontMetricsF(font)
-        half = metrics.horizontalAdvance("A")
-        assert metrics.horizontalAdvance("あ") == pytest.approx(half * 2, abs=0.5)
+        assert not families or "BIZ UDGothic" not in families
 
 
 class TestUnknownNoteKind:

@@ -36,7 +36,7 @@ from hitofude.core.inline_scanner import image_only_line
 from hitofude.core.models import BlockInfo, BlockType
 from hitofude.core.textpos import py_to_utf16, utf16_to_py
 from hitofude.editor import attachments, commands, painter_overlay
-from hitofude.editor.highlighter import TABLE_FAMILIES, MarkdownHighlighter
+from hitofude.editor.highlighter import MarkdownHighlighter
 from hitofude.editor.image_cache import ImageCache
 from hitofude.editor.input_handler import EnterKind, enter_action, indent_action
 from hitofude.editor.math_cache import MathCache
@@ -192,8 +192,8 @@ class MarkdownEditor(QPlainTextEdit):
         self.viewport().setMouseTracking(True)
         self._tab_width = DEFAULT_TAB_WIDTH
 
-        # 表 1 行に使える桁数。幅とフォントで決まる（`_update_table_columns`）
-        self._table_columns = 0
+        # 表 1 行に使える幅（px）。ウィンドウ幅で決まる（`_update_table_columns`）
+        self._table_width = 0
         self._images = ImageCache()
         self._highlighter = MarkdownHighlighter(
             self.document(), theme, base_point_size=base_point_size
@@ -461,16 +461,15 @@ class MarkdownEditor(QPlainTextEdit):
         finally:
             self._formatting = False
 
-        # 折り返し表示（ADR-0017）の列幅は表全体から決まる。編集した行の
-        # 影響を他の行にも反映するため、収まらない表を離れたら表の行だけ
-        # 掛け直す（全体再ハイライトはしない。R7）
+        # 描画の列幅は表全体から決まる（ADR-0017 / 0029）。編集した行の
+        # 影響を他の行にも反映するため、表を離れたら表の行だけ掛け直す
+        # （全体再ハイライトはしない。R7）
         start, end = found
-        if any(not table.fits(line, self._table_columns) for line in lines[start:end]):
-            document = self.document()
-            for number in range(start, end):
-                block = document.findBlockByNumber(number)
-                if block.isValid():
-                    self._highlighter.rehighlightBlock(block)
+        document = self.document()
+        for number in range(start, end):
+            block = document.findBlockByNumber(number)
+            if block.isValid():
+                self._highlighter.rehighlightBlock(block)
 
     def _apply_table_format(self, lines: list[str], found: tuple[int, int]) -> bool:
         """表の範囲を整形する。キャレットは今いる場所に残す。"""
@@ -1745,32 +1744,11 @@ class MarkdownEditor(QPlainTextEdit):
             # 「窓幅いっぱい」だけ画像幅が窓に連れて変わる
             self._update_image_width()
 
-    def table_font(self) -> QFont:
-        """表の描画に使う等幅フォント。折り返したセルの中身もこれで描く。"""
-        font = QFont()
-        font.setFamilies(TABLE_FAMILIES)
-        font.setPointSizeF(self.font().pointSizeF())
-        return font
-
-    def table_columns(self) -> int:
-        """表 1 行に使える桁数（半角換算）。**覚えた値を返すだけ**。
-
-        `paintEvent` から毎回呼ばれるので、ここで測り直さない
-        （`QFontMetricsF` を作るコストが描画のたびに乗る）。
-        """
-        return self._table_columns
-
-    def _measure_table_columns(self) -> int:
-        """今の幅とフォントで何桁入るか。
-
-        表は `BIZ UDGothic` で描く。**全角は半角のちょうど 2 倍**（ADR-0003 の
-        実測）なので、桁数で数えれば画面の幅と 1 対 1 で対応する。
-        """
-        available = self.viewport().width() - self.document().documentMargin() * 2
-        advance = QFontMetricsF(self.table_font()).horizontalAdvance("0")
-        if advance <= 0:
-            return 0
-        return int(available / advance)
+    def _table_available_width(self) -> int:
+        """表に使える幅（px）。**本文と同じフォントで描く**ので桁数は使わない
+        （ADR-0029。以前は BIZ UDGothic の「全角＝半角×2」で桁数に直していた）。
+        px の端数で再レイアウトが暴れないよう整数に丸める。"""
+        return int(self.viewport().width() - self.document().documentMargin() * 2)
 
     def _update_table_columns(self) -> None:
         """幅が変わったらハイライタへ伝え、表の行だけ掛け直す。
@@ -1778,11 +1756,11 @@ class MarkdownEditor(QPlainTextEdit):
         **全体再ハイライトはしない**（R7）。`|` を含む行だけを見る。
         本文の大半は表ではないので、これで十分に安い。
         """
-        columns = self._measure_table_columns()
-        if columns == self._table_columns:
+        width = self._table_available_width()
+        if width == self._table_width:
             return
-        self._table_columns = columns
-        self._highlighter.set_table_columns(columns)
+        self._table_width = width
+        self._highlighter.set_table_width(width)
         self._rehighlight_where(lambda text: "|" in text)
 
     def _rehighlight_where(self, predicate) -> None:

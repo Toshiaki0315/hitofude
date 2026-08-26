@@ -644,49 +644,24 @@
     "block": "TABLE_ROW",
     "ranges": [
       [
-        0,
-        1,
-        "hidden:0.5+bold+mono+fg:transparent"
-      ],
-      [
         1,
         1,
-        "size:25+mono"
-      ],
-      [
-        2,
-        5,
-        "bold+mono"
+        "size:23.4956"
       ],
       [
         7,
         1,
-        "size:25+mono"
-      ],
-      [
-        8,
-        1,
-        "hidden:0.5+bold+mono+fg:transparent"
+        "size:23.4956"
       ],
       [
         9,
         1,
-        "size:25+mono"
-      ],
-      [
-        10,
-        5,
-        "bold+mono"
+        "size:23.4956"
       ],
       [
         15,
         1,
-        "size:25+mono"
-      ],
-      [
-        16,
-        1,
-        "hidden:0.5+bold+mono+fg:transparent"
+        "size:23.4956"
       ]
     ]
   },
@@ -694,13 +669,7 @@
     "line": 44,
     "text": "|---|---|",
     "block": "TABLE_DELIMITER",
-    "ranges": [
-      [
-        0,
-        9,
-        "hidden:0.5+mono+fg:transparent"
-      ]
-    ]
+    "ranges": []
   },
   {
     "line": 45,
@@ -708,49 +677,24 @@
     "block": "TABLE_ROW",
     "ranges": [
       [
-        0,
-        1,
-        "hidden:0.5+mono+fg:transparent"
-      ],
-      [
         1,
         1,
-        "size:25+mono"
-      ],
-      [
-        2,
-        1,
-        "mono"
+        "size:23.4956"
       ],
       [
         3,
         1,
-        "size:25+mono"
-      ],
-      [
-        4,
-        1,
-        "hidden:0.5+mono+fg:transparent"
+        "size:23.4956"
       ],
       [
         5,
         1,
-        "size:25+mono"
-      ],
-      [
-        6,
-        1,
-        "mono"
+        "size:23.4956"
       ],
       [
         7,
         1,
-        "size:25+mono"
-      ],
-      [
-        8,
-        1,
-        "hidden:0.5+mono+fg:transparent"
+        "size:23.4956"
       ]
     ]
   },
@@ -760,49 +704,24 @@
     "block": "TABLE_ROW",
     "ranges": [
       [
-        0,
-        1,
-        "hidden:0.5+mono+fg:transparent"
-      ],
-      [
         1,
         1,
-        "size:25+mono"
-      ],
-      [
-        2,
-        1,
-        "mono"
+        "size:23.4956"
       ],
       [
         3,
         1,
-        "size:25+mono"
-      ],
-      [
-        4,
-        1,
-        "hidden:0.5+mono+fg:transparent"
+        "size:23.4956"
       ],
       [
         5,
         1,
-        "size:25+mono"
-      ],
-      [
-        6,
-        1,
-        "mono"
+        "size:23.4956"
       ],
       [
         7,
         1,
-        "size:25+mono"
-      ],
-      [
-        8,
-        1,
-        "hidden:0.5+mono+fg:transparent"
+        "size:23.4956"
       ]
     ]
   },

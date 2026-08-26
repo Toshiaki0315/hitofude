@@ -37,16 +37,22 @@ from hitofude.core.models import (
     InlineSpan,
     SpanType,
 )
-from hitofude.core.table import WrappedRow, fits, forces_wrap, wrap_row, wrapped_columns
+from hitofude.core.table import (
+    MIN_WRAP_COLUMN,
+    WrappedRow,
+    column_alignments,
+    wrap_row,
+    wrapped_columns,
+)
 from hitofude.core.textpos import py_to_utf16, utf16_to_py
 from hitofude.editor.painter_overlay import (
     BULLET_GAP_RATIO,
+    CELL_PAD,
     CHECKBOX_GAP_RATIO,
     CODE_NAME_GAP,
     CODE_NAME_PAD_Y,
     CODE_NAME_SCALE,
     HIDDEN_POINT_SIZE,
-    TABLE_FAMILIES,
     WRAP_CELL_PADDING,
     bullet_column,
     bullet_size,
@@ -132,7 +138,6 @@ MONO_FALLBACKS = ["Menlo", "Monaco", "Courier New"]
 #
 # 上下は点数で足す。行の高さは実際に並ぶ文字（和文か欧文か、フォントが
 # その字を持つか）で決まり、px を狙って逆算しても当たらない（実測で確認）。
-CELL_PADDING_POINTS = 10.0
 CELL_PADDING = 5.0
 
 
@@ -267,7 +272,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._image_cache = None
         self._image_width = 0
         # 表 1 行に使える桁数（半角換算）。0 は「まだ分からない」
-        self._table_columns = 0
+        self._table_width = 0.0
         self._selection: tuple[int, int] | None = None
         self._source_mode = False
         # 巨大ファイルガード（§6.6 / R7）。True の間は何も描かない
@@ -356,18 +361,18 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._image_cache = cache
         self._image_width = width
 
-    def set_table_columns(self, columns: int) -> None:
-        """表 1 行に使える桁数を伝える（ユーザー報告 / ADR-0003 追記）。
+    def set_table_width(self, width: float) -> None:
+        """表 1 行に使える幅（px）を伝える（ADR-0029）。
 
         **ここでは再ハイライトしない。** 呼び出し側が `|` を含むブロック
         だけを掛け直す（R7）。幅が変わるのはウィンドウを動かしたときだけで、
         本文の大半は表ではない。
         """
-        self._table_columns = max(0, int(columns))
+        self._table_width = max(0.0, float(width))
 
     @property
-    def table_columns(self) -> int:
-        return self._table_columns
+    def table_width(self) -> float:
+        return self._table_width
 
     def set_reveal(self, position: int | None, selection: tuple[int, int] | None = None) -> None:
         """キャレット位置と選択範囲を伝える。
@@ -480,8 +485,15 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         """
         pad = self._cell_pad
         if pad is None:
-            pad = QTextCharFormat(self._mono)
-            pad.setFontPointSize(self._base_point_size + CELL_PADDING_POINTS)
+            # **高さを描画行と揃える**（ADR-0029）。描画行は
+            # 「本文の行送り + 上下の余白」なので、その高さになる文字サイズを
+            # 比例で求めて空白に載せる。キャレットの出入りで行の高さが
+            # 変わらない、という §2 の約束を保つ
+            base_spacing = self._table_line_spacing()
+            target = base_spacing + WRAP_CELL_PADDING * 2
+            size = self._base_point_size * (target / base_spacing if base_spacing else 1.0)
+            pad = QTextCharFormat()
+            pad.setFontPointSize(size)
             pad.setFontLetterSpacingType(QFont.SpacingType.AbsoluteSpacing)
             pad.setFontLetterSpacing(CELL_PADDING)
             self._cell_pad = pad
@@ -736,17 +748,32 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         return rows
 
     def _reserve_wrapped_row(self, text: str, run: list[str]) -> None:
-        """収まらない表の行を隠し、折り返しぶんの高さを予約する（ADR-0017）。
+        """表の行を隠し、描画ぶんの高さを予約する（ADR-0017 / 0029）。
 
         画像（ADR-0004）と同じ手口: 全文字を 0.5pt に潰し、先頭 1 文字だけを
         **透明のまま**拡大して高さを作る。中身は paintEvent が
         `BlockData.wrapped` から描くので、ソースには触らない（R1/R4 無傷）。
+
+        列幅は**本文フォントの実測ピクセル**（ADR-0029）。core は Qt を
+        知らないので、測り係を注入する。
         """
-        widths = wrapped_columns(run, self._table_columns)
+        metrics = QFontMetricsF(self.document().defaultFont())
+        measure = metrics.horizontalAdvance
+        widths = wrapped_columns(
+            run,
+            self._table_width,
+            measure=measure,
+            overhead=CELL_PAD * 2 + 1,
+            floor=measure("0") * MIN_WRAP_COLUMN,
+        )
         if not widths:
             return
-        cells = wrap_row(text, widths)
-        wrapped = WrappedRow(tuple(widths), tuple(tuple(lines) for lines in cells))
+        cells = wrap_row(text, widths, measure=measure)
+        wrapped = WrappedRow(
+            tuple(widths),
+            tuple(tuple(lines) for lines in cells),
+            tuple(column_alignments(run)),
+        )
 
         self._hide(0, len(text))
         tall = QTextCharFormat()
@@ -757,15 +784,13 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._pending_wrapped = wrapped
 
     def _table_line_spacing(self) -> float:
-        """折り返しセル 1 行ぶんの高さ。描画側（paintEvent）と同じフォントで測る。"""
-        size = self.document().defaultFont().pointSizeF()
-        if self._table_spacing_cache and self._table_spacing_cache[0] == size:
+        """セル 1 行ぶんの高さ。描画側（paintEvent）と同じ**本文フォント**で測る。"""
+        font = self.document().defaultFont()
+        key = (font.family(), font.pointSizeF())
+        if self._table_spacing_cache and self._table_spacing_cache[0] == key:
             return self._table_spacing_cache[1]
-        font = QFont()
-        font.setFamilies(TABLE_FAMILIES)
-        font.setPointSizeF(size)
         spacing = float(QFontMetricsF(font).lineSpacing())
-        self._table_spacing_cache = (size, spacing)
+        self._table_spacing_cache = (key, spacing)
         return spacing
 
     def _reveal_for(self, block_start: int, block_length: int, text: str) -> _Reveal:
@@ -808,7 +833,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             case BlockType.BLOCKQUOTE:
                 self.setFormat(0, len(text), self._quote)
             case _ if info.type in _MONO_TYPES:
-                self.setFormat(0, len(text), self._table_header if header else self._mono)
+                # 表は描画側が本文フォントで組む（ADR-0029）。ここを通るのは
+                # キャレットの行（生表示）だけで、文字の書式は本文のまま。
+                # `_pad_cells` は行の高さを描画行と揃えるために残す
                 self._pad_cells(text)
             case _:
                 pass
@@ -876,27 +903,16 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         elif info.type in _HIDDEN_MARKER_TYPES:
             self._hide(0, info.marker_len)
         elif info.type in (BlockType.TABLE_ROW, BlockType.TABLE_DELIMITER):
-            # 折り返すか（ADR-0017）は**表全体**で決める。1 行だけ折り返すと
-            # 列の線が行ごとにずれて表にならない
-            run = self._table_run_texts()
-            # 幅に収まらない表のほか、`<br>` 入りの表も折り返し描画へ
-            # （ADR-0028。行の高さを変えるにはこの予約機構が要る）
-            wrapped_mode = self._table_columns > 0 and (
-                any(not fits(row, self._table_columns) for row in run) or forces_wrap(run)
-            )
-            if info.type is BlockType.TABLE_DELIMITER:
-                # 区切り行は折り返し表示でも隠す（線は paintEvent が引く）。
-                # 収まる表と同じ扱いで、薄い 1 行として残る
-                if wrapped_mode or fits(text, self._table_columns):
-                    self._hide(0, len(text))
-            elif wrapped_mode:
-                self._reserve_wrapped_row(text, run)
+            # 表は**常に描画側が組む**（ADR-0029）。本文と同じフォントで
+            # 描くため、列の位置は桁数ではなくピクセルで決める。
+            # 幅がまだ分からない起動直後だけ生のまま（すぐ掛け直される）
+            if self._table_width <= 0:
+                pass
+            elif info.type is BlockType.TABLE_DELIMITER:
+                # 区切り行は隠す（線は paintEvent が引く）。薄い 1 行として残る
+                self._hide(0, len(text))
             else:
-                # `|` は罫線として描く（§5.2 の描画フック）。文字は残すので
-                # キャレット位置とソースのオフセットは 1:1 のまま（R4）
-                for index, character in enumerate(text):
-                    if character == "|":
-                        self._hide(index, 1)
+                self._reserve_wrapped_row(text, self._table_run_texts())
         elif info.type is BlockType.BULLET_LIST_ITEM:
             # `-` / `*` を潰して点を描く（ユーザー要望 2026-08-22）。**空白は
             # 残す**ので、本文の始まる位置は今までどおり
@@ -1124,12 +1140,6 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
         self._quote = QTextCharFormat()
         self._quote.setForeground(QColor(theme.quote_foreground))
-
-        self._mono = QTextCharFormat()
-        self._mono.setFontFamilies(TABLE_FAMILIES)
-
-        self._table_header = QTextCharFormat(self._mono)
-        self._table_header.setFontWeight(QFont.Weight.Bold)
 
         strong = QTextCharFormat()
         strong.setFontWeight(QFont.Weight.Bold)

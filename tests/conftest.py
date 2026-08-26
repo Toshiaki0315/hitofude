@@ -133,21 +133,3 @@ def _release_clipboard():
     app = QApplication.instance()
     if app is not None:
         app.clipboard().clear()
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _extra_fonts(qapp):
-    """CI ランナーにフォントをプロセス内で登録する（2026-08-25）。
-
-    表は BIZ UDGothic で描く（ADR-0003）が、GitHub の macOS ランナーには
-    入っていない。`~/Library/Fonts` へ置くだけでは CoreText が拾わなかった
-    （実測: 検証ステップが Menlo を返した）ので、OS のフォントキャッシュに
-    依存しない `addApplicationFont` で読み込む。手元では何もしない
-    （環境変数が無ければ素通り）。
-    """
-    directory = os.environ.get("HITOFUDE_FONT_DIR")
-    if directory:
-        from PySide6.QtGui import QFontDatabase
-
-        for path in sorted(Path(directory).glob("*.ttf")):
-            QFontDatabase.addApplicationFont(str(path))

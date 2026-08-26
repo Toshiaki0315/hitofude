@@ -144,3 +144,66 @@ class TestTrailingBreak:
 
     def test_先頭の空行も残す(self) -> None:
         assert table.wrap_cell("<br>a", 20) == ["", "a"]
+
+
+class TestMeasureInjection:
+    """折り返し計算に「測り係」を注入できる（ADR-0029）。
+
+    表を本文フォント（プロポーショナル）で描くには、幅を桁数ではなく
+    ピクセルで測る必要がある。core は Qt を知らない（R3）ので、測る関数を
+    外から渡す。既定は今までどおり `display_width`（桁数）。
+    """
+
+    def px(self, text: str) -> float:
+        """偽のピクセル測り。半角 7px・全角 12px（等幅でない比率）。"""
+        return sum(12.0 if table.display_width(ch) == 2 else 7.0 for ch in text)
+
+    def test_既定は今まで通り桁数(self) -> None:
+        assert table.wrap_cell("あい うえ", 4) == ["あい", "うえ"]
+
+    def test_ピクセルで折り返せる(self) -> None:
+        # 「あい」=24px。幅 30px なら「あい う」(24+7+7=38) は入らない
+        assert table.wrap_cell("あい うえ", 30.0, measure=self.px) == ["あい", "うえ"]
+
+    def test_ピクセルの列幅も出せる(self) -> None:
+        rows = ["| あ | bb |", "| --- | --- |", "| あああ | b |"]
+        widths = table.wrapped_columns(rows, 1000.0, measure=self.px, overhead=10.0, floor=7.0)
+        assert widths == [36.0, 14.0]  # あああ=36px, bb=14px
+
+    def test_収まらなければ広い列から削る(self) -> None:
+        rows = ["| ああああ | bb |", "| --- | --- |"]
+        widths = table.wrapped_columns(rows, 55.0, measure=self.px, overhead=10.0, floor=7.0)
+        # 全体 = 48 + 14 + 10*2 + 1 = 83。広い列（48px）から削られる
+        assert widths[1] == 14.0
+        assert widths[0] < 48.0
+
+    def test_wrap_rowにも測り係が効く(self) -> None:
+        cells = table.wrap_row("| あい うえ | x |", [30.0, 14.0], measure=self.px)
+        assert cells[0] == ["あい", "うえ"]
+
+
+class TestColumnAlignments:
+    """区切り行の整列記法を列ごとに取り出す（ADR-0029）。
+
+    描画側がセルの寄せに使う。等幅をやめると数字の右揃えが自然には
+    起きないので、`---:` を画面でも効かせる。
+    """
+
+    def test_取り出せる(self) -> None:
+        rows = ["| a | b | c | d |", "| :--- | ---: | :---: | --- |", "| 1 | 2 | 3 | 4 |"]
+        assert table.column_alignments(rows) == [
+            table.Alignment.LEFT,
+            table.Alignment.RIGHT,
+            table.Alignment.CENTER,
+            table.Alignment.NONE,
+        ]
+
+    def test_区切りが無ければ全部NONE(self) -> None:
+        rows = ["| a | b |", "| 1 | 2 |"]
+        assert table.column_alignments(rows) == [table.Alignment.NONE, table.Alignment.NONE]
+
+    def test_列数は本体に合わせて埋める(self) -> None:
+        rows = ["| a | b | c |", "| :--- |", "| 1 | 2 | 3 |"]
+        found = table.column_alignments(rows)
+        assert len(found) == 3
+        assert found[0] is table.Alignment.LEFT

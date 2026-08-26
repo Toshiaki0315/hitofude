@@ -12,6 +12,7 @@ v1 は WYSIWYG な表エディタを作らない（§1.2 の非ゴール）。�
 
 import re
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
 
@@ -232,6 +233,29 @@ MIN_WRAP_COLUMN = 6
 FORCED_BREAK_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 
 
+Measure = Callable[[str], float]
+"""文字列の幅を返す関数。core は Qt を知らない（R3）ので外から注入する。"""
+
+
+def column_alignments(rows: list[str]) -> list["Alignment"]:
+    """区切り行の整列記法を列ごとに取り出す（ADR-0029）。
+
+    描画側がセルの寄せに使う。本文フォント（プロポーショナル）では
+    数字の右揃えが自然には起きないので、`---:` を画面でも効かせる。
+    区切りが無い・列が足りないぶんは NONE。
+    """
+    bodies = [_split_row(line).cells for line in rows if not _is_delimiter(line)]
+    count = max((len(cells) for cells in bodies), default=0)
+    delimiter = next((line for line in rows if _is_delimiter(line)), None)
+    found = (
+        [_alignment_of(cell.strip()) for cell in _split_row(delimiter).cells]
+        if delimiter is not None
+        else []
+    )
+    found += [Alignment.NONE] * (count - len(found))
+    return found[:count] if count else found
+
+
 def split_forced(text: str) -> list[str]:
     """セルの中身を `<br>`（変種含む）で分ける。無ければ 1 断片。"""
     return FORCED_BREAK_RE.split(text)
@@ -250,11 +274,15 @@ def forces_wrap(rows: list[str]) -> bool:
 CELL_OVERHEAD = 3
 
 
-def wrap_cell(text: str, width: int) -> list[str]:
-    """セルの中身を表示幅 `width`（半角換算）で折り返す。
+def wrap_cell(text: str, width: float, *, measure: Measure = display_width) -> list[str]:
+    """セルの中身を幅 `width` で折り返す。
+
+    幅の単位は `measure` しだい（ADR-0029）: 既定は表示幅（半角換算の
+    桁数。全角は 2）で、描画側はピクセルの測り係を渡す。core は Qt を
+    知らない（R3）ので、測る関数を外から注入する。
 
     空白があればそこで折る（英単語の途中で切らない）。1 語が幅を
-    超えるときだけ字の途中で切る。全角は 2 桁で数える（ADR-0003）。
+    超えるときだけ字の途中で切る。
     """
     if width <= 0:
         return [text]
@@ -269,25 +297,25 @@ def wrap_cell(text: str, width: int) -> list[str]:
             segments.pop()
         found: list[str] = []
         for segment in segments:
-            found.extend(wrap_cell(segment.strip(), width))
+            found.extend(wrap_cell(segment.strip(), width, measure=measure))
         return found
     lines: list[str] = []
     current = ""
-    current_width = 0
+    current_width = 0.0
     for word in _wrap_pieces(text):
-        piece_width = display_width(word)
+        piece_width = measure(word)
         if current and current_width + piece_width > width:
             lines.append(current.rstrip())
-            current, current_width = "", 0
+            current, current_width = "", 0.0
             if word == " ":
                 continue  # 折り目の空白は行頭に持ち込まない
         if piece_width > width:
             # 1 語が幅より長い。字単位で詰める
             for char in word:
-                char_width = display_width(char)
+                char_width = measure(char)
                 if current and current_width + char_width > width:
                     lines.append(current.rstrip())
-                    current, current_width = "", 0
+                    current, current_width = "", 0.0
                 current += char
                 current_width += char_width
             continue
@@ -314,13 +342,22 @@ def _wrap_pieces(text: str) -> list[str]:
     return pieces
 
 
-def wrapped_columns(rows: list[str], available: int) -> list[int]:
-    """収まらない表の列幅（半角換算）を決める。
+def wrapped_columns(
+    rows: list[str],
+    available: float,
+    *,
+    measure: Measure = display_width,
+    overhead: float = CELL_OVERHEAD,
+    floor: float = MIN_WRAP_COLUMN,
+) -> list[float]:
+    """表の列幅を決める。単位は `measure` しだい（既定は半角換算の桁数）。
 
     自然幅（各列の最長セル。区切り行は書き手の癖なので数えない）が
-    使える幅に収まればそのまま。溢れたら**いちばん広い列から** 1 ずつ
-    削る。狭い列を道連れにしないため。`MIN_WRAP_COLUMN` より下には
-    削らない（全列が最低幅でも収まらないなら、そこで止める）。
+    使える幅に収まればそのまま。溢れたら**いちばん広い列から**削る。
+    狭い列を道連れにしないため。`floor` より下には削らない
+    （全列が最低幅でも収まらないなら、そこで止める）。
+
+    `overhead` は列 1 本あたりの飾りぶん（縦線 + 左右の余白）。
     """
     bodies = [_split_row(line).cells for line in rows if not _is_delimiter(line)]
     count = max((len(cells) for cells in bodies), default=0)
@@ -332,28 +369,32 @@ def wrapped_columns(rows: list[str], available: int) -> list[int]:
     widths = [
         max(
             (
-                max(display_width(segment) for segment in split_forced(cells[i]))
+                max(measure(segment) for segment in split_forced(cells[i]))
                 for cells in bodies
                 if i < len(cells)
             ),
-            default=0,
+            default=0.0,
         )
         for i in range(count)
     ]
-    usable = available - (CELL_OVERHEAD * count + 1)
+    usable = available - (overhead * count + 1)
+    step = max(1.0, floor / MIN_WRAP_COLUMN)  # 桁なら 1、ピクセルなら 1 文字弱ずつ
     while sum(widths) > usable:
         widest = max(range(count), key=lambda i: widths[i])
-        if widths[widest] <= MIN_WRAP_COLUMN:
+        if widths[widest] <= floor:
             break  # これ以上削ると読めない。溢れは描画側がはみ出しで吸収する
-        widths[widest] -= 1
+        widths[widest] = max(floor, widths[widest] - step)
     return widths
 
 
-def wrap_row(line: str, col_widths: list[int]) -> list[list[str]]:
+def wrap_row(
+    line: str, col_widths: list[float], *, measure: Measure = display_width
+) -> list[list[str]]:
     """1 行ぶんのセルを列幅で折り返す。列数が足りない分は空セル。"""
     cells = _split_row(line).cells
     return [
-        wrap_cell(cells[i] if i < len(cells) else "", col_widths[i]) for i in range(len(col_widths))
+        wrap_cell(cells[i] if i < len(cells) else "", col_widths[i], measure=measure)
+        for i in range(len(col_widths))
     ]
 
 
@@ -365,8 +406,10 @@ class WrappedRow:
     ソースには一切触れない（R1）。
     """
 
-    col_widths: tuple[int, ...]
+    col_widths: tuple[float, ...]
     cells: tuple[tuple[str, ...], ...]
+    alignments: tuple["Alignment", ...] = ()
+    """列ごとの寄せ（`---:` など）。無ければ左寄せで描く。"""
 
     @property
     def lines(self) -> int:

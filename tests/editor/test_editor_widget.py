@@ -299,12 +299,13 @@ class TestContentWidth:
         content = 1600 - margins.left() - margins.right()
         assert content <= 721
 
-    def test_表の桁数が連動する(self, editor) -> None:
+    def test_表の幅が連動する(self, editor) -> None:
+        """本文の幅を広げると、表に使える幅（px）も広がる（ADR-0029）。"""
         editor.resize(1600, 400)
         editor.show()
-        before = editor.table_columns()
+        before = editor._table_width
         editor.set_content_width(880)
-        assert editor.table_columns() > before
+        assert editor._table_width > before
 
     def test_画像の最大幅が連動する(self, editor) -> None:
         editor.resize(1600, 400)

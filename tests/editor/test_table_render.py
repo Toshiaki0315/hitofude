@@ -138,10 +138,11 @@ class TestAutoFormat:
 
 
 class TestHiding:
-    def test_縦線の文字を隠す(self, editor) -> None:
+    def test_表の行は丸ごと隠す(self, editor) -> None:
+        """描画側が本文フォントで組む（ADR-0029）ので、ソースの行は隠れる。"""
         editor.setPlainText(TABLE)
         move_to(editor, 5)
-        assert len(hidden_ranges(editor, 0)) == 3  # `|` が 3 本
+        assert hidden_ranges(editor, 0), "表の行が生のまま見えている"
 
     def test_区切り行は丸ごと隠す(self, editor) -> None:
         editor.setPlainText(TABLE)
@@ -155,7 +156,7 @@ class TestHiding:
         assert "|" in editor.toPlainText()
         assert editor.toPlainText().count("|") >= 12
 
-    def test_カーソルを入れると縦線が現れる(self, editor) -> None:
+    def test_カーソルを入れると生のMarkdownに戻る(self, editor) -> None:
         editor.setPlainText(TABLE)
         move_to(editor, 5)
         assert hidden_ranges(editor, 0)
@@ -175,14 +176,25 @@ class TestGrid:
         editor.setPlainText(TABLE)
         move_to(editor, 5)
         rules = [d for d in visible_decorations(editor) if d.kind is DecorationKind.TABLE_RULE]
-        vertical = [d for d in rules if d.rect.width() < d.rect.height()]
-        assert len(vertical) == 3
+        vertical = {round(d.rect.x(), 1) for d in rules if d.rect.width() < d.rect.height()}
+        assert len(vertical) == 3  # 2 列 = 縦線 3 本（行ごとに引くので x で数える）
 
-    def test_表の中にいる間は線を引かない(self, editor) -> None:
-        """編集中はソースが揃っておらず、線が本文とずれる。"""
+    def test_キャレットの行には文字を描かない(self, editor) -> None:
+        """リビールは行単位（ADR-0017 / 0029）。生の Markdown が見えている
+        行の上に、描いた文字を重ねない。他の行は表のまま読める。"""
         editor.setPlainText(TABLE)
         move_to(editor, 2)
-        assert DecorationKind.TABLE_RULE not in kinds(editor)
+        rules = [d for d in visible_decorations(editor) if d.kind is DecorationKind.TABLE_RULE]
+        assert rules, "表全体の線が消えている"
+        block = editor.document().findBlockByNumber(2)
+        geometry = editor.blockBoundingGeometry(block)
+        texts = [
+            d
+            for d in visible_decorations(editor)
+            if d.kind in (DecorationKind.TABLE_TEXT, DecorationKind.TABLE_TEXT_HEADER)
+        ]
+        overlapping = [d for d in texts if geometry.top() <= d.rect.top() < geometry.bottom()]
+        assert overlapping == [], "キャレットの行に文字を重ねている"
 
     def test_表が無ければ描かない(self, editor) -> None:
         editor.setPlainText("本文だけ\n")
@@ -195,23 +207,22 @@ class TestGrid:
 
 
 class TestHeaderStyle:
-    def test_ヘッダ行は太字(self, editor) -> None:
-        from PySide6.QtGui import QFont
+    """ヘッダの太字は描画側の仕事になった（ADR-0029）。
 
+    ソースの行は隠れているので、文字書式ではなく**描く種類**で見る。
+    """
+
+    def test_ヘッダ行はヘッダとして描く(self, editor) -> None:
         editor.setPlainText(TABLE)
         move_to(editor, 5)
-        block = editor.document().findBlockByNumber(0)
-        weights = [entry.format.fontWeight() for entry in block.layout().formats()]
-        assert any(weight >= QFont.Weight.Bold for weight in weights)
+        found = kinds(editor)
+        assert DecorationKind.TABLE_TEXT_HEADER in found
 
-    def test_本体行は太字にしない(self, editor) -> None:
-        from PySide6.QtGui import QFont
-
+    def test_本体行は本体として描く(self, editor) -> None:
         editor.setPlainText(TABLE)
         move_to(editor, 5)
-        block = editor.document().findBlockByNumber(2)
-        weights = [entry.format.fontWeight() for entry in block.layout().formats()]
-        assert all(weight < QFont.Weight.Bold for weight in weights)
+        found = kinds(editor)
+        assert DecorationKind.TABLE_TEXT in found
 
 
 class TestSourceIntegrity:
@@ -278,8 +289,10 @@ class TestGridBounds:
         move_to(editor, 4)
 
         assert editor.toPlainText().startswith("| aaa |")
-        vertical = [d for d in self._rules(editor) if d.rect.width() <= d.rect.height()]
-        assert len(vertical) == 2  # 左端と右端
+        vertical = {
+            round(d.rect.x(), 1) for d in self._rules(editor) if d.rect.width() <= d.rect.height()
+        }
+        assert len(vertical) == 2  # 左端と右端（行ごとに引くので x で数える）
 
 
 class TestCellPadding:
@@ -318,46 +331,36 @@ class TestCellPadding:
         editor.setPlainText(self.TABLE)
         assert self.rows(editor)[0] > plain
 
-    def test_上下の余白は行の高さで作る(self) -> None:
-        """余白を 0 にしたときより高くなること。
-
-        **px を狙って逆算しない。** 行の高さは実際に並ぶ文字（和文か欧文か、
-        フォントがその字を持つか）で決まり、計算では当たらない（実測で確認）。
-        """
+    def test_上下の余白は予約の高さで作る(self) -> None:
+        """余白を 0 にしたときより高くなること（ADR-0029: 描画行の高さは
+        本文の行送り + WRAP_CELL_PADDING×2 で予約する）。"""
         import hitofude.editor.highlighter as module
 
-        original = module.CELL_PADDING_POINTS
+        original = module.WRAP_CELL_PADDING
         try:
-            module.CELL_PADDING_POINTS = 0.0
+            module.WRAP_CELL_PADDING = 0.0
             bare = self._table_height()
-            module.CELL_PADDING_POINTS = original
+            module.WRAP_CELL_PADDING = original
             padded = self._table_height()
         finally:
-            module.CELL_PADDING_POINTS = original
+            module.WRAP_CELL_PADDING = original
         assert padded > bare + 5
 
-    def test_左右の余白は字送りで作る(self, editor) -> None:
-        """セルの幅が広がる＝中身が罫線から離れる。
-
-        **同じ行どうしで比べる。** フォントが違う行と比べても分からない。
-        """
-        import hitofude.editor.highlighter as module
-
-        original = module.CELL_PADDING
-        try:
-            module.CELL_PADDING = 0.0
-            editor._highlighter._cell_pad = None
-            editor.setPlainText(self.TABLE)
-            editor._highlighter.rehighlight()
-            bare = self.pipe_x(editor, 2)
-        finally:
-            module.CELL_PADDING = original
-            editor._highlighter._cell_pad = None
+    def test_左右の余白は描画の定数で作る(self, editor) -> None:
+        """文字の矩形が縦線（列の左端）から CELL_PAD ぶん離れている（ADR-0029）。"""
+        from hitofude.editor.painter_overlay import CELL_PAD, DecorationKind, visible_decorations
 
         editor.setPlainText(self.TABLE)
-        editor._highlighter.rehighlight()
-        padded = self.pipe_x(editor, 2)
-        assert padded[1] - padded[0] > bare[1] - bare[0]
+        move_to(editor, 5)
+        rules = [d for d in visible_decorations(editor) if d.kind is DecorationKind.TABLE_RULE]
+        lefts = sorted({d.rect.x() for d in rules if d.rect.width() < d.rect.height()})
+        texts = [
+            d
+            for d in visible_decorations(editor)
+            if d.kind in (DecorationKind.TABLE_TEXT, DecorationKind.TABLE_TEXT_HEADER)
+        ]
+        first_column = min(d.rect.x() for d in texts)
+        assert first_column == pytest.approx(lefts[0] + 1 + CELL_PAD, abs=0.6)
 
     def test_本文は変わらない(self, editor) -> None:
         """R1: 見た目を変えてもソースは触らない。"""
@@ -377,13 +380,14 @@ class TestCellPadding:
         assert heights[0] < heights[1]
 
     def test_本文の行どうしはずれない(self, editor) -> None:
-        """余白は全行へ同じだけ足す。
+        """列の左端は全行で同じ（描画側が同じ列幅で組む。ADR-0029）。"""
+        from hitofude.editor.painter_overlay import DecorationKind, visible_decorations
 
-        ヘッダ行だけは太字のぶん幅が違うが、それは**この変更の前からある**
-        別の話（実測で確認済み）。ここでは本文の行どうしを見る。
-        """
         editor.setPlainText(self.TABLE + "| 斜体 | 細字   |\n")
-        assert self.pipe_x(editor, 2) == pytest.approx(self.pipe_x(editor, 3))
+        move_to(editor, 5)
+        texts = [d for d in visible_decorations(editor) if d.kind is DecorationKind.TABLE_TEXT]
+        xs = sorted({round(d.rect.x(), 1) for d in texts})
+        assert len(xs) == 2  # 2 列 = 左端は 2 種類だけ（行ごとにずれない）
 
     def test_文字サイズを変えても余白が残る(self, editor) -> None:
         editor.setPlainText(self.TABLE)
@@ -524,8 +528,8 @@ class TestTooWide:
         move_to(editor, 4)
         assert DecorationKind.TABLE_HEADER in kinds(editor)
 
-    def test_収まる表は今まで通り(self, editor) -> None:
-        """狭い表を巻き添えにしない。"""
+    def test_収まる表も同じ仕組みで描く(self, editor) -> None:
+        """描き方は 1 つだけ（ADR-0029）。狭い表も描画側が組む。"""
         editor.setPlainText(TABLE)
         move_to(editor, 5)
         assert DecorationKind.TABLE_RULE in kinds(editor)
@@ -537,28 +541,30 @@ class TestTooWide:
         move_to(editor, 4)
         assert editor.toPlainText() == WIDE_TABLE
 
-    def test_短くすれば通常の描画に戻る(self, editor) -> None:
-        """収まる幅まで縮めれば、折り返しをやめてそのまま描く。"""
-        editor.setPlainText(WIDE_TABLE)
-        move_to(editor, 4)
-        assert DecorationKind.TABLE_TEXT in kinds(editor)
+    def test_収まる表は折り返さない(self, editor) -> None:
+        """描き方は 1 つでも、収まる表のセルは 1 行のまま（自然幅で組む）。"""
+        editor.setPlainText(TABLE)
+        move_to(editor, 5)
+        block = editor.document().findBlockByNumber(0)
+        wrapped = getattr(block.userData(), "wrapped", None)
+        assert wrapped is not None
+        assert wrapped.lines == 1
+
+    def test_列幅は自然幅より広げない(self, editor) -> None:
+        """使える幅が余っていても、列は中身の最長ぶんだけ（間延びさせない）。"""
+        from PySide6.QtGui import QFontMetricsF
 
         editor.setPlainText(TABLE)
         move_to(editor, 5)
-        assert DecorationKind.TABLE_TEXT not in kinds(editor)
-        assert DecorationKind.TABLE_RULE in kinds(editor)
-        assert hidden_ranges(editor, 0)
-
-    def test_ウィンドウを広げても桁数は増えない(self, editor) -> None:
-        """**本文は最大 720px**（spec §5.1）。広げても本文の幅は変わらない。
-
-        「ウィンドウを広げれば直る」と誤解しないための固定。収まらない表は
-        セルを短くするしかない（実測: 720px = 71 桁）。
-        """
-        before = editor.table_columns()
-        editor.resize(1900, 300)
-        editor.show()
-        assert editor.table_columns() == before
+        wrapped = editor.document().findBlockByNumber(0).userData().wrapped
+        metrics = QFontMetricsF(editor.font())
+        natural = max(
+            metrics.horizontalAdvance(cell.strip())
+            for line in TABLE.splitlines()
+            if line.startswith("|") and "---" not in line
+            for cell in line.split("|")[1:-1]
+        )
+        assert max(wrapped.col_widths) <= natural + 1
 
 
 class TestMultipleTables:
@@ -660,7 +666,10 @@ class TestManualFits:
         manual = Path("hitofude/resources/manual.md").read_text(encoding="utf-8")
         editor.setPlainText(manual)
 
-        columns = editor.table_columns()
+        # 描画は幅に依らず組める（ADR-0029）ので、これは**ソースの行儀**の
+        # 検査。生の .md を他所で開いても読める幅（標準の本文幅 ≒ 69 桁）に
+        # 収めておく
+        columns = 69
         over = [
             line for line in manual.split("\n") if line.startswith("|") and not fits(line, columns)
         ]
@@ -722,10 +731,13 @@ class TestWrappedTable:
         assert not any(f.format.fontPointSize() == pytest.approx(0.5) for f in formats)
         assert self.wrapped_of(editor, 2) is None
 
-    def test_収まる表は今まで通り(self, editor) -> None:
+    def test_収まる表も描画側が組む(self, editor) -> None:
+        """描き方は 1 つだけ（ADR-0029）。収まる表もセルは 1 行で高さは低いまま。"""
         editor.setPlainText(TABLE)
         move_to(editor, 5)
-        assert self.wrapped_of(editor, 0) is None
+        block = editor.document().findBlockByNumber(2)
+        wrapped = getattr(block.userData(), "wrapped", None)
+        assert wrapped is not None and wrapped.lines == 1
 
     def test_Rawでは生のまま(self, editor) -> None:
         editor.setPlainText(WIDE_CELLS)
@@ -781,10 +793,11 @@ class TestForcedBreakInEditor:
         # 2 倍にはならない。1.4 倍あれば 2 行ぶん予約されている
         assert tall > plain * 1.4
 
-    def test_brの無い収まる表は今まで通り(self, editor) -> None:
+    def test_brの無い収まる表は1行のまま(self, editor) -> None:
         editor.setPlainText("| A | B |\n| --- | --- |\n| a | b |\n\n末尾\n")
         move_to(editor, 4)
-        assert self.wrapped_of(editor, 2) is None
+        wrapped = self.wrapped_of(editor, 2)
+        assert wrapped is not None and wrapped.lines == 1
 
     def test_キャレットを入れた行は生に戻る(self, editor) -> None:
         editor.setPlainText(self.NOTE)

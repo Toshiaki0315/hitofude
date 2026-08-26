@@ -21,7 +21,7 @@ from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen, QTextBlo
 
 from hitofude.core.inline_scanner import image_only_line
 from hitofude.core.models import BlockType, SpanType
-from hitofude.core.table import CELL_OVERHEAD, fits
+from hitofude.core.table import Alignment
 from hitofude.core.textpos import py_to_utf16
 from hitofude.theme import ThemeColors
 
@@ -48,7 +48,8 @@ WRAP_CELL_PADDING = 4.0
 # BIZ UDGothic は macOS 標準で、全角:半角 = 2:1 が成立する数少ないフォント。
 # 定義がここにあるのは依存の向きの都合（highlighter がこのモジュールを
 # import する。逆はできない）
-TABLE_FAMILIES = ["BIZ UDGothic", "Menlo", "Monaco", "Courier New"]
+# 表のセルの左右の余白（px）。縦線と文字が貼り付くと読みにくい
+CELL_PAD = 9.0
 # ファイル名の大きさ（本文に対する比）。見出しとして読めて、かつ主張しない
 CODE_NAME_SCALE = 0.85
 # インラインの帯の上下の余白と角の丸み。**文字の実寸（ascent+descent）を
@@ -166,6 +167,8 @@ class Decoration:
     kind: DecorationKind
     rect: QRectF
     text: str = ""
+    align: Alignment = Alignment.NONE
+    """`TABLE_TEXT*` のときの寄せ（`---:` など。ADR-0029）。"""
     pixmap: object = None
     """`IMAGE` のときだけ入る。読み込みと縮小は `editor/image_cache.py`。"""
 
@@ -291,63 +294,13 @@ def _image_for(editor, block, geometry) -> Decoration | None:
 def table_decorations(editor, entries) -> list[Decoration]:
     """表の罫線とヘッダ背景（spec §5.2 の描画フック）。
 
-    **キャレットが表の中にある間は線を引かない。** 編集中はソースがまだ
-    揃っておらず、揃った前提で引いた線が本文とずれるため。行を離れると
-    自動整形が走り、そこで線が現れる（マーカーのリビールと同じ考え方）。
+    表は**常に描画側が組む**（ADR-0029。本文と同じフォントで描くため、
+    列の位置は桁数ではなくピクセルで決める）。リビールは行単位で、
+    キャレットの行だけ生の Markdown に戻り、その行のぶん線が途切れる。
     """
-    caret = editor.textCursor().blockNumber()
-    columns = editor.table_columns()
     result: list[Decoration] = []
-
     for run in _table_runs(entries):
-        # **幅に収まらない表はセルを折り返して描く**（ADR-0017）。こちらの
-        # リビールは行単位（キャレットの行だけ生に戻る）なので、キャレットが
-        # 表の中にあっても他の行は描き続ける
-        if any(not fits(block.text(), columns) for block, _info, _rect in run):
-            result.extend(_wrapped_table(editor, run))
-            continue
-
-        numbers = [block.blockNumber() for block, _info, _rect in run]
-        if caret in numbers:
-            continue
-
-        # **`columns`（桁数）に入れ直さない。** 上書きすると次の表の幅判定が
-        # `fits(文字列, 座標の一覧)` になって例外が飛び、`paintEvent` ごと
-        # 中断して本文が描かれなくなる（ユーザー報告）
-        pipes = _pipe_positions(run[0][0], run[0][2])
-        if len(pipes) < 2:
-            continue  # 縦線が引けない＝表として描けない
-
-        top = run[0][2].top()
-        bottom = run[-1][2].bottom()
-        # **ブロックの矩形は表示領域の全幅**なので、そのまま使うと罫線が
-        # 画面の端まで伸びる。表の実際の幅（左端と右端の縦線）に収める
-        left = pipes[0]
-        right = pipes[-1] + RULE_HEIGHT
-
-        delimiter = next(
-            (i for i, (_b, info, _r) in enumerate(run) if info.type is BlockType.TABLE_DELIMITER),
-            None,
-        )
-        if delimiter is not None:
-            header = QRectF(left, top, right - left, run[delimiter][2].top() - top)
-            result.append(Decoration(DecorationKind.TABLE_HEADER, header))
-
-        for x in pipes:
-            result.append(
-                Decoration(DecorationKind.TABLE_RULE, QRectF(x, top, RULE_HEIGHT, bottom - top))
-            )
-
-        for _block, _info, rect in run:
-            result.append(
-                Decoration(
-                    DecorationKind.TABLE_RULE, QRectF(left, rect.top(), right - left, RULE_HEIGHT)
-                )
-            )
-        result.append(
-            Decoration(DecorationKind.TABLE_RULE, QRectF(left, bottom, right - left, RULE_HEIGHT))
-        )
-
+        result.extend(_wrapped_table(editor, run))
     return result
 
 
@@ -355,34 +308,33 @@ def _wrapped_table(editor, run) -> list[Decoration]:
     """収まらない表をセル折り返しで描く（ADR-0017）。
 
     行の高さはハイライタが予約済み（画像と同じ ADR-0004 の手口）。ここでは
-    `BlockData.wrapped` の中身を等幅フォントで描き、罫線は桁数 × 字送りの
-    位置に引く（全角:半角 = 2:1 の前提。ADR-0003）。
+    `BlockData.wrapped` の中身を**本文と同じフォント**で描く（ADR-0029）。
+    列の位置はピクセル（ハイライタが本文フォントで実測した列幅）。
 
     キャレットの行は生表示（`wrapped` が無い）なので、その行だけ描かず、
     罫線もその行のぶん途切れる。区切り行は薄い 1 行として線だけ引く。
     """
-    metrics = QFontMetricsF(editor.table_font())
-    advance = metrics.horizontalAdvance("0")
+    metrics = QFontMetricsF(editor.font())
     spacing = metrics.lineSpacing()
-    if advance <= 0:
-        return []
 
     rows: list[tuple[QRectF, object, bool]] = []
-    widths: tuple[int, ...] | None = None
+    widths: tuple[float, ...] | None = None
+    alignments: tuple = ()
     for block, info, rect in run:
         wrapped = getattr(block.userData(), "wrapped", None)
         rows.append((rect, wrapped, info.type is BlockType.TABLE_DELIMITER))
         if widths is None and wrapped is not None:
             widths = wrapped.col_widths
+            alignments = wrapped.alignments
     if not widths:
         return []  # 全行が生表示（複数行選択など）。飾りも引かない
 
     left = editor.contentOffset().x() + editor.document().documentMargin()
-    # 縦線の位置（半角換算の単位）。列ごとに 縦線 1 + 左右の余白 2 + 中身
-    bounds = [0]
+    # 縦線の位置（px）。列ごとに 縦線 + 余白 + 中身 + 余白
+    bounds = [0.0]
     for width in widths:
-        bounds.append(bounds[-1] + width + CELL_OVERHEAD)
-    table_width = bounds[-1] * advance + RULE_HEIGHT
+        bounds.append(bounds[-1] + RULE_HEIGHT + CELL_PAD + width + CELL_PAD)
+    table_width = bounds[-1] + RULE_HEIGHT
 
     result: list[Decoration] = []
     has_delimiter = any(delimiter for _rect, _wrapped, delimiter in rows)
@@ -407,11 +359,11 @@ def _wrapped_table(editor, run) -> list[Decoration]:
             result.append(
                 Decoration(DecorationKind.TABLE_RULE, QRectF(left, y, table_width, RULE_HEIGHT))
             )
-        for unit in bounds:
+        for offset in bounds:
             result.append(
                 Decoration(
                     DecorationKind.TABLE_RULE,
-                    QRectF(left + unit * advance, rect.top(), RULE_HEIGHT, rect.height()),
+                    QRectF(left + offset, rect.top(), RULE_HEIGHT, rect.height()),
                 )
             )
         if wrapped is None:
@@ -419,13 +371,14 @@ def _wrapped_table(editor, run) -> list[Decoration]:
 
         kind = DecorationKind.TABLE_TEXT_HEADER if is_header else DecorationKind.TABLE_TEXT
         for column, cell_lines in enumerate(wrapped.cells[: len(widths)]):
-            x = left + (bounds[column] + 2) * advance
-            cell_width = widths[column] * advance
+            x = left + bounds[column] + RULE_HEIGHT + CELL_PAD
+            cell_width = widths[column]
+            align = alignments[column] if column < len(alignments) else Alignment.NONE
             for line_index, line_text in enumerate(cell_lines):
                 if not line_text:
                     continue
                 y = rect.top() + WRAP_CELL_PADDING + line_index * spacing
-                result.append(Decoration(kind, QRectF(x, y, cell_width, spacing), line_text))
+                result.append(Decoration(kind, QRectF(x, y, cell_width, spacing), line_text, align))
     return result
 
 
@@ -442,15 +395,6 @@ def _table_runs(entries) -> list[list]:
     if current:
         runs.append(current)
     return [run for run in runs if len(run) >= 2]
-
-
-def _pipe_positions(block: QTextBlock, geometry: QRectF) -> list[float]:
-    """行の中の `|` の x 座標。縦線を引く位置になる。"""
-    return [
-        geometry.left() + _column_x(block, index)
-        for index, character in enumerate(block.text())
-        if character == "|"
-    ]
 
 
 def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decoration]:
@@ -841,17 +785,20 @@ def paint_foreground(
     ]
     if cells:
         painter.save()
-        mono = QFont()
-        mono.setFamilies(TABLE_FAMILIES)
-        mono.setPointSizeF(font.pointSizeF())
-        bold = QFont(mono)
+        # **本文と同じフォントで描く**（ADR-0029）。ヘッダだけ太字
+        body = QFont(font)
+        bold = QFont(body)
         bold.setBold(True)
         painter.setPen(QColor(theme.foreground))
         for decoration in cells:
-            painter.setFont(bold if decoration.kind is DecorationKind.TABLE_TEXT_HEADER else mono)
+            painter.setFont(bold if decoration.kind is DecorationKind.TABLE_TEXT_HEADER else body)
+            horizontal = {
+                Alignment.RIGHT: Qt.AlignmentFlag.AlignRight,
+                Alignment.CENTER: Qt.AlignmentFlag.AlignHCenter,
+            }.get(decoration.align, Qt.AlignmentFlag.AlignLeft)
             painter.drawText(
                 decoration.rect,
-                int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+                int(horizontal | Qt.AlignmentFlag.AlignVCenter),
                 decoration.text,
             )
         painter.restore()

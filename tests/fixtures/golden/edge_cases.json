@@ -777,49 +777,24 @@
     "block": "TABLE_ROW",
     "ranges": [
       [
-        0,
-        1,
-        "hidden:0.5+bold+mono+fg:transparent"
-      ],
-      [
         1,
         1,
-        "size:25+mono"
-      ],
-      [
-        2,
-        1,
-        "bold+mono"
+        "size:23.4956"
       ],
       [
         3,
         1,
-        "size:25+mono"
-      ],
-      [
-        4,
-        1,
-        "hidden:0.5+bold+mono+fg:transparent"
+        "size:23.4956"
       ],
       [
         5,
         1,
-        "size:25+mono"
-      ],
-      [
-        6,
-        1,
-        "bold+mono"
+        "size:23.4956"
       ],
       [
         7,
         1,
-        "size:25+mono"
-      ],
-      [
-        8,
-        1,
-        "hidden:0.5+bold+mono+fg:transparent"
+        "size:23.4956"
       ]
     ]
   },
@@ -827,13 +802,7 @@
     "line": 63,
     "text": "|---|",
     "block": "TABLE_DELIMITER",
-    "ranges": [
-      [
-        0,
-        5,
-        "hidden:0.5+mono+fg:transparent"
-      ]
-    ]
+    "ranges": []
   },
   {
     "line": 64,
@@ -841,69 +810,34 @@
     "block": "TABLE_ROW",
     "ranges": [
       [
-        0,
-        1,
-        "hidden:0.5+mono+fg:transparent"
-      ],
-      [
         1,
         1,
-        "size:25+mono"
-      ],
-      [
-        2,
-        1,
-        "mono"
+        "size:23.4956"
       ],
       [
         3,
         1,
-        "size:25+mono"
-      ],
-      [
-        4,
-        1,
-        "hidden:0.5+mono+fg:transparent"
+        "size:23.4956"
       ],
       [
         5,
         1,
-        "size:25+mono"
-      ],
-      [
-        6,
-        1,
-        "mono"
+        "size:23.4956"
       ],
       [
         7,
         1,
-        "size:25+mono"
-      ],
-      [
-        8,
-        1,
-        "hidden:0.5+mono+fg:transparent"
+        "size:23.4956"
       ],
       [
         9,
         1,
-        "size:25+mono"
-      ],
-      [
-        10,
-        1,
-        "mono"
+        "size:23.4956"
       ],
       [
         11,
         1,
-        "size:25+mono"
-      ],
-      [
-        12,
-        1,
-        "hidden:0.5+mono+fg:transparent"
+        "size:23.4956"
       ]
     ]
   },
