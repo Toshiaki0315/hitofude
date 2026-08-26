@@ -6,6 +6,7 @@
 
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont, QFontMetricsF
 from PySide6.QtWidgets import QApplication
 
 from hitofude.core.table import display_width
@@ -242,6 +243,28 @@ class TestIncompleteTable:
         qtbot.keyClick(editor, Qt.Key.Key_Return)
         assert hidden_ranges(editor, 0), "区切り行を確定しても表として組まれない"
         assert DecorationKind.TABLE_RULE in kinds(editor)
+
+
+class TestHeaderFits:
+    """ヘッダは太字で描くので、列幅も太字で測る（2026-08-26）。
+
+    レギュラーで測った幅に太字を流し込むと、内容ぎりぎりの列で
+    右端が欠ける（drawText は矩形で切り取る）。
+    """
+
+    def test_太字のヘッダが列幅に収まる(self, editor) -> None:
+        editor.setPlainText("|aaa|bbb|ccc|\n|---|---|---|\n|1|2|3|\n\n本文\n")
+        move_to(editor, 4)
+        headers = [
+            d for d in visible_decorations(editor) if d.kind is DecorationKind.TABLE_TEXT_HEADER
+        ]
+        assert headers, "ヘッダが描かれていない"
+        bold = QFont(editor.font())
+        bold.setBold(True)
+        metrics = QFontMetricsF(bold)
+        for decoration in headers:
+            width = metrics.horizontalAdvance(decoration.text)
+            assert width <= decoration.rect.width() + 0.01, f"「{decoration.text}」が列幅から欠ける"
 
 
 class TestHeaderStyle:
@@ -589,13 +612,16 @@ class TestTooWide:
         assert wrapped.lines == 1
 
     def test_列幅は自然幅より広げない(self, editor) -> None:
-        """使える幅が余っていても、列は中身の最長ぶんだけ（間延びさせない）。"""
-        from PySide6.QtGui import QFontMetricsF
+        """使える幅が余っていても、列は中身の最長ぶんだけ（間延びさせない）。
 
+        自然幅は**太字**で測る（ヘッダが太字で描かれるため。TestHeaderFits）。
+        """
         editor.setPlainText(TABLE)
         move_to(editor, 5)
         wrapped = editor.document().findBlockByNumber(0).userData().wrapped
-        metrics = QFontMetricsF(editor.font())
+        bold = QFont(editor.font())
+        bold.setBold(True)
+        metrics = QFontMetricsF(bold)
         natural = max(
             metrics.horizontalAdvance(cell.strip())
             for line in TABLE.splitlines()

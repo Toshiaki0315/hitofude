@@ -756,9 +756,14 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         `BlockData.wrapped` から描くので、ソースには触らない（R1/R4 無傷）。
 
         列幅は**本文フォントの実測ピクセル**（ADR-0029）。core は Qt を
-        知らないので、測り係を注入する。
+        知らないので、測り係を注入する。測るのは**太字**。ヘッダは太字で
+        描かれ、レギュラーで測った幅に流し込むと内容ぎりぎりの列で右端が
+        欠ける（drawText は矩形で切り取る）。本体の列が数 % 広めになる
+        だけなので、行ごとに太さを切り替えるより単純なこちらを取る
         """
-        metrics = QFontMetricsF(self.document().defaultFont())
+        bold = QFont(self.document().defaultFont())
+        bold.setBold(True)
+        metrics = QFontMetricsF(bold)
         measure = metrics.horizontalAdvance
         widths = wrapped_columns(
             run,
