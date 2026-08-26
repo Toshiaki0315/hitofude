@@ -12,9 +12,11 @@ import pytest
 from PySide6.QtGui import QTextCursor
 
 from hitofude.editor import painter_overlay
-from hitofude.editor.editor_widget import MarkdownEditor
+from hitofude.editor.editor_widget import CONTENT_MARGIN, MarkdownEditor
 from hitofude.editor.painter_overlay import (
     CHECKED,
+    LEFT_INSET,
+    QUOTE_BAR_WIDTH,
     UNCHECKED,
     DecorationKind,
     visible_decorations,
@@ -401,6 +403,35 @@ class TestPaintNeverHidesText:
             for x in range(image.width())
         ), "本文が 1 ピクセルも描かれていない"
         assert "装飾の組み立てに失敗した" in caplog.text
+
+
+class TestContentMargin:
+    """本文と紙の縁の距離（`CONTENT_MARGIN`）。
+
+    **値を固定していなかった。** 12 → 24 に広げても（ユーザー要望
+    2026-08-26）試験が 1 つも落ちず、変えたことに誰も気づけなかった。
+    """
+
+    def test_決めた値になっている(self, editor: MarkdownEditor) -> None:
+        """変えるときは**意図して**変える（見た目が動く）。
+
+        **数を直に書く。** `CONTENT_MARGIN` と比べると定数どうしの比較に
+        なり、値を変えても落ちなかった（実測）。
+        """
+        assert CONTENT_MARGIN == 24.0
+        assert editor.document().documentMargin() == 24.0
+
+    def test_縦バーより広い(self, editor: MarkdownEditor) -> None:
+        """**飾りと本文が重ならない条件**（ADR-0016）。縦バーは
+        `LEFT_INSET` から幅 `QUOTE_BAR_WIDTH` を占める。
+        """
+        assert CONTENT_MARGIN > LEFT_INSET + QUOTE_BAR_WIDTH
+
+    def test_広げすぎない(self, editor: MarkdownEditor) -> None:
+        """本文の使える幅がそのぶん減る。**表は折り返す**ので崩れないが、
+        減らしすぎると 1 行に入る字が目に見えて少なくなる。
+        """
+        assert CONTENT_MARGIN <= 32
 
 
 class TestBlockInset:
