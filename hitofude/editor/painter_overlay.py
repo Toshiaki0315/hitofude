@@ -544,12 +544,18 @@ def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decora
             result.append(marker)
 
     data = block.userData()
-    for span in getattr(data, "spans", []):
-        name = _INLINE_BAND_NAMES.get(span.type)
-        if name is None:
-            continue
-        for rect in _span_rects(block, geometry, span.content_start, span.content_end):
-            result.append(Decoration(DecorationKind.INLINE_BAND, rect, name))
+    # 描画側が組んでいる表の行（wrapped あり）には帯を出さない
+    # （ユーザー報告 2026-08-26）。行は 0.5pt に潰れて見えないのに帯だけが
+    # 残り、左端に灰色の粒として出ていた。セルの中身は断片（ADR-0031）が
+    # 自前の下地を持つ。キャレットの行は wrapped が無く、生の Markdown に
+    # 本文と同じ帯が付く
+    if getattr(data, "wrapped", None) is None:
+        for span in getattr(data, "spans", []):
+            name = _INLINE_BAND_NAMES.get(span.type)
+            if name is None:
+                continue
+            for rect in _span_rects(block, geometry, span.content_start, span.content_end):
+                result.append(Decoration(DecorationKind.INLINE_BAND, rect, name))
 
     return result
 

@@ -471,6 +471,32 @@ class TestCellInlineStyles:
         assert LIGHT.code_background.upper() in found
 
 
+class TestNoBandOnHiddenRows:
+    """隠した表の行に、本文用のインラインの帯を描かない（ユーザー報告 2026-08-26）。
+
+    行は 0.5pt に潰れて見えないのに、`BlockData.spans` から描く帯
+    （コードの下地など）だけが残り、左端に灰色の粒として出ていた。
+    セルの中身は断片（ADR-0031）が自前の下地を持つので、帯は要らない。
+    """
+
+    NOTE = "| 操作 | キー |\n|---|---|\n| 保存 | `Cmd+S` |\n\n本文\n"
+
+    @staticmethod
+    def bands(editor) -> list:
+        return [d for d in visible_decorations(editor) if d.kind is DecorationKind.INLINE_BAND]
+
+    def test_隠れた行には帯を描かない(self, editor) -> None:
+        editor.setPlainText(self.NOTE)
+        move_to(editor, 4)
+        assert self.bands(editor) == [], "潰れた位置に帯のゴミが出る"
+
+    def test_キャレットの行では帯ごと生に戻る(self, editor) -> None:
+        """生の Markdown には本文と同じ帯が付く（見た目の一貫性）。"""
+        editor.setPlainText(self.NOTE)
+        move_to(editor, 2)
+        assert self.bands(editor), "生の行の帯まで消えている"
+
+
 class TestHeaderFits:
     """ヘッダは太字で描くので、列幅も太字で測る（2026-08-26）。
 
