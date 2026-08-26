@@ -296,6 +296,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         # Mermaid 図の中身（ADR-0021）。最初の本文行にだけ載せる
         self._pending_diagram: str | None = None
         self._mermaid_size: object = None
+        self._columns_cache: tuple | None = None
         self._table_spacing_cache: tuple[float, float] | None = None
         self._build_formats()
 
@@ -771,21 +772,14 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         mono.setPointSizeF(self.document().defaultFont().pointSizeF())
         mono.setBold(True)
         code_measure = QFontMetricsF(mono).horizontalAdvance
-        widths = wrapped_columns(
-            run,
-            self._table_width,
-            measure=measure,
-            code_measure=code_measure,
-            overhead=CELL_PAD * 2 + 1,
-            floor=measure("0") * MIN_WRAP_COLUMN,
-        )
+        widths, alignments = self._columns_for(run, measure, code_measure)
         if not widths:
             return
         cells = wrap_row_styled(text, widths, measure=measure, code_measure=code_measure)
         wrapped = WrappedRow(
             tuple(widths),
             tuple(tuple(cell) for cell in cells),
-            tuple(column_alignments(run)),
+            alignments,
         )
 
         self._hide(0, len(text))
@@ -795,6 +789,33 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         tall.setForeground(QColor("transparent"))
         self.setFormat(0, 1, tall)
         self._pending_wrapped = wrapped
+
+    def _columns_for(self, run: list[str], measure, code_measure):
+        """その表の列幅と寄せ。**行ごとに数え直さない**（性能。2026-08-26）。
+
+        `wrapped_columns` は表ぜんたい（`run`）を見るので、行ごとに呼ぶと
+        **行数の 2 乗**になる。使い方のノート（表 101 行）で
+        `table.split_cells` が 14,534 回呼ばれ、開くのに 257ms 余計に
+        かかっていた（表の行を抜くと 299ms → 42ms）。
+
+        **覚えるのは 1 つで足りる。** 表の行は続けて処理されるので、次の
+        行は必ず同じ表のもの。幅や中身が変われば鍵が変わって数え直す。
+        """
+        key = (tuple(run), self._table_width, measure("0"), code_measure("0"))
+        if self._columns_cache is not None and self._columns_cache[0] == key:
+            return self._columns_cache[1]
+        widths = wrapped_columns(
+            run,
+            self._table_width,
+            measure=measure,
+            code_measure=code_measure,
+            overhead=CELL_PAD * 2 + 1,
+            floor=measure("0") * MIN_WRAP_COLUMN,
+        )
+        # **寄せも表ぜんたいを見る**（区切り行の `---:` を探す）ので一緒に覚える
+        found = (widths, tuple(column_alignments(run)))
+        self._columns_cache = (key, found)
+        return found
 
     def _table_line_spacing(self) -> float:
         """セル 1 行ぶんの高さ。描画側（paintEvent）と同じ**本文フォント**で測る。"""
