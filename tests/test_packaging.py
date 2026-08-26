@@ -129,3 +129,50 @@ class TestExcludes:
         assert name not in options["EXCLUDES"]
         packed = set(options["OPTIONS"]["packages"]) | set(options["OPTIONS"]["includes"])
         assert name.split(".")[0] in packed
+
+
+def _prune_module():
+    """`scripts/prune_bundle.py` を読み込む（定数を検査するため）。"""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "prune_bundle", PROJECT_ROOT / "scripts" / "prune_bundle.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class TestPruneKeeps:
+    """削るスクリプトが、使っているものまで削っていないか。
+
+    ユーザー依頼のサイズ削減レビュー（2026-08-26）で発覚: `QtPdf` を
+    import しているのに KEEP に無く、**`.app` の PDF 取り込みが
+    壊れていた**（ModuleNotFoundError を実機で確認）。import と
+    KEEP の突き合わせで機械に見張らせる。
+    """
+
+    @staticmethod
+    def _qt_modules() -> set[str]:
+        """`hitofude/` が import する PySide6 のモジュール名（Qt〜）。"""
+        found = set()
+        for name in _imported_names():
+            if name.startswith("PySide6.Qt"):
+                found.add(name.split(".")[1])
+        return found
+
+    def test_使うフレームワークは残す(self) -> None:
+        prune = _prune_module()
+        missing = sorted(self._qt_modules() - prune.KEEP_FRAMEWORKS)
+        assert not missing, f"prune_bundle の KEEP_FRAMEWORKS に足りない: {missing}"
+
+    def test_使うPython束縛は残す(self) -> None:
+        prune = _prune_module()
+        missing = sorted(self._qt_modules() - prune.KEEP_BINDINGS)
+        assert not missing, f"prune_bundle の KEEP_BINDINGS に足りない: {missing}"
+
+    def test_QtPdfを名指しで見る(self) -> None:
+        """回帰。PDF 取り込み（F-2 / importer.py）が使う。"""
+        prune = _prune_module()
+        assert "QtPdf" in prune.KEEP_FRAMEWORKS
+        assert "QtPdf" in prune.KEEP_BINDINGS

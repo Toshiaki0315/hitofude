@@ -83,3 +83,33 @@ wheel の Qt は universal（x86_64 + arm64）。`lipo -thin arm64` で全体が
 
 #3 は実際に組まないと出ないので、**`make app` の後に一度起動する**ことを
 `docs/manual_test.md` の手順に入れた。
+
+## 追記（同日）: サイズ削減レビューで 557 → 435MB、ついでに QtPdf の欠落を修正
+
+ユーザー依頼で「もっと小さくできないか」をレビューした（対象は
+Apple Silicon のみ。ADR-0012 の再確認）。バンドルの中身を実測して、
+**実行時に読まれないもの**を 4 種類見つけた。
+
+| 削ったもの | 大きさ | なぜ要らないか |
+|---|---|---|
+| PySide6 の開発道具（lupdate 39MB ほか 17 個） | 53MB | アプリの実行に無関係。lupdate だけで Chromium 以外のどの部品より大きい |
+| ffmpeg（libav* / libsw*） | 36MB | QtMultimedia（削除済み）の付属。WebEngine は自前のコーデックを静的に持つ。symlink の組が py2app で実体の複製になり 2 倍になっていた |
+| Qt/qml と Qt/metatypes | 38MB | QWebEngineView（Widgets）は qml のモジュール置き場を読まない——**消しても図が描けることをバンドルの中で実測**（ADR-0030 本文の「QtQuick 一式が要る」は誤りだった） |
+| import しない Python 束縛（QtOpenGL 10MB ほか） | 15MB | フレームワーク（C++ 側）は dyld が要るが、束縛はただの重り。残すものは実測の import 一覧から決めた（KEEP_BINDINGS） |
+
+    557 MB → 435 MB（元の universal 比 66% 削減）
+
+**逆に足りないものも見つかった。** `QtPdf`（PDF の取り込み。F-2）を
+import しているのに KEEP に無く、`.app` では
+`No module named 'PySide6.QtPdf'` になっていた。KEEP へ足して修正。
+`tests/test_packaging.py` に「hitofude の PySide6 import は
+prune_bundle の KEEP_FRAMEWORKS / KEEP_BINDINGS に入っている」検査を
+足し、この形の欠落は機械で捕まえる。
+
+確認: まっさらな環境から起動 / バンドル内で QtPdf・数式・Mermaid が動く /
+`codesign --verify --deep --strict` が通る。
+
+### 残っているもの（これ以上は削りにくい）
+
+- Chromium 本体 211MB（arm64 済み）— Mermaid の対価。これが総量の半分
+- ICU データ 10MB、Python 本体 13MB、PIL 14MB、lxml 11MB — いずれも実際に使う

@@ -20,12 +20,15 @@ import sys
 from pathlib import Path
 
 # Widgets だけで作っているアプリが要る Qt。QtPrintSupport は PDF 出力（§9 Phase 6）、
+# QtPdf は PDF の取り込み（F-2。**削っていて `.app` で壊れていた**。
+# ユーザー依頼のサイズ削減レビュー 2026-08-26 で発覚）、
 # QtDBus と QtNetwork は QtGui/QtWidgets が動的に必要とする。
 KEEP_FRAMEWORKS = {
     "QtCore",
     "QtGui",
     "QtWidgets",
     "QtPrintSupport",
+    "QtPdf",
     "QtDBus",
     "QtNetwork",
     "QtSvg",
@@ -51,9 +54,45 @@ WEB_ENGINE_FRAMEWORKS = {
 }
 KEEP_FRAMEWORKS |= WEB_ENGINE_FRAMEWORKS
 
-# 残す qml モジュール。WebEngine は QQuickWidget の上に載っているので、
-# QtQuick 一式が要る（qml を丸ごと消すと図のページが白いまま返る）
-KEEP_QML = {"Qt", "QtCore", "QtQml", "QtQuick", "QtWebChannel", "QtWebEngine", "QtNetwork"}
+# 残す **Python 束縛**（`Qt*.abi3.so`）。フレームワーク（dyld が読む
+# C++ 側）とは別で、Python から import するものだけ要る。実測は
+# `import PySide6.QtWebEngineWidgets` 後の sys.modules ＋ hitofude の
+# import 文（tests/test_packaging.py が突き合わせる）。
+# QtOpenGL や QtQuick は C++ 側だけ要り、束縛は 15MB のただの重り
+KEEP_BINDINGS = {
+    "QtCore",
+    "QtGui",
+    "QtWidgets",
+    "QtNetwork",
+    "QtPrintSupport",
+    "QtPdf",
+    "QtSvg",
+    "QtWebChannel",
+    "QtWebEngineCore",
+    "QtWebEngineWidgets",
+}
+
+# PySide6 が同梱する開発道具。アプリの実行には要らない（計 53MB）。
+# lupdate（39MB）だけで Chromium 以外のどの部品より大きい
+PYSIDE_TOOLS = [
+    "Assistant.app",
+    "Designer.app",
+    "Linguist.app",
+    "QtAsyncio",
+    "balsam",
+    "balsamui",
+    "doc",
+    "glue",
+    "include",
+    "lrelease",
+    "lupdate",
+    "qmlformat",
+    "qmllint",
+    "qmlls",
+    "qsb",
+    "svgtoqml",
+    "typesystems",
+]
 
 # Chromium が読む翻訳。**使う言語だけ残す**（全部で 38MB、2 つなら 1MB 弱）
 KEEP_LOCALES = {"ja.pak", "en-US.pak"}
@@ -65,8 +104,19 @@ KEEP_ARCH = "arm64"
 # 残す Qt プラグイン。platforms が無いとウィンドウを作れず即座に落ちる
 KEEP_PLUGINS = {"platforms", "styles", "imageformats", "printsupport", "iconengines"}
 
-# 丸ごと消してよいディレクトリ。**qml は選んで残す**（KEEP_QML）
-DROP_DIRS = ["Qt/translations", "Qt/libexec", "Qt/resources", "scripts", "examples"]
+# 丸ごと消してよいディレクトリ。qml（QML のモジュール置き場）は
+# QWebEngineView（Widgets）には要らない——消しても図が描けることを
+# バンドルの中で実測した（2026-08-26）。metatypes は QML ツール用の
+# メタ情報で実行時には読まれない
+DROP_DIRS = [
+    "Qt/translations",
+    "Qt/libexec",
+    "Qt/resources",
+    "Qt/qml",
+    "Qt/metatypes",
+    "scripts",
+    "examples",
+]
 
 
 def _pyside_root(app: Path) -> Path:
@@ -83,17 +133,23 @@ def prune(app: Path) -> tuple[int, int]:
     for relative in DROP_DIRS:
         shutil.rmtree(root / relative, ignore_errors=True)
 
-    qml = root / "Qt" / "qml"
-    if qml.is_dir():
-        for directory in qml.iterdir():
-            if directory.is_dir() and directory.name not in KEEP_QML:
-                shutil.rmtree(directory, ignore_errors=True)
+    for name in PYSIDE_TOOLS:
+        target = root / name
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+        else:
+            target.unlink(missing_ok=True)
 
     lib = root / "Qt" / "lib"
     if lib.is_dir():
         for framework in lib.glob("*.framework"):
             if framework.stem not in KEEP_FRAMEWORKS:
                 shutil.rmtree(framework, ignore_errors=True)
+        # QtMultimedia（削除済み）の ffmpeg。WebEngine は自前の
+        # コーデックを静的に持っていて、これは誰も読まない（36MB。
+        # 元は symlink の組が py2app で実体の複製になっている）
+        for library in list(lib.glob("libav*")) + list(lib.glob("libsw*")):
+            library.unlink(missing_ok=True)
 
     plugins = root / "Qt" / "plugins"
     if plugins.is_dir():
@@ -101,9 +157,9 @@ def prune(app: Path) -> tuple[int, int]:
             if directory.is_dir() and directory.name not in KEEP_PLUGINS:
                 shutil.rmtree(directory, ignore_errors=True)
 
-    # 使わない拡張モジュール本体（QtQuick 等の .so）も落とす
+    # Python から import しない束縛（QtOpenGL 等の .so）も落とす
     for module in root.glob("Qt*.abi3.so"):
-        if module.name.split(".")[0] not in KEEP_FRAMEWORKS:
+        if module.name.split(".")[0] not in KEEP_BINDINGS:
             module.unlink(missing_ok=True)
 
     for junk in ("*.pyi", "py.typed", "*.debug"):
