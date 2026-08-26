@@ -7,6 +7,7 @@
 import pytest
 
 from hitofude.core import table
+from hitofude.core.models import SpanType
 from hitofude.core.table import (
     CELL_OVERHEAD,
     MIN_WRAP_COLUMN,
@@ -261,3 +262,89 @@ class TestNewTable:
     def test_1行1列でも表になる(self) -> None:
         lines = table.new_table(rows=1, columns=1)
         assert table.is_table(lines)
+
+
+class TestStyledFragments:
+    """セルの中のインライン記法（ユーザー報告 2026-08-26）。
+
+    ADR-0029 で表は描画側が組むようになり、セルの文字は本文の
+    インライン走査を通らない。記号（`` ` `` や `**`）がそのまま
+    見えていたので、core で「記号を落とした断片の並び」に直す。
+    """
+
+    def test_コードの記号を落として種類を残す(self) -> None:
+        found = table.styled_fragments("`Cmd+N` を押す")
+        assert [f.text for f in found] == ["Cmd+N", " を押す"]
+        assert SpanType.CODE in found[0].kinds
+        assert found[1].kinds == frozenset()
+
+    def test_強調と斜体と打ち消し(self) -> None:
+        found = table.styled_fragments("**太字**と*斜体*と~~打ち消し~~")
+        assert [f.text for f in found] == ["太字", "と", "斜体", "と", "打ち消し"]
+        assert SpanType.STRONG in found[0].kinds
+        assert SpanType.EM in found[2].kinds
+        assert SpanType.STRIKE in found[4].kinds
+
+    def test_両方の強調(self) -> None:
+        found = table.styled_fragments("***両方***")
+        assert [f.text for f in found] == ["両方"]
+        assert SpanType.STRONG_EM in found[0].kinds
+
+    def test_ハイライト(self) -> None:
+        found = table.styled_fragments("::大事::")
+        assert [f.text for f in found] == ["大事"]
+        assert SpanType.HIGHLIGHT in found[0].kinds
+
+    def test_タグは記号ごと残して種類だけ付く(self) -> None:
+        """本文でも `#` は見えたまま札になる。それに合わせる。"""
+        found = table.styled_fragments("#買い物 と本文")
+        assert found[0].text == "#買い物"
+        assert SpanType.TAG in found[0].kinds
+
+    def test_リンクは触らない(self) -> None:
+        """記号だけ消すと URL が見えなくなり、描いた文字は押せない。"""
+        text = "[公式](https://example.com)"
+        found = table.styled_fragments(text)
+        assert [f.text for f in found] == [text]
+        assert found[0].kinds == frozenset()
+
+    def test_閉じていない記号はそのまま(self) -> None:
+        found = table.styled_fragments("`Cmd+N")
+        assert [f.text for f in found] == ["`Cmd+N"]
+
+    def test_記法が無ければ1断片(self) -> None:
+        assert table.styled_fragments("ただの文") == [table.Fragment("ただの文")]
+
+    def test_空文字は空(self) -> None:
+        assert table.styled_fragments("") == []
+
+
+class TestStyledWrap:
+    """折り返しと列幅は**見える文字**で数える（記号は幅を持たない）。"""
+
+    def test_幅は見える文字で数える(self) -> None:
+        assert wrap_cell("**あいう**", 6) == ["あいう"]  # 記号込みの 10 桁では折れてしまう
+
+    def test_断片ごとに種類が付いたまま折り返す(self) -> None:
+        lines = table.wrap_styled("**あいうえお**", 6)
+        assert [[f.text for f in line] for line in lines] == [["あいう"], ["えお"]]
+        assert all(SpanType.STRONG in f.kinds for line in lines for f in line)
+
+    def test_コードは専用の測りで数える(self) -> None:
+        lines = wrap_cell("`とても長いコード`", 4, code_measure=lambda text: 0.0)
+        assert lines == ["とても長いコード"]
+
+    def test_brと組み合わせられる(self) -> None:
+        lines = table.wrap_styled("**太字**<br>`x`", 40)
+        assert [[f.text for f in line] for line in lines] == [["太字"], ["x"]]
+        assert SpanType.CODE in lines[1][0].kinds
+
+    def test_列の自然幅も見える文字(self) -> None:
+        rows = ["| h |", "| --- |", "| **あ** |"]
+        found = wrapped_columns(rows, 100.0)
+        assert found == [2]  # 記号込みなら 6
+
+    def test_列の自然幅はコードだけ専用の測り(self) -> None:
+        rows = ["| h |", "| --- |", "| `code` |"]
+        found = wrapped_columns(rows, 100.0, code_measure=lambda text: len(text) * 3)
+        assert found == [12.0]  # "code" 4 文字 × 3

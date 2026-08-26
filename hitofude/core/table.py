@@ -13,8 +13,11 @@ v1 は WYSIWYG な表エディタを作らない（§1.2 の非ゴール）。�
 import re
 import unicodedata
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
+
+from hitofude.core.inline_scanner import scan
+from hitofude.core.models import SpanType
 
 MIN_DELIMITER_WIDTH = 1
 
@@ -304,18 +307,117 @@ def forces_wrap(rows: list[str]) -> bool:
 CELL_OVERHEAD = 3
 
 
-def wrap_cell(text: str, width: float, *, measure: Measure = display_width) -> list[str]:
-    """セルの中身を幅 `width` で折り返す。
+# セルの中で効かせるインライン記法（ユーザー報告 2026-08-26）。リンク系と
+# 画像・数式は対象外 — 記号だけ消すと URL が見えなくなるうえ、描いた文字は
+# 押せない。生のまま見せて、キャレットを入れて扱ってもらう
+_CELL_SPANS = frozenset(
+    {
+        SpanType.STRONG,
+        SpanType.EM,
+        SpanType.STRONG_EM,
+        SpanType.CODE,
+        SpanType.STRIKE,
+        SpanType.HIGHLIGHT,
+        SpanType.TAG,
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class Fragment:
+    """セルの中の、同じ見た目が続くひとかたまり。
+
+    `kinds` が複数になるのは入れ子（`**外 *中* 外**` の「中」など）。
+    """
+
+    text: str
+    kinds: frozenset = field(default_factory=frozenset)
+
+
+def styled_fragments(text: str) -> list[Fragment]:
+    """セルの文字列を、記号を落とした断片の並びにする。
+
+    ADR-0029 で表は描画側が組むようになり、セルの文字は本文のインライン
+    走査を通らない。`**` や `` ` `` が生のまま見えていた（ユーザー報告
+    2026-08-26）ので、ここで走査して**見える文字と種類**に分ける。
+    走査は本文と同じ自作スキャナ（R8）。
+    """
+    spans = [span for span in scan(text) if span.type in _CELL_SPANS]
+    if not spans:
+        return [Fragment(text)] if text else []
+
+    hidden = bytearray(len(text))
+    kinds: list[set[SpanType]] = [set() for _ in text]
+    for span in spans:
+        for index in range(span.open_start, span.open_end):
+            hidden[index] = 1
+        for index in range(span.close_start, span.close_end):
+            hidden[index] = 1
+        for index in range(span.open_end, span.close_start):
+            kinds[index].add(span.type)
+
+    found: list[Fragment] = []
+    current: list[str] = []
+    current_kinds: frozenset = frozenset()
+    for index, char in enumerate(text):
+        if hidden[index]:
+            continue
+        key = frozenset(kinds[index])
+        if key != current_kinds and current:
+            found.append(Fragment("".join(current), current_kinds))
+            current = []
+        current_kinds = key
+        current.append(char)
+    if current:
+        found.append(Fragment("".join(current), current_kinds))
+    return found
+
+
+def _measure_for(kinds: frozenset, measure: Measure, code_measure: Measure | None) -> Measure:
+    """断片に合う測り。コードは等幅で描かれるので、幅も等幅で数える。"""
+    if code_measure is not None and SpanType.CODE in kinds:
+        return code_measure
+    return measure
+
+
+def _visible_width(text: str, measure: Measure, code_measure: Measure | None) -> float:
+    """記号を除いた**見える文字**の幅。"""
+    return sum(
+        _measure_for(fragment.kinds, measure, code_measure)(fragment.text)
+        for fragment in styled_fragments(text)
+    )
+
+
+def _merged(pieces: list[Fragment]) -> tuple[Fragment, ...]:
+    """隣り合う同じ種類の断片をまとめる（描画呼び出しを減らす）。"""
+    found: list[Fragment] = []
+    for piece in pieces:
+        if found and found[-1].kinds == piece.kinds:
+            found[-1] = Fragment(found[-1].text + piece.text, piece.kinds)
+        else:
+            found.append(piece)
+    return tuple(fragment for fragment in found if fragment.text)
+
+
+def wrap_styled(
+    text: str,
+    width: float,
+    *,
+    measure: Measure = display_width,
+    code_measure: Measure | None = None,
+) -> list[tuple[Fragment, ...]]:
+    """セルの中身を幅 `width` で折り返し、断片の並びで返す。
 
     幅の単位は `measure` しだい（ADR-0029）: 既定は表示幅（半角換算の
     桁数。全角は 2）で、描画側はピクセルの測り係を渡す。core は Qt を
-    知らない（R3）ので、測る関数を外から注入する。
+    知らない（R3）ので、測る関数を外から注入する。コードの断片だけ
+    `code_measure` で測る（等幅で描かれるため）。
 
     空白があればそこで折る（英単語の途中で切らない）。1 語が幅を
     超えるときだけ字の途中で切る。
     """
     if width <= 0:
-        return [text]
+        return [tuple(styled_fragments(text))]
     segments = split_forced(text)
     if len(segments) > 1:
         # `<br>` の位置で必ず折り、各断片をさらに幅で折り返す。
@@ -325,34 +427,63 @@ def wrap_cell(text: str, width: float, *, measure: Measure = display_width) -> l
         # 中と先頭の空行は書いた人の意図なので残す
         while len(segments) > 1 and not segments[-1].strip():
             segments.pop()
-        found: list[str] = []
+        found: list[tuple[Fragment, ...]] = []
         for segment in segments:
-            found.extend(wrap_cell(segment.strip(), width, measure=measure))
+            found.extend(
+                wrap_styled(segment.strip(), width, measure=measure, code_measure=code_measure)
+            )
         return found
-    lines: list[str] = []
-    current = ""
+
+    lines: list[tuple[Fragment, ...]] = []
+    current: list[Fragment] = []
     current_width = 0.0
-    for word in _wrap_pieces(text):
-        piece_width = measure(word)
-        if current and current_width + piece_width > width:
-            lines.append(current.rstrip())
-            current, current_width = "", 0.0
-            if word == " ":
-                continue  # 折り目の空白は行頭に持ち込まない
-        if piece_width > width:
-            # 1 語が幅より長い。字単位で詰める
-            for char in word:
-                char_width = measure(char)
-                if current and current_width + char_width > width:
-                    lines.append(current.rstrip())
-                    current, current_width = "", 0.0
-                current += char
-                current_width += char_width
-            continue
-        current += word
-        current_width += piece_width
-    lines.append(current.rstrip())
-    return lines or [""]
+
+    def emit() -> None:
+        nonlocal current, current_width
+        while current and not current[-1].text.strip():
+            current.pop()  # 折り目の空白は行末に残さない（rstrip と同じ）
+        if current:
+            tail = current[-1]
+            current[-1] = Fragment(tail.text.rstrip(), tail.kinds)
+        lines.append(_merged(current))
+        current, current_width = [], 0.0
+
+    for fragment in styled_fragments(text):
+        size = _measure_for(fragment.kinds, measure, code_measure)
+        for word in _wrap_pieces(fragment.text):
+            piece_width = size(word)
+            if current and current_width + piece_width > width:
+                emit()
+                if word == " ":
+                    continue  # 折り目の空白は行頭に持ち込まない
+            if piece_width > width:
+                # 1 語が幅より長い。字単位で詰める
+                for char in word:
+                    char_width = size(char)
+                    if current and current_width + char_width > width:
+                        emit()
+                    current.append(Fragment(char, fragment.kinds))
+                    current_width += char_width
+                continue
+            current.append(Fragment(word, fragment.kinds))
+            current_width += piece_width
+    if current or not lines:
+        emit()
+    return lines
+
+
+def wrap_cell(
+    text: str,
+    width: float,
+    *,
+    measure: Measure = display_width,
+    code_measure: Measure | None = None,
+) -> list[str]:
+    """`wrap_styled` の文字列版。**記号を落とした見える文字**が並ぶ。"""
+    return [
+        "".join(fragment.text for fragment in line)
+        for line in wrap_styled(text, width, measure=measure, code_measure=code_measure)
+    ]
 
 
 def _wrap_pieces(text: str) -> list[str]:
@@ -377,6 +508,7 @@ def wrapped_columns(
     available: float,
     *,
     measure: Measure = display_width,
+    code_measure: Measure | None = None,
     overhead: float = CELL_OVERHEAD,
     floor: float = MIN_WRAP_COLUMN,
 ) -> list[float]:
@@ -395,11 +527,15 @@ def wrapped_columns(
         return []
 
     # 自然幅は**断片の最長**で数える（ADR-0028）。`<br>` 込みの全長で
-    # 数えると、改行を書いたのに列が痩せないという直感に反する結果になる
+    # 数えると、改行を書いたのに列が痩せないという直感に反する結果になる。
+    # 幅は**見える文字**（記号抜き）で数える（ユーザー報告 2026-08-26）
     widths = [
         max(
             (
-                max(measure(segment) for segment in split_forced(cells[i]))
+                max(
+                    _visible_width(segment, measure, code_measure)
+                    for segment in split_forced(cells[i])
+                )
                 for cells in bodies
                 if i < len(cells)
             ),
@@ -417,14 +553,33 @@ def wrapped_columns(
     return widths
 
 
-def wrap_row(
-    line: str, col_widths: list[float], *, measure: Measure = display_width
-) -> list[list[str]]:
+def wrap_row_styled(
+    line: str,
+    col_widths: list[float],
+    *,
+    measure: Measure = display_width,
+    code_measure: Measure | None = None,
+) -> list[list[tuple[Fragment, ...]]]:
     """1 行ぶんのセルを列幅で折り返す。列数が足りない分は空セル。"""
     cells = _split_row(line).cells
     return [
-        wrap_cell(cells[i] if i < len(cells) else "", col_widths[i], measure=measure)
+        wrap_styled(
+            cells[i] if i < len(cells) else "",
+            col_widths[i],
+            measure=measure,
+            code_measure=code_measure,
+        )
         for i in range(len(col_widths))
+    ]
+
+
+def wrap_row(
+    line: str, col_widths: list[float], *, measure: Measure = display_width
+) -> list[list[str]]:
+    """`wrap_row_styled` の文字列版。"""
+    return [
+        ["".join(fragment.text for fragment in row_line) for row_line in cell]
+        for cell in wrap_row_styled(line, col_widths, measure=measure)
     ]
 
 
@@ -437,7 +592,8 @@ class WrappedRow:
     """
 
     col_widths: tuple[float, ...]
-    cells: tuple[tuple[str, ...], ...]
+    cells: tuple[tuple[tuple[Fragment, ...], ...], ...]
+    """列 → 見た目の行 → 断片。断片は記号を落とした見える文字（`Fragment`）。"""
     alignments: tuple["Alignment", ...] = ()
     """列ごとの寄せ（`---:` など）。無ければ左寄せで描く。"""
 

@@ -172,6 +172,12 @@ class Decoration:
     text: str = ""
     align: Alignment = Alignment.NONE
     """`TABLE_TEXT*` のときの寄せ（`---:` など。ADR-0029）。"""
+
+    kinds: frozenset = frozenset()
+    """`TABLE_TEXT*` のときのインライン記法の種類（`SpanType` の集合）。
+
+    セルの中の `**強調**` や `` `コード` `` を描き分ける（2026-08-26）。
+    """
     pixmap: object = None
     """`IMAGE` のときだけ入る。読み込みと縮小は `editor/image_cache.py`。"""
 
@@ -294,6 +300,43 @@ def _image_for(editor, block, geometry) -> Decoration | None:
     return Decoration(kind=DecorationKind.IMAGE, rect=rect, pixmap=pixmap)
 
 
+def cell_font(base: QFont, mono_family: str, *, header: bool, kinds: frozenset) -> QFont:
+    """セルの断片を描くフォント。
+
+    **測る側（`_CellMetrics`）と描く側（`paint_foreground`）で共有する。**
+    別々に組むと、測った幅と描いた幅がずれて右端が欠けたり重なったりする
+    （ヘッダの太字で実際に踏んだ轍）。
+    """
+    if SpanType.CODE in kinds:
+        font = QFont(mono_family)
+        font.setPointSizeF(base.pointSizeF())
+    else:
+        font = QFont(base)
+    font.setBold(header or SpanType.STRONG in kinds or SpanType.STRONG_EM in kinds)
+    font.setItalic(SpanType.EM in kinds or SpanType.STRONG_EM in kinds)
+    font.setStrikeOut(SpanType.STRIKE in kinds)
+    return font
+
+
+class _CellMetrics:
+    """断片の幅を、描くときと同じフォントで測る（種類ごとに使い回す）。"""
+
+    def __init__(self, base: QFont, mono_family: str) -> None:
+        self._base = base
+        self._mono_family = mono_family
+        self._cache: dict[tuple, QFontMetricsF] = {}
+
+    def width(self, fragment, *, header: bool) -> float:
+        key = (header, fragment.kinds)
+        metrics = self._cache.get(key)
+        if metrics is None:
+            metrics = QFontMetricsF(
+                cell_font(self._base, self._mono_family, header=header, kinds=fragment.kinds)
+            )
+            self._cache[key] = metrics
+        return metrics.horizontalAdvance(fragment.text)
+
+
 def table_decorations(editor, entries) -> list[Decoration]:
     """表の罫線とヘッダ背景（spec §5.2 の描画フック）。
 
@@ -319,6 +362,7 @@ def _wrapped_table(editor, run) -> list[Decoration]:
     """
     metrics = QFontMetricsF(editor.font())
     spacing = metrics.lineSpacing()
+    metrics_of = _CellMetrics(editor.font(), editor.mono_family())
 
     rows: list[tuple[QRectF, object, bool]] = []
     widths: tuple[float, ...] | None = None
@@ -388,14 +432,33 @@ def _wrapped_table(editor, run) -> list[Decoration]:
 
         kind = DecorationKind.TABLE_TEXT_HEADER if is_header else DecorationKind.TABLE_TEXT
         for column, cell_lines in enumerate(wrapped.cells[: len(widths)]):
-            x = left + bounds[column] + RULE_HEIGHT + CELL_PAD
+            cell_left = left + bounds[column] + RULE_HEIGHT + CELL_PAD
             cell_width = widths[column]
             align = alignments[column] if column < len(alignments) else Alignment.NONE
-            for line_index, line_text in enumerate(cell_lines):
-                if not line_text:
+            for line_index, fragments in enumerate(cell_lines):
+                if not fragments:
                     continue
                 y = rect.top() + WRAP_CELL_PADDING + line_index * spacing
-                result.append(Decoration(kind, QRectF(x, y, cell_width, spacing), line_text, align))
+                # 断片ごとに置き場を決める（2026-08-26）。寄せは drawText の
+                # フラグではなく、ここで開始位置に折り込む。**測るフォントは
+                # 描くフォントと同じ**（cell_font）なので、隙間も欠けも出ない
+                advances = [metrics_of.width(f, header=is_header) for f in fragments]
+                slack = cell_width - sum(advances)
+                x = cell_left + max(
+                    0.0,
+                    {Alignment.RIGHT: slack, Alignment.CENTER: slack / 2}.get(align, 0.0),
+                )
+                for fragment, advance in zip(fragments, advances, strict=True):
+                    result.append(
+                        Decoration(
+                            kind,
+                            QRectF(x, y, advance, spacing),
+                            fragment.text,
+                            align,
+                            kinds=fragment.kinds,
+                        )
+                    )
+                    x += advance
     return result
 
 
@@ -755,8 +818,32 @@ def _paint_fold_marker(painter: QPainter, decoration: Decoration, theme: ThemeCo
     painter.restore()
 
 
+def _cell_band(kinds: frozenset, theme: ThemeColors) -> str | None:
+    """断片の下地の色。本文の帯（INLINE_BAND）と同じ配色を使う。"""
+    if SpanType.CODE in kinds:
+        return theme.code_background
+    if SpanType.HIGHLIGHT in kinds:
+        return theme.highlight_background
+    if SpanType.TAG in kinds:
+        return theme.tag_background
+    return None
+
+
+def _cell_pen(kinds: frozenset, theme: ThemeColors, *, header: bool) -> str:
+    """断片の文字色。下地に乗るものは本文と同じ専用色。"""
+    if SpanType.CODE in kinds:
+        return theme.code_foreground
+    if SpanType.TAG in kinds:
+        return theme.tag_foreground
+    return theme.table_header_foreground if header else theme.foreground
+
+
 def paint_foreground(
-    painter: QPainter, decorations: list[Decoration], theme: ThemeColors, font: QFont
+    painter: QPainter,
+    decorations: list[Decoration],
+    theme: ThemeColors,
+    font: QFont,
+    mono_family: str = "",
 ) -> None:
     """本文の上に重ねる要素（チェックボックス記号・画像）を描く。"""
     for decoration in decorations:
@@ -804,23 +891,36 @@ def paint_foreground(
     ]
     if cells:
         painter.save()
-        # **本文と同じフォントで描く**（ADR-0029）。ヘッダだけ太字・白抜き
-        body = QFont(font)
-        bold = QFont(body)
-        bold.setBold(True)
+        # **本文と同じフォントで描く**（ADR-0029）。ヘッダは太字・白抜き。
+        # セルの中のインライン記法（2026-08-26）は断片ごとに描き分ける。
+        # 置き場（寄せ込み）は `_wrapped_table` が決めてあるので、ここは
+        # 左詰めで置くだけ。矩形は測った幅ぴったりなので clip しない
+        # （合成斜体のはみ出しを削らない）
+        mono = mono_family or font.family()
+        flags = int(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextDontClip
+        )
         for decoration in cells:
             header = decoration.kind is DecorationKind.TABLE_TEXT_HEADER
-            painter.setFont(bold if header else body)
-            painter.setPen(QColor(theme.table_header_foreground if header else theme.foreground))
-            horizontal = {
-                Alignment.RIGHT: Qt.AlignmentFlag.AlignRight,
-                Alignment.CENTER: Qt.AlignmentFlag.AlignHCenter,
-            }.get(decoration.align, Qt.AlignmentFlag.AlignLeft)
-            painter.drawText(
-                decoration.rect,
-                int(horizontal | Qt.AlignmentFlag.AlignVCenter),
-                decoration.text,
-            )
+            body = cell_font(font, mono, header=header, kinds=decoration.kinds)
+            band = _cell_band(decoration.kinds, theme)
+            if band is not None:
+                inset = max(
+                    0.0, (decoration.rect.height() - QFontMetricsF(body).height()) / 2 - 1.0
+                )
+                painter.save()
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                painter.setPen(QColor("transparent"))
+                painter.setBrush(QColor(band))
+                painter.drawRoundedRect(
+                    decoration.rect.adjusted(0.0, inset, 0.0, -inset),
+                    INLINE_BAND_RADIUS,
+                    INLINE_BAND_RADIUS,
+                )
+                painter.restore()
+            painter.setFont(body)
+            painter.setPen(QColor(_cell_pen(decoration.kinds, theme, header=header)))
+            painter.drawText(decoration.rect, flags, decoration.text)
         painter.restore()
 
     marks = [d for d in decorations if d.kind in (DecorationKind.CHECKBOX, DecorationKind.BULLET)]

@@ -9,6 +9,7 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QImage, QPainter
 from PySide6.QtWidgets import QApplication
 
+from hitofude.core.models import SpanType
 from hitofude.core.table import display_width
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.editor.painter_overlay import (
@@ -351,6 +352,123 @@ class TestTableColors:
         painter.end()
         found = {image.pixelColor(x, 15).name().upper() for x in range(60)}
         assert LIGHT.foreground.upper() in found
+
+
+class TestCellInlineStyles:
+    """セルの中のインライン記法（ユーザー報告 2026-08-26）。
+
+    ADR-0029 で表は描画側が組むようになり、`**` や `` ` `` が生のまま
+    見えていた。記号を落とし、断片ごとに種類を運んで描き分ける。
+    """
+
+    STYLED = "| 操作 | キー |\n|---|---|\n| **太字**の説明 | `Cmd+N` |\n\n本文\n"
+
+    @staticmethod
+    def texts(editor) -> list:
+        return [
+            d
+            for d in visible_decorations(editor)
+            if d.kind in (DecorationKind.TABLE_TEXT, DecorationKind.TABLE_TEXT_HEADER)
+        ]
+
+    def test_記号は描かない(self, editor) -> None:
+        editor.setPlainText(self.STYLED)
+        move_to(editor, 4)
+        drawn = "".join(d.text for d in self.texts(editor))
+        assert "**" not in drawn and "`" not in drawn
+        assert "太字" in drawn and "Cmd+N" in drawn
+
+    def test_断片が種類を運ぶ(self, editor) -> None:
+        editor.setPlainText(self.STYLED)
+        move_to(editor, 4)
+        by_text = {d.text: d.kinds for d in self.texts(editor)}
+        assert SpanType.CODE in by_text["Cmd+N"]
+        assert SpanType.STRONG in by_text["太字"]
+        assert by_text["の説明"] == frozenset()
+
+    def test_ソースは変わらない(self, editor) -> None:
+        """R1: 記号を消すのは描画だけ。ソースには残る。
+
+        表を離れた時点で縦線揃えは走るので、記号の実在だけを見る。
+        """
+        editor.setPlainText(self.STYLED)
+        move_to(editor, 4)
+        assert "**太字**" in editor.toPlainText()
+        assert "`Cmd+N`" in editor.toPlainText()
+
+    def test_列幅は記号抜きの等幅で決まる(self, editor) -> None:
+        """コードは等幅で描くので、幅も等幅で数える（欠け防止）。"""
+        editor.setPlainText(self.STYLED)
+        move_to(editor, 4)
+        wrapped = editor.document().findBlockByNumber(2).userData().wrapped
+        mono = QFont(editor.mono_family())
+        mono.setPointSizeF(editor.font().pointSizeF())
+        mono.setBold(True)
+        expected = QFontMetricsF(mono).horizontalAdvance("Cmd+N")
+        assert wrapped.col_widths[1] == pytest.approx(expected, abs=0.1)
+
+    def test_断片は隙間なく並ぶ(self, editor) -> None:
+        """太字とその続きが別の断片でも、切れ目が空いて見えない。"""
+        editor.setPlainText(self.STYLED)
+        move_to(editor, 4)
+        found = {d.text: d.rect for d in self.texts(editor)}
+        assert found["太字"].right() == pytest.approx(found["の説明"].left(), abs=0.1)
+
+    def test_右寄せは断片でも右端が揃う(self, editor) -> None:
+        editor.setPlainText("| a | 金額 |\n|---|---:|\n| x | 5 |\n| y | 1,200 |\n\n本文\n")
+        move_to(editor, 5)
+        rights = {}
+        for d in self.texts(editor):
+            if d.kind is DecorationKind.TABLE_TEXT and d.text in ("5", "1,200"):
+                rights[d.text] = d.rect.right()
+        assert rights["5"] == pytest.approx(rights["1,200"], abs=0.5)
+
+    def test_コードの文字は専用色(self) -> None:
+        image = QImage(60, 30, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        painter = QPainter(image)
+        font = QFont()
+        font.setPointSizeF(16)
+        paint_foreground(
+            painter,
+            [
+                Decoration(
+                    DecorationKind.TABLE_TEXT,
+                    QRectF(0, 0, 60, 30),
+                    "██",
+                    kinds=frozenset({SpanType.CODE}),
+                )
+            ],
+            LIGHT,
+            font,
+        )
+        painter.end()
+        found = {image.pixelColor(x, 15).name().upper() for x in range(60)}
+        assert LIGHT.code_foreground.upper() in found
+
+    def test_コードには下地が付く(self) -> None:
+        """文字を空白にすれば、下地の色がそのまま見える。"""
+        image = QImage(60, 30, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        painter = QPainter(image)
+        font = QFont()
+        font.setPointSizeF(16)
+        paint_foreground(
+            painter,
+            [
+                Decoration(
+                    DecorationKind.TABLE_TEXT,
+                    QRectF(0, 0, 60, 30),
+                    "  ",
+                    kinds=frozenset({SpanType.CODE}),
+                )
+            ],
+            LIGHT,
+            font,
+        )
+        painter.end()
+        found = {image.pixelColor(x, 15).name().upper() for x in range(60)}
+        assert LIGHT.code_background.upper() in found
 
 
 class TestHeaderFits:
@@ -890,7 +1008,7 @@ class TestWrappedTable:
 
         wrapped = self.wrapped_of(editor, 2)
         assert wrapped is not None
-        assert "短い" in wrapped.cells[0][0]
+        assert "短い" in "".join(f.text for f in wrapped.cells[0][0])
         assert len(wrapped.cells[1]) >= 2  # 長いセルは複数行に折れている
 
     def test_カーソルを入れると生の行に戻る(self, editor) -> None:
@@ -942,19 +1060,25 @@ class TestForcedBreakInEditor:
         data = editor.document().findBlockByNumber(line).userData()
         return getattr(data, "wrapped", None)
 
+    @staticmethod
+    def cell_texts(wrapped, column: int) -> tuple[str, ...]:
+        """セルの見た目の行を文字列で（断片は 2026-08-26 から）。"""
+        return tuple("".join(fragment.text for fragment in line) for line in wrapped.cells[column])
+
     def test_収まる表でも折り返し表示に入る(self, editor) -> None:
         editor.setPlainText(self.NOTE)
         move_to(editor, 4)
         wrapped = self.wrapped_of(editor, 2)
         assert wrapped is not None
-        assert wrapped.cells[0] == ("上", "下")
+        assert self.cell_texts(wrapped, 0) == ("上", "下")
         assert wrapped.lines == 2
 
     def test_brの記号は描く中身に出ない(self, editor) -> None:
         editor.setPlainText(self.NOTE)
         move_to(editor, 4)
         wrapped = self.wrapped_of(editor, 2)
-        assert all("<br" not in piece for cell in wrapped.cells for piece in cell)
+        for column in range(len(wrapped.cells)):
+            assert all("<br" not in piece for piece in self.cell_texts(wrapped, column))
 
     def test_行の高さが2行ぶんになる(self, editor) -> None:
         editor.setPlainText(self.NOTE)

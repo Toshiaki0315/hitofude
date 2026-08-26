@@ -370,6 +370,10 @@ class MarkdownEditor(QPlainTextEdit):
         self.setFont(font)
         self._apply_tab_width()  # 字幅が変わるとタブの文字数も変わる
 
+    def mono_family(self) -> str:
+        """等幅フォント名。表のセルのコード片の描画・実測が使う（2026-08-26）。"""
+        return self._highlighter.mono_family
+
     def set_mono_family(self, family: str) -> None:
         self._highlighter.set_mono_family(family)
         self._apply_tab_width()  # タブ幅は等幅フォントの字幅で決まる
@@ -1655,7 +1659,9 @@ class MarkdownEditor(QPlainTextEdit):
         super().paintEvent(event)
 
         foreground = QPainter(self.viewport())
-        painter_overlay.paint_foreground(foreground, decorations, self._theme, self.font())
+        painter_overlay.paint_foreground(
+            foreground, decorations, self._theme, self.font(), self.mono_family()
+        )
         foreground.end()
 
     # ------------------------------------------------------------ 検索・置換

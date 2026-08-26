@@ -42,7 +42,7 @@ from hitofude.core.table import (
     WrappedRow,
     column_alignments,
     is_table,
-    wrap_row,
+    wrap_row_styled,
     wrapped_columns,
 )
 from hitofude.core.textpos import py_to_utf16, utf16_to_py
@@ -765,19 +765,26 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         bold.setBold(True)
         metrics = QFontMetricsF(bold)
         measure = metrics.horizontalAdvance
+        # コードの断片は等幅で描かれる（2026-08-26）ので、幅も等幅で測る。
+        # 太字で測るのは本文と同じ理由（ヘッダの欠け防止）
+        mono = QFont(self.mono_family)
+        mono.setPointSizeF(self.document().defaultFont().pointSizeF())
+        mono.setBold(True)
+        code_measure = QFontMetricsF(mono).horizontalAdvance
         widths = wrapped_columns(
             run,
             self._table_width,
             measure=measure,
+            code_measure=code_measure,
             overhead=CELL_PAD * 2 + 1,
             floor=measure("0") * MIN_WRAP_COLUMN,
         )
         if not widths:
             return
-        cells = wrap_row(text, widths, measure=measure)
+        cells = wrap_row_styled(text, widths, measure=measure, code_measure=code_measure)
         wrapped = WrappedRow(
             tuple(widths),
-            tuple(tuple(lines) for lines in cells),
+            tuple(tuple(cell) for cell in cells),
             tuple(column_alignments(run)),
         )
 
