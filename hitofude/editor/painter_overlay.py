@@ -58,6 +58,14 @@ CODE_NAME_SCALE = 0.85
 INLINE_BAND_PAD = 3.0
 INLINE_BAND_RADIUS = 3.0
 
+# ブロックの帯（コード・図・注釈）の左右の内寄せと角の丸み
+# （ユーザー要望 2026-08-26 / Qiita 風）。紙の端まで伸ばさず、角を丸める。
+# 本文は動かせない（R5）ので、CONTENT_MARGIN との差（24 - 12 = 12px）が
+# そのまま帯の中の左右の余白になる。**本文の余白より狭く保つ**——
+# 逆転すると帯の縁から文字がはみ出す
+BAND_MARGIN = 12.0
+BAND_RADIUS = 6.0
+
 RULE_HEIGHT = 1
 LEFT_INSET = 2
 
@@ -480,19 +488,21 @@ def _table_runs(entries) -> list[list]:
 def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decoration]:
     result: list[Decoration] = []
 
+    # 帯は紙の端まで伸ばさない（BAND_MARGIN。ユーザー要望 2026-08-26）
+    banded = QRectF(geometry).adjusted(BAND_MARGIN, 0, -BAND_MARGIN, 0)
     if info.type in _CODE_TYPES:
         band = (
             DecorationKind.FIGURE_BACKGROUND
             if getattr(block.userData(), "figure_band", False)
             else DecorationKind.CODE_BACKGROUND
         )
-        result.append(Decoration(band, QRectF(geometry)))
+        result.append(Decoration(band, QRectF(banded)))
 
     if info.type is BlockType.CODE_FENCE_OPEN and info.code_name:
         result.append(
             Decoration(
                 DecorationKind.CODE_NAME,
-                QRectF(geometry).adjusted(CODE_NAME_INSET, 0, 0, 0),
+                QRectF(banded).adjusted(CODE_NAME_INSET, 0, 0, 0),
                 info.code_name,
             )
         )
@@ -500,20 +510,20 @@ def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decora
     if info.note_kind:
         # 種類は `text` に載せる。色を決めるのは描く側（`paint`）で、
         # ここはテーマを知らないままでいられる。帯を先に、縦線をその上に
-        result.append(Decoration(DecorationKind.NOTE_BACKGROUND, QRectF(geometry), info.note_kind))
+        result.append(Decoration(DecorationKind.NOTE_BACKGROUND, QRectF(banded), info.note_kind))
         result.append(
             Decoration(
                 DecorationKind.NOTE_BAR,
                 QRectF(
-                    geometry.left() + LEFT_INSET, geometry.top(), NOTE_BAR_WIDTH, geometry.height()
+                    banded.left() + LEFT_INSET, geometry.top(), NOTE_BAR_WIDTH, geometry.height()
                 ),
                 info.note_kind,
             )
         )
 
     # 囲みの中では引用の縦線を右へ逃がす。同じ位置だと 2 本が重なって
-    # どちらも読めなくなる
-    quote_inset = LEFT_INSET + (NOTE_BAR_WIDTH + LEFT_INSET if info.note_kind else 0)
+    # どちらも読めなくなる。囲みの帯が内寄せなら縦線も一緒に寄る
+    quote_inset = LEFT_INSET + (BAND_MARGIN + NOTE_BAR_WIDTH + LEFT_INSET if info.note_kind else 0)
     for depth in range(info.quote_depth):
         left = geometry.left() + quote_inset + depth * QUOTE_BAR_STEP
         result.append(
@@ -765,14 +775,69 @@ def _note_background(kind: str, theme: ThemeColors) -> str:
     }.get(kind, theme.code_background)
 
 
+_BLOCK_BAND_KINDS = frozenset(
+    {
+        DecorationKind.CODE_BACKGROUND,
+        DecorationKind.FIGURE_BACKGROUND,
+        DecorationKind.NOTE_BACKGROUND,
+    }
+)
+
+
+def _band_color(decoration: Decoration, theme: ThemeColors) -> str:
+    match decoration.kind:
+        case DecorationKind.CODE_BACKGROUND:
+            return theme.code_background
+        case DecorationKind.FIGURE_BACKGROUND:
+            return theme.figure_background
+        case _:
+            return _note_background(decoration.text, theme)
+
+
+def _band_runs(decorations: list[Decoration], theme: ThemeColors) -> list[tuple[QRectF, str]]:
+    """ブロックの帯を、続きの行どうしで 1 つの矩形にまとめる。
+
+    ブロックごとに角を丸めると、行の境目がくびれて縞になる。装飾は
+    ブロック順に並んでいるので、同じ種類・同じ色で上下が接していれば
+    同じ帯として伸ばす。
+    """
+    runs: list[tuple[QRectF, str]] = []
+    for decoration in decorations:
+        if decoration.kind not in _BLOCK_BAND_KINDS:
+            continue
+        color = _band_color(decoration, theme)
+        if runs:
+            rect, last_color = runs[-1]
+            if (
+                last_color == color
+                and abs(rect.bottom() - decoration.rect.top()) < 1.5
+                and rect.left() == decoration.rect.left()
+                and rect.width() == decoration.rect.width()
+            ):
+                rect.setBottom(decoration.rect.bottom())
+                continue
+        runs.append((QRectF(decoration.rect), color))
+    return runs
+
+
 def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) -> None:
     """組み立てた装飾を描く。背景に属するものだけを扱う。"""
     painter.save()
     painter.setPen(QColor("transparent"))
+
+    # ブロックの帯（コード・図・注釈）は続きの行をまとめ、角を丸めて先に
+    # 敷く（ユーザー要望 2026-08-26 / Qiita 風）。縦線や文字はこの上に乗る
+    for rect, color in _band_runs(decorations, theme):
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QColor(color))
+        painter.drawRoundedRect(rect, BAND_RADIUS, BAND_RADIUS)
+        painter.restore()
+
     for decoration in decorations:
         match decoration.kind:
-            case DecorationKind.CODE_BACKGROUND:
-                painter.fillRect(decoration.rect, QColor(theme.code_background))
+            case kind if kind in _BLOCK_BAND_KINDS:
+                pass  # まとめて描いた
             case DecorationKind.INLINE_BAND:
                 color = (
                     theme.highlight_background
@@ -784,8 +849,6 @@ def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) 
                 painter.setBrush(QColor(color))
                 painter.drawRoundedRect(decoration.rect, INLINE_BAND_RADIUS, INLINE_BAND_RADIUS)
                 painter.restore()
-            case DecorationKind.FIGURE_BACKGROUND:
-                painter.fillRect(decoration.rect, QColor(theme.figure_background))
             case DecorationKind.TABLE_HEADER:
                 painter.fillRect(decoration.rect, QColor(theme.table_header_background))
             case DecorationKind.TABLE_STRIPE:
@@ -794,8 +857,6 @@ def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) 
                 painter.fillRect(decoration.rect, QColor(theme.rule))
             case DecorationKind.QUOTE_BAR:
                 painter.fillRect(decoration.rect, QColor(theme.quote_bar))
-            case DecorationKind.NOTE_BACKGROUND:
-                painter.fillRect(decoration.rect, QColor(_note_background(decoration.text, theme)))
             case DecorationKind.NOTE_BAR:
                 painter.fillRect(decoration.rect, QColor(_note_color(decoration.text, theme)))
             case DecorationKind.RULE:

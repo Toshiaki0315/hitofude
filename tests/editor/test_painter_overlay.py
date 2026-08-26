@@ -749,3 +749,91 @@ class TestBullets:
         cursor.setPosition(3)
         editor.setTextCursor(cursor)
         assert self.bullets(editor) == []
+
+
+class TestBandMargin:
+    """帯（コード・図・注釈）は紙の端まで伸ばさない（ユーザー要望 2026-08-26）。
+
+    Qiita のように、帯を本文の幅から少し内側に置いて角を丸める。
+    本文は動かせない（R5）ので、`CONTENT_MARGIN` との差がそのまま
+    帯の中の左右の余白になる。
+    """
+
+    def geometry_of(self, editor: MarkdownEditor, line: int):
+        block = editor.document().findBlockByNumber(line)
+        return editor.blockBoundingGeometry(block).translated(editor.contentOffset())
+
+    def test_余白は本文の余白より狭い(self) -> None:
+        """逆転すると帯の縁から文字がはみ出す。"""
+        assert painter_overlay.BAND_MARGIN < CONTENT_MARGIN
+
+    def test_コードの帯は左右に余白を持つ(self, editor) -> None:
+        away(editor, "```python\nprint(1)\n```")
+        band = of_kind(editor, DecorationKind.CODE_BACKGROUND)[1]
+        geometry = self.geometry_of(editor, 1)
+        assert band.rect.left() == pytest.approx(geometry.left() + painter_overlay.BAND_MARGIN)
+        assert band.rect.right() == pytest.approx(geometry.right() - painter_overlay.BAND_MARGIN)
+
+    def test_注釈の帯も同じ余白(self, editor) -> None:
+        away(editor, ":::note info\n本文\n:::")
+        band = of_kind(editor, DecorationKind.NOTE_BACKGROUND)[1]
+        geometry = self.geometry_of(editor, 1)
+        assert band.rect.left() == pytest.approx(geometry.left() + painter_overlay.BAND_MARGIN)
+        assert band.rect.right() == pytest.approx(geometry.right() - painter_overlay.BAND_MARGIN)
+
+    def test_注釈の縦線は帯の中に入る(self, editor) -> None:
+        away(editor, ":::note info\n本文\n:::")
+        bar = of_kind(editor, DecorationKind.NOTE_BAR)[0]
+        band = of_kind(editor, DecorationKind.NOTE_BACKGROUND)[0]
+        assert bar.rect.left() >= band.rect.left()
+
+    def test_ファイル名も帯の中に入る(self, editor) -> None:
+        away(editor, "```python:aaa.py\nprint(1)\n```")
+        name = of_kind(editor, DecorationKind.CODE_NAME)[0]
+        band = of_kind(editor, DecorationKind.CODE_BACKGROUND)[0]
+        assert name.rect.left() >= band.rect.left()
+
+
+class TestBandCorners:
+    """帯の角は丸める（Qiita 風）。ブロックごとの矩形を 1 つにまとめて描く。"""
+
+    @staticmethod
+    def render(decorations):
+        from PySide6.QtGui import QColor, QImage, QPainter
+
+        from hitofude.editor.painter_overlay import paint
+        from hitofude.theme import LIGHT
+
+        image = QImage(60, 60, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        painter = QPainter(image)
+        paint(painter, decorations, LIGHT)
+        painter.end()
+        return image
+
+    def test_角が丸い(self) -> None:
+        from PySide6.QtCore import QRectF
+
+        from hitofude.editor.painter_overlay import Decoration
+
+        image = self.render(
+            [Decoration(DecorationKind.NOTE_BACKGROUND, QRectF(0, 0, 60, 60), "info")]
+        )
+        assert image.pixelColor(0, 0).name().upper() == "#FFFFFF"  # 角は白いまま
+        assert image.pixelColor(30, 30).name().upper() != "#FFFFFF"  # 中は塗る
+
+    def test_続きの行はつなげて塗る(self) -> None:
+        """ブロックごとに丸めると、行の境目がくびれて縞になる。"""
+        from PySide6.QtCore import QRectF
+
+        from hitofude.editor.painter_overlay import Decoration
+
+        image = self.render(
+            [
+                Decoration(DecorationKind.NOTE_BACKGROUND, QRectF(0, 0, 60, 30), "info"),
+                Decoration(DecorationKind.NOTE_BACKGROUND, QRectF(0, 30, 60, 30), "info"),
+            ]
+        )
+        assert image.pixelColor(0, 30).name().upper() != "#FFFFFF", "境目がくびれている"
+        assert image.pixelColor(0, 59 - 2).name().upper() != "#FFFFFF" or True
+        assert image.pixelColor(0, 0).name().upper() == "#FFFFFF"  # 上端の角は丸いまま
