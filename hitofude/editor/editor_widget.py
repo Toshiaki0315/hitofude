@@ -246,10 +246,19 @@ class MarkdownEditor(QPlainTextEdit):
     def _apply_palette(self) -> None:
         palette = self.palette()
         palette.setColor(QPalette.ColorRole.Base, QColor(self._theme.background))
+        # **本文の左右（書けない場所）を沈める**（ユーザー要望 2026-08-26）。
+        # `setViewportMargins` で作った余白はウィジェット側の領域なので、
+        # `Window` ロールで本文（viewport の `Base`）と別に塗れる。
+        # **QSS では塗り分けられない** — `background` を指定すると viewport
+        # まで同じ色になった（実測）
+        palette.setColor(QPalette.ColorRole.Window, QColor(self._theme.page_background))
         palette.setColor(QPalette.ColorRole.Text, QColor(self._theme.foreground))
         palette.setColor(QPalette.ColorRole.Highlight, QColor(self._theme.selection_background))
         palette.setColor(QPalette.ColorRole.HighlightedText, QColor(self._theme.foreground))
         self.setPalette(palette)
+        # **これが無いと塗られない**（実測）。既定では背景を描かず、
+        # 下の色がそのまま見える
+        self.setAutoFillBackground(True)
 
     # ----------------------------------------------------------- ソースモード
 

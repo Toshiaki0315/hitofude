@@ -33,6 +33,16 @@ class ThemeColors:
 
     コードより**薄く**して、「コード」と「図になるもの」を色で見分ける。
     """
+
+    page_background: str
+    """本文の左右——**書けない場所**の色（ユーザー要望 2026-08-26）。
+
+    幅を絞っている（§5.1）のに外側も同じ色だと、**どこまで書けるのかが
+    見た目から分からない**。少しだけ沈めて「ここが紙」と伝える。
+
+    **明暗どちらも暗いほうへ沈める。** 暗いテーマで明るくすると、外側が
+    光って本文より目立つ。**差は控えめに** — 主張すると本文を読む邪魔。
+    """
     code_foreground: str
     quote_bar: str
     quote_foreground: str
@@ -89,6 +99,7 @@ LIGHT = ThemeColors(
     # コードは濃いめ、図（数式・Mermaid）は薄めに分ける（ユーザー要望）
     code_background="#D8D8E0",  # spec §5.2 の帯。図と見分くため濃いめに
     figure_background="#FAFAFC",
+    page_background="#F2F2F5",  # 白より少し沈める（Qiita の地のような濃さ）
     code_foreground="#3A3A3C",
     quote_bar="#C7C7CC",
     quote_foreground="#6B6B70",  # spec §5.2: 60% グレー
@@ -128,6 +139,7 @@ DARK = ThemeColors(
     selection_background="#2F5480",
     code_background="#3E3E46",
     figure_background="#202023",
+    page_background="#141416",  # 本文（#1C1C1E）よりさらに沈める
     code_foreground="#D6D6DA",
     quote_bar="#4A4A50",
     quote_foreground="#A0A0A8",
