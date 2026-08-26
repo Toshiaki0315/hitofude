@@ -1852,6 +1852,27 @@ class MarkdownEditor(QPlainTextEdit):
         if current.left() == margin and current.right() == margin:
             return  # 同じ値を入れ直すと resize が再帰する
         self.setViewportMargins(margin, current.top(), margin, current.bottom())
+        self._relayout_wrapping()
+
+    def _relayout_wrapping(self) -> None:
+        """折り返しを計算し直す（ユーザー報告 2026-08-26）。
+
+        **開いた直後に古い折り返しが残っていた。** `MainWindow` は構築の
+        途中でノートを開くが、そのとき本文の幅はまだ決まっていない
+        （左右の余白も縦スクロールバーも、窓を出してから確定する）。
+        Qt は幅が変わっても**既に組んだ行の折り返しを組み直さない**ので、
+        長い行が右へはみ出し、横スクロールが出ていた（実測 854px / 横 200。
+        窓を 1px 動かすと 654px / 横 0 に直る）。
+
+        **効いたのはこれだけ。** `documentChanged` も `markContentsDirty` も
+        viewport の resize も 200 のまま変わらなかった（実測）。折り返しを
+        いったん切って戻すと、文書ぜんたいを組み直す。
+
+        **幅が変わったときだけ呼ぶ。** 上の早期 return がそれを保証している
+        ——毎回呼ぶと大きなノートで組み直しが重なる。
+        """
+        self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
 
 
 # `元に戻す(&U)` の `(&U)` と、素の `&`。Windows 流のアクセスキーで、
