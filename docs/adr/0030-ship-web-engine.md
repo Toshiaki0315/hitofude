@@ -133,3 +133,18 @@ prune_bundle の KEEP_FRAMEWORKS / KEEP_BINDINGS に入っている」検査を
 軽量版のバンドル内で実測: 起動して保管フォルダを作る / QtPdf が
 読み込める / **数式が描ける（36x78）** / Mermaid は None を返して
 落ちない / `codesign --verify --deep --strict` が通る。
+
+### 軽量版の追記（2026-08-27）: 開いた瞬間に落ちる
+
+Mermaid の書かれたノートを開くとアプリごと落ちるとユーザーから報告。
+crash report は `QSyntaxHighlighter::rehighlightBlock` →
+`QTextLayout::formats()` での segfault を指していた。
+
+原因は**ハイライトへの再入**。`pixmap()` は highlightBlock の中から
+呼ばれるが、軽量版の失敗経路（ImportError → `_finish(None)`）だけが
+**同期で** `rendered` を発火していた。受け手は rehighlightBlock を呼ぶので、
+ハイライトの最中にハイライトへ戻ってしまう。通常版の描画（Chromium）は
+必ず非同期なので、この経路は軽量版でしか存在しない。
+
+失敗の確定を `QTimer.singleShot(0, …)` で次のイベントループへ回し、
+成功と同じ「必ず非同期」に揃えた。

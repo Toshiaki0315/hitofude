@@ -89,7 +89,7 @@ class TestWithoutWebEngine:
     図を諦めるだけ**で、アプリは動く。落ちてはいけない。
     """
 
-    def test_図は諦めるが落ちない(self, qapp, monkeypatch) -> None:
+    def test_図は諦めるが落ちない(self, qapp, qtbot, monkeypatch) -> None:
         from hitofude.editor import mermaid_cache as module
 
         def missing():
@@ -98,4 +98,26 @@ class TestWithoutWebEngine:
         monkeypatch.setattr(module, "web_engine_view_class", missing)
         found = MermaidCache()
         assert found.pixmap(GRAPH, dark=False, max_width=600) is None
-        assert found.done(GRAPH, dark=False)  # 失敗として確定させる（何度も試さない）
+        # 失敗として確定する（何度も試さない）。確定は**次のイベントループ**
+        qtbot.waitUntil(lambda: found.done(GRAPH, dark=False), timeout=2000)
+
+    def test_失敗の合図はハイライトの最中に飛ばさない(self, qapp, qtbot, monkeypatch) -> None:
+        """ユーザー報告 2026-08-27。軽量版で Mermaid のノートを開くと落ちた。
+
+        `pixmap()` はハイライト（highlightBlock）の中から呼ばれる。失敗を
+        **同期で** rendered へ流すと、受け手が rehighlightBlock を呼んで
+        ハイライトに再入し、QTextLayout::formats() で segfault する
+        （crash report で確認）。合図はイベントループ経由で飛ばす。
+        """
+        from hitofude.editor import mermaid_cache as module
+
+        def missing():
+            raise ModuleNotFoundError("No module named 'PySide6.QtWebEngineWidgets'")
+
+        monkeypatch.setattr(module, "web_engine_view_class", missing)
+        found = MermaidCache()
+        fired: list[bool] = []
+        found.rendered.connect(lambda: fired.append(True))
+        found.pixmap(GRAPH, dark=False, max_width=600)
+        assert fired == [], "pixmap() の呼び出しの中で rendered が同期発火している"
+        qtbot.waitUntil(lambda: bool(fired), timeout=2000)

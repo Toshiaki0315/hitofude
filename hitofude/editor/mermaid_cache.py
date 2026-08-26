@@ -162,10 +162,16 @@ class MermaidCache(QObject):
         try:
             self._ensure_view()
         except ImportError as error:
-            # QtWebEngine が無い組み方。**失敗として覚える**ので、
-            # 同じ図で何度も立ち上げを試さない
+            # QtWebEngine が無い組み方（軽量版）。**失敗として覚える**ので、
+            # 同じ図で何度も立ち上げを試さない。
+            #
+            # **確定は次のイベントループへ回す**（ユーザー報告 2026-08-27）。
+            # ここは highlightBlock の中から呼ばれており、同期で rendered を
+            # 飛ばすと受け手が rehighlightBlock でハイライトに再入して
+            # QTextLayout::formats() で segfault する（crash report で確認）。
+            # 本来の描画（Chromium）は必ず非同期なので、失敗も同じ形に揃える
             logger.warning("QtWebEngine が無いので図は描けません: %s", error)
-            self._finish(None)
+            QTimer.singleShot(0, lambda: self._finish(None))
             return
         if not self._page_ready:
             return  # ページの読み込み完了（_on_title "ready"）から続く
