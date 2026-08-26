@@ -91,6 +91,14 @@ class FormatToolbar(QWidget):
     outline_toggled = Signal()
     """アウトラインの開閉を押された。**開くのは呼び出し側**（ここは窓を知らない）。"""
 
+    table_requested = Signal()
+    """表を作るボタンを押された（ユーザー要望 2026-08-26）。
+
+    他の書式ボタンと違って**行と列を聞く窓**が要る。窓を開くのは
+    呼び出し側の仕事なので、アウトラインと同じく合図だけ出す。"""
+
+    TABLE_LABEL = "表"
+
     # 区切り線を入れる位置（この番号のボタンの手前）。種類の切れ目
     SEPARATORS = (5, 10)
 
@@ -111,6 +119,18 @@ class FormatToolbar(QWidget):
             if index in self.SEPARATORS:
                 layout.addWidget(self._separator())
             layout.addWidget(self._button(action))
+
+        # **「差し込むもの」の仲間**（リンクの隣）。押すと行と列を聞く窓が
+        # 開くので、他のボタンのように編集を直接は呼べない
+        self._table = QToolButton(self)
+        self._table.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
+        self._table.setFixedSize(BUTTON_SIZE, BUTTON_SIZE)
+        self._table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._table.setToolTip("表を作る（行と列の数を聞きます）")
+        self._table.setAccessibleName(self.TABLE_LABEL)
+        self._table.clicked.connect(lambda _checked: self.table_requested.emit())
+        layout.addWidget(self._table)
+
         layout.addStretch(1)
 
         # **右端に離して置く。** 書式を付けるボタンとは役割が違い、
@@ -156,6 +176,10 @@ class FormatToolbar(QWidget):
         return self._raw
 
     @property
+    def table_button(self) -> QToolButton:
+        return self._table
+
+    @property
     def outline_button(self) -> QToolButton:
         return self._outline
 
@@ -195,6 +219,7 @@ class FormatToolbar(QWidget):
     def _apply_theme(self) -> None:
         for action, found in zip(self.ACTIONS, self._buttons, strict=True):
             found.setIcon(glyph_icon(action.glyph, self._theme.foreground))
+        self._table.setIcon(glyph_icon(Glyph.TABLE, self._theme.foreground))
         self._outline.setIcon(glyph_icon(Glyph.OUTLINE, self._theme.foreground))
         for line in self._separators:
             line.setStyleSheet(f"color: {self._theme.rule};")

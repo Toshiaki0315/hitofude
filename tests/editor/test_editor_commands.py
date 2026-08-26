@@ -451,3 +451,40 @@ class TestBMP外の文字:
         qtbot.keyClicks(editor, "*")
         assert editor.toPlainText() == "これは*🍎で*す"
         assert editor.textCursor().selectedText() == "🍎で"
+
+
+class TestInsertTable:
+    """空の表を差し込む（ユーザー要望 2026-08-26）。行と列は UI が聞く。"""
+
+    def test_表ができる(self, editor) -> None:
+        editor.setPlainText("")
+        assert editor.insert_table(rows=2, columns=3) is True
+        lines = editor.toPlainText().splitlines()
+        assert lines[0].count("|") == 4  # 3 列 = 縦線 4 本
+        assert lines[1].strip("| -") == ""  # 区切り行
+        assert len([line for line in lines if line.startswith("|")]) == 4
+
+    def test_最初の見出しが選ばれている(self, editor) -> None:
+        """打てば置き換わる。目印を消す手間を省く。"""
+        editor.setPlainText("")
+        editor.insert_table(rows=1, columns=2)
+        assert editor.textCursor().selectedText() == "見出し1"
+
+    def test_undoは1手で戻る(self, editor) -> None:
+        """R5 と同じ約束。差し込みは 1 つの操作。"""
+        editor.setPlainText("本文\n")
+        editor.insert_table(rows=2, columns=2)
+        editor.undo()
+        assert editor.toPlainText() == "本文\n"
+
+    def test_変換中は本文に触らない(self, editor) -> None:
+        """R6: ツールバーのボタンは NoFocus なのでプリエディット中に押せる。"""
+        from PySide6.QtGui import QInputMethodEvent
+        from PySide6.QtWidgets import QApplication
+
+        editor.setPlainText("本文")
+        editor.moveCursor(QTextCursor.MoveOperation.End)
+        QApplication.sendEvent(editor, QInputMethodEvent("にほんご", []))
+
+        assert editor.insert_table(rows=1, columns=1) is False
+        assert editor.toPlainText() == "本文"

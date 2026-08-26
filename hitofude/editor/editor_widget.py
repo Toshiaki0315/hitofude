@@ -754,6 +754,27 @@ class MarkdownEditor(QPlainTextEdit):
         self._apply(replacement)
         return True
 
+    def insert_table(self, *, rows: int, columns: int) -> bool:
+        """空の表を差し込む（ユーザー要望 2026-08-26）。行と列の数は UI が聞く。
+
+        `rows` は見出しを除いた本体の行数。差し込んだあとは最初の見出しが
+        選ばれているので、そのまま打てば置き換わる。
+        """
+        if self._composing:
+            return False  # R6
+        source = self.toPlainText()
+        cursor = self.textCursor()
+        self._apply(
+            commands.insert_table(
+                source,
+                utf16_to_py(source, cursor.selectionStart()),
+                utf16_to_py(source, cursor.selectionEnd()),
+                rows=rows,
+                columns=columns,
+            )
+        )
+        return True
+
     def shift_heading(self, delta: int) -> bool:
         """見出しレベルの増減。`delta` が負だと `#` が減って見出しが大きくなる。"""
         block = self.textCursor().block()

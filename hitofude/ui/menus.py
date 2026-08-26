@@ -214,6 +214,9 @@ def _edit_menu(window, bar) -> None:
     # **Option を含むショートカットは使わない。** macOS では Option が
     # 文字合成に使われ、Cmd+Option+T は `†` を生む。ショートカットが
     # 発火せず、選択中だと選択範囲がその 1 文字に置き換わって消える
+    # **作るほうを先に。** 整形は作った表に対して使う（順番が手順どおり）。
+    # キーは付けない——窓が開くので急ぐ操作ではない
+    add(edit_menu, "表を作る…", "", window.insert_table)
     add(edit_menu, "表を整形", "Ctrl+Shift+L", window._editor.format_table)
 
     # **書式もメニューから届くようにする**（2026-08-25）。今まで入口は

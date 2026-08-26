@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass
 
 from hitofude.core.models import MAX_HEADING_LEVEL, BlockInfo, BlockType
+from hitofude.core.table import HEADER_PLACEHOLDER, new_table
 
 # spec §5.5-4: 選択状態でこれらを押すと選択範囲を囲む
 AUTO_PAIRS = {"*": "*", "`": "`", "[": "]", "(": ")", '"': '"'}
@@ -76,6 +77,26 @@ def insert_link(text: str, start: int, end: int, url: str = "") -> Replacement:
     # URL が無いときは `[label](` の直後、あるときはリンク全体の後ろ
     caret = start + (len(body) if url else len(label) + 3)
     return Replacement(start, end, body, caret, caret)
+
+
+def insert_table(text: str, start: int, end: int, *, rows: int, columns: int) -> Replacement:
+    """キャレットの位置に空の表を差し込む（ユーザー要望 2026-08-26）。
+
+    `rows` は**見出しを除いた**本体の行数。表はブロックなので必ず行頭から
+    始め、書きかけの行があればその下に置く（**選択していた文字は消さない**）。
+    前後に空行を挟むのは、段落にくっついた `|` の行を GFM が表と認めない
+    ため。後ろの空行は「表の続きから書ける場所」も兼ねる。
+    """
+    caret = max(start, end)  # 選択があっても消さない。その後ろへ置く
+    head = text[:caret]
+    lines = new_table(rows, columns)
+
+    before = "" if not head or head.endswith("\n\n") else "\n" if head.endswith("\n") else "\n\n"
+    body = before + "\n".join(lines) + "\n\n"
+    # 最初の見出しを選んでおく。打てばそのまま置き換わる
+    label = f"{HEADER_PLACEHOLDER}1"
+    select_start = caret + len(before) + lines[0].index(label)
+    return Replacement(caret, caret, body, select_start, select_start + len(label))
 
 
 def shift_heading(line: str, delta: int) -> str | None:

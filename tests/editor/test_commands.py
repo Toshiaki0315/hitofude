@@ -9,6 +9,7 @@ from hitofude.core.models import BlockInfo, BlockType
 from hitofude.editor.commands import (
     cycle_heading,
     insert_link,
+    insert_table,
     is_url,
     shift_heading,
     toggle_bullet,
@@ -305,3 +306,39 @@ class TestCycleHeading:
 
     def test_空行でも見出しにできる(self) -> None:
         assert cycle_heading("") == "# "
+
+
+class TestInsertTable:
+    """表を差し込む（ユーザー要望 2026-08-26）。行と列の数はダイアログが聞く。"""
+
+    def test_空の行にそのまま置く(self) -> None:
+        got = insert_table("", 0, 0, rows=1, columns=2)
+        assert apply("", got).splitlines()[:2] == [
+            "| 見出し1 | 見出し2 |",
+            "| ------- | ------- |",
+        ]
+
+    def test_書きかけの行の下から始める(self) -> None:
+        """行の途中で押しても、その行を壊さない。"""
+        text = "本文の続き"
+        got = insert_table(text, 5, 5, rows=1, columns=1)
+        lines = apply(text, got).splitlines()
+        assert lines[0] == "本文の続き"
+        assert lines[1] == ""  # 段落と表のあいだは空ける（GFM が表と認めない）
+
+    def test_後ろに空行を残す(self) -> None:
+        """表の直後から本文を書き続けられるように。"""
+        got = apply("", insert_table("", 0, 0, rows=1, columns=1))
+        assert got.endswith("\n\n")
+
+    def test_最初の見出しを選ぶ(self) -> None:
+        """打てばそのまま置き換わる（目印を消す手間を省く）。"""
+        text = ""
+        got = insert_table(text, 0, 0, rows=1, columns=2)
+        updated = apply(text, got)
+        assert updated[got.select_start : got.select_end] == "見出し1"
+
+    def test_選択していた文字は消さない(self) -> None:
+        text = "大事な文"
+        got = insert_table(text, 0, 4, rows=1, columns=1)
+        assert "大事な文" in apply(text, got)

@@ -110,6 +110,9 @@ class Glyph(Enum):
     QUOTE = auto()
     """引用。縦線と行。本文での見え方（`painter_overlay`）に合わせる。"""
 
+    TABLE = auto()
+    """表。格子。**見出しの行を塗る**——本文での見え方に合わせる。"""
+
 
 def glyph_icon(glyph: Glyph, color: str, *, filled: bool = False) -> QIcon:
     """線で描いたアイコン。同じ指定なら描き直さない。
@@ -344,6 +347,20 @@ def _draw_checkbox(painter: QPainter) -> None:
     painter.drawPolyline([QPointF(20, 33), QPointF(29, 42), QPointF(45, 22)])
 
 
+def _draw_table(painter: QPainter) -> None:
+    """格子。**いちばん上の行を塗る**（本文での表の見え方に合わせる）。"""
+    frame = QRectF(11, 14, 42, 36)
+    header = QRectF(frame.left(), frame.top(), frame.width(), 12)
+    painter.fillRect(header, painter.pen().color())
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRect(frame)
+    painter.drawLine(
+        QPointF(frame.left(), header.bottom()), QPointF(frame.right(), header.bottom())
+    )
+    painter.drawLine(QPointF(frame.left(), 38), QPointF(frame.right(), 38))
+    painter.drawLine(QPointF(32, frame.top()), QPointF(32, frame.bottom()))
+
+
 def _draw_quote(painter: QPainter) -> None:
     """縦線と行。本文での引用の見え方に合わせる。"""
     pen = painter.pen()
@@ -424,6 +441,7 @@ _DRAW = {
     Glyph.ORDERED: _draw_ordered,
     Glyph.CHECKBOX: _draw_checkbox,
     Glyph.QUOTE: _draw_quote,
+    Glyph.TABLE: _draw_table,
 }
 
 
@@ -523,6 +541,7 @@ MENU_ICONS = {
     "切り取り": "edit-cut",
     "コピー": "edit-copy",
     "貼り付け": "edit-paste",
+    "表を作る…": "insert-table",
     "表を整形": "format-justify-fill",
     "選択範囲をノートにする": "document-new",
     # 表示

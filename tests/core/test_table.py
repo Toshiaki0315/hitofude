@@ -230,3 +230,34 @@ class TestIsTable:
 
     def test_区切り行だけでも成立しない(self) -> None:
         assert not table.is_table(["|---|---|"])
+
+
+class TestNewTable:
+    """空の表を作る（ユーザー要望 2026-08-26。ツールバーの「表」ボタン）。"""
+
+    def test_見出しと区切りと本体が並ぶ(self) -> None:
+        lines = table.new_table(rows=2, columns=3)
+        assert len(lines) == 4  # 見出し + 区切り + 本体 2
+        assert table.is_table(lines)
+
+    def test_列数ぶんのセルができる(self) -> None:
+        for line in table.new_table(rows=1, columns=4):
+            assert line.count("|") == 5  # 4 列 = 縦線 5 本
+
+    def test_できた表は整形済み(self) -> None:
+        """作った直後に離れても整形が走らない（縦線が既に揃っている）。"""
+        lines = table.new_table(rows=3, columns=2)
+        assert table.format_table(lines) == lines
+
+    def test_見出しには目印を入れる(self) -> None:
+        """空のままだと列が潰れて、押す場所も見えない。"""
+        header = table.new_table(rows=1, columns=2)[0]
+        assert "見出し" in header
+
+    def test_本体のセルは空(self) -> None:
+        body = table.new_table(rows=1, columns=2)[2]
+        assert body.replace("|", "").strip() == ""
+
+    def test_1行1列でも表になる(self) -> None:
+        lines = table.new_table(rows=1, columns=1)
+        assert table.is_table(lines)

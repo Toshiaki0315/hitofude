@@ -195,6 +195,30 @@ def format_table(lines: list[str]) -> list[str] | None:
     return formatted
 
 
+HEADER_PLACEHOLDER = "見出し"
+"""新しい表の見出しに入れる目印（ユーザー要望 2026-08-26）。
+
+**空にしない。** 描画側は列幅を中身から決めるので、全部空だと列が
+潰れて線しか見えず、押して直す場所も分からない。
+"""
+
+
+def new_table(rows: int, columns: int) -> list[str]:
+    """空の表を作る。`rows` は**見出しを除いた**本体の行数。
+
+    整形済みで返すので、作った直後に表を離れても縦線は動かない。
+    """
+    rows = max(1, rows)
+    columns = max(1, columns)
+    header = [f"{HEADER_PLACEHOLDER}{i + 1}" for i in range(columns)]
+    lines = [
+        "| " + " | ".join(header) + " |",
+        "| " + " | ".join(["---"] * columns) + " |",
+        *["| " + " | ".join([""] * columns) + " |"] * rows,
+    ]
+    return format_table(lines) or lines
+
+
 def is_table(lines: list[str]) -> bool:
     """行の並びが表として成立しているか。
 

@@ -22,6 +22,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -96,6 +97,7 @@ from hitofude.ui.status_bar import (  # noqa: F401  定数はテストが再輸�
     STATUS_RIGHT_MARGIN,
     StatusBarController,
 )
+from hitofude.ui.table_dialog import TableSizeDialog
 
 logger = logging.getLogger(__name__)
 
@@ -349,6 +351,7 @@ class MainWindow(QMainWindow):
         self._editor.wikilink_activated.connect(self.activate_note)
         self._editor.modes_changed.connect(self._update_modes)
         self._pane.toolbar.outline_toggled.connect(self.toggle_outline)
+        self._pane.toolbar.table_requested.connect(self.insert_table)
         self._pane.backlinks.note_activated.connect(self._on_backlink_opened)
         self._pane.backlinks.toggled.connect(self._remember_backlinks)
         self._pane.backlinks.set_expanded(self._config.backlinks_expanded)
@@ -1450,6 +1453,29 @@ class MainWindow(QMainWindow):
             return
         dialog.exec()
         dialog.deleteLater()
+
+    def insert_table(self) -> None:
+        """ツールバーの「表」ボタンと「編集」→「表を作る…」（ユーザー要望 2026-08-26）。
+
+        大きさを聞いてから差し込む。**窓を開くのはここ**——`editor/` は
+        ダイアログを持たない（書式ボタンと違うのはこの一点だけ）。
+        """
+        size = self._ask_table_size()
+        if size is None:
+            return
+        rows, columns = size
+        self._editor.insert_table(rows=rows, columns=columns)
+        self._editor.setFocus()  # 打てばそのまま見出しが置き換わる
+
+    def _ask_table_size(self) -> tuple[int, int] | None:
+        """行と列を聞く。取り消しなら None。**テストが差し替える**。"""
+        dialog = TableSizeDialog(self)
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return None
+            return dialog.values()
+        finally:
+            dialog.deleteLater()
 
     def show_history(self) -> None:
         """版の履歴を開く（ADR-0023）。実体は HistoryActions。"""
