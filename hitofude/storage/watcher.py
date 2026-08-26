@@ -204,8 +204,16 @@ class VaultWatcher(QObject):
 
         待ちきれなかったときは記録を残す。生き残った監視スレッドは
         終了時の segfault に直結するので、黙って諦めない。
+
+        **タイマで転んでも先へ進む**（2026-08-26）。後片付けの途中で Qt の
+        側が先に消えていると `stop()` が `RuntimeError` を投げ、**その先の
+        `observer.stop()` まで届かなかった**。止まるのはただの取り出し役で、
+        本当に止めたいのは監視スレッドのほう。
         """
-        self._timer.stop()
+        try:
+            self._timer.stop()
+        except RuntimeError as error:  # Qt の側が先に消えている
+            logger.debug("タイマは既に消えていた: %s", error)
         _LIVE.discard(self)
         if self._observer is None:
             return

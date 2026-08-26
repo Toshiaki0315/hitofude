@@ -1220,6 +1220,19 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def _on_note_deleted(self, path: Path) -> None:
+        """開いているノートが外で消された（spec §7.5）。
+
+        **閉じている最中は聞かない。** 終了の途中でモーダルを開くと
+        アプリが終了できなくなる（`closeEvent` が既に守っている作法）。
+        監視は遅れて届くので、閉じ始めたあとに来ることがある。
+
+        **聞けないときは壊れないほうを選ぶ。** 打ちかけを抱えたまま
+        開いておく——閉じると本文ごと捨てることになる。
+        """
+        if self._closing:
+            logger.info("終了中なので聞かずに残す: %s", path.name)
+            return
+
         answer = QMessageBox.question(
             self,
             "ファイルが削除されました",

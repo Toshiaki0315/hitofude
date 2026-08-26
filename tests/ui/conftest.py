@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QSettings
+from PySide6.QtWidgets import QMessageBox
 
 from hitofude.config import Config
 from hitofude.ui.main_window import MainWindow
@@ -84,3 +85,30 @@ def activate(qtbot):
         return window
 
     return go
+
+
+@pytest.fixture(autouse=True)
+def asked(monkeypatch):
+    """**聞かれたら必ず答える**（試験が止まらないように。2026-08-26）。
+
+    `QMessageBox.question` は答えが来るまで戻らない。監視が遅れて届けた
+    「開いているノートが外で消された」は `pytestqt` の `_process_events`
+    （**テストの合間**）で処理されるので、そこでモーダルが開くと
+    **答える人がおらず、一式が止まる**（実測: `make cov` が 10 分で
+    打ち切られ、faulthandler が居場所を出した）。
+
+    既定の答えは **`No`（作り直さない）** ——書き戻すほうが取り返しが
+    つかない。別の答えが要る試験は、自分で `monkeypatch` すればよい
+    （こちらより後に当たるので勝つ）。
+
+    返すのは**聞かれた中身の控え**。`(題, 本文)` の並びで、聞かれたか
+    どうかも中身も試験から見られる。
+    """
+    seen: list[tuple[str, str]] = []
+
+    def answer(_parent, title="", text="", *args, **kwargs):
+        seen.append((title, text))
+        return QMessageBox.StandardButton.No
+
+    monkeypatch.setattr(QMessageBox, "question", answer)
+    return seen

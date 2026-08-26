@@ -330,6 +330,28 @@ class TestShutdown:
         module.stop_all()
         assert instance.running is False
 
+    def test_タイマが先に消えていても監視は止める(self, vault, qapp) -> None:
+        """**止める順で守りが空振りしていた**（2026-08-26 に気づいた）。
+
+        後片付けの途中で Qt の側が先に消えると `self._timer.stop()` が
+        `RuntimeError` を投げ、**その先の `observer.stop()` まで届かない**。
+        止め忘れた監視スレッドは終了時の segfault に直結するので、
+        ここが空振りすると `stop_all` を置いた意味が無くなる。
+        """
+        from hitofude.storage import watcher as module
+
+        instance = module.VaultWatcher(vault)
+        instance.start()
+
+        class Gone:
+            def stop(self) -> None:
+                raise RuntimeError("Internal C++ object already deleted")
+
+        instance._timer = Gone()
+        instance.stop()
+        assert instance.running is False
+        assert instance not in module.live_watchers()
+
     def test_止まらなければ記録を残す(self, vault, qapp, caplog) -> None:
         """**黙って諦めない。** 次に落ちたときの手掛かりになる。"""
         from hitofude.storage import watcher as module
