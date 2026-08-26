@@ -41,6 +41,7 @@ from hitofude.core.table import (
     MIN_WRAP_COLUMN,
     WrappedRow,
     column_alignments,
+    is_table,
     wrap_row,
     wrapped_columns,
 )
@@ -905,14 +906,18 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         elif info.type in (BlockType.TABLE_ROW, BlockType.TABLE_DELIMITER):
             # 表は**常に描画側が組む**（ADR-0029）。本文と同じフォントで
             # 描くため、列の位置は桁数ではなくピクセルで決める。
-            # 幅がまだ分からない起動直後だけ生のまま（すぐ掛け直される）
-            if self._table_width <= 0:
+            # 幅がまだ分からない起動直後だけ生のまま（すぐ掛け直される）。
+            # 区切り行が来るまでは表として成立していないので、これも生の
+            # まま。書きかけの 1 行目を隠すと、描く側は成立していない並びを
+            # 描かないため行が丸ごと消える（ユーザー報告 2026-08-26）
+            run = self._table_run_texts()
+            if self._table_width <= 0 or not is_table(run):
                 pass
             elif info.type is BlockType.TABLE_DELIMITER:
                 # 区切り行は隠す（線は paintEvent が引く）。薄い 1 行として残る
                 self._hide(0, len(text))
             else:
-                self._reserve_wrapped_row(text, self._table_run_texts())
+                self._reserve_wrapped_row(text, run)
         elif info.type is BlockType.BULLET_LIST_ITEM:
             # `-` / `*` を潰して点を描く（ユーザー要望 2026-08-22）。**空白は
             # 残す**ので、本文の始まる位置は今までどおり

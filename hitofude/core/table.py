@@ -195,12 +195,19 @@ def format_table(lines: list[str]) -> list[str] | None:
     return formatted
 
 
-def find_table(lines: list[str], line: int) -> tuple[int, int] | None:
-    """`line` を含む表の範囲 `[開始, 終了)` を返す。表の中でなければ None。
+def is_table(lines: list[str]) -> bool:
+    """行の並びが表として成立しているか。
 
+    区切り行が **2 行目以降**に必要（GFM と同じ。先頭ではヘッダが無い）。
     区切り行が無いものは表と見なさない。これが無いと、本文に `|` を含む
-    ただの文（`価格は 100 | 税込`）まで表として扱ってしまう。
+    ただの文（`価格は 100 | 税込`）や書きかけの 1 行目まで表として扱い、
+    隠すだけ隠して誰も描かない（ユーザー報告 2026-08-26）。
     """
+    return len(lines) >= 2 and any(_is_delimiter(entry) for entry in lines[1:])
+
+
+def find_table(lines: list[str], line: int) -> tuple[int, int] | None:
+    """`line` を含む表の範囲 `[開始, 終了)` を返す。表の中でなければ None。"""
     if not 0 <= line < len(lines) or not _is_row(lines[line]):
         return None
 
@@ -211,8 +218,7 @@ def find_table(lines: list[str], line: int) -> tuple[int, int] | None:
     while end < len(lines) and _is_row(lines[end]):
         end += 1
 
-    block = lines[start:end]
-    if len(block) < 2 or not any(_is_delimiter(entry) for entry in block[1:]):
+    if not is_table(lines[start:end]):
         return None
     return start, end
 

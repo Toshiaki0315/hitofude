@@ -207,3 +207,26 @@ class TestColumnAlignments:
         found = table.column_alignments(rows)
         assert len(found) == 3
         assert found[0] is table.Alignment.LEFT
+
+
+class TestIsTable:
+    """表の成立判定（ユーザー報告 2026-08-26: 書きかけの 1 行目が消える）。
+
+    区切り行が 2 行目以降に無ければ表ではない。判定は find_table と
+    描画側の隠蔽で共有する。
+    """
+
+    def test_ヘッダと区切り行で成立する(self) -> None:
+        assert table.is_table(["| a | b |", "| --- | --- |"])
+
+    def test_1行だけでは成立しない(self) -> None:
+        assert not table.is_table(["|aaa|bbb|ccc|"])
+
+    def test_区切り行が無ければ成立しない(self) -> None:
+        assert not table.is_table(["| a | b |", "| 1 | 2 |"])
+
+    def test_区切り行が先頭では成立しない(self) -> None:
+        assert not table.is_table(["|---|---|", "| a | b |"])
+
+    def test_区切り行だけでも成立しない(self) -> None:
+        assert not table.is_table(["|---|---|"])

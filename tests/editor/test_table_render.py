@@ -5,6 +5,7 @@
 """
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from hitofude.core.table import display_width
@@ -204,6 +205,43 @@ class TestGrid:
         editor.setPlainText("| これは表ではない |\n\n本文\n")
         move_to(editor, 2)
         assert DecorationKind.TABLE_RULE not in kinds(editor)
+
+
+class TestIncompleteTable:
+    """区切り行が来るまでは表として成立していない（ユーザー報告 2026-08-26）。
+
+    成立前の行を隠すと、painter は区切り行の無い並びを描かないため、
+    書きかけの 1 行目が丸ごと消える。成立するまでは生のまま見せる。
+    """
+
+    def test_書きかけの1行目は隠さない(self, editor) -> None:
+        editor.setPlainText("|aaa|bbb|ccc|\n\n本文\n")
+        move_to(editor, 2)
+        assert hidden_ranges(editor, 0) == [], "区切り行が無いのに隠している"
+
+    def test_区切り行が先頭でも表にしない(self, editor) -> None:
+        """ヘッダの無い並びは GFM でも表にならない。"""
+        editor.setPlainText("|---|---|\n|aaa|bbb|\n\n本文\n")
+        move_to(editor, 3)
+        assert hidden_ranges(editor, 0) == []
+        assert hidden_ranges(editor, 1) == []
+
+    def test_区切り行が揃えば隠して描く(self, editor) -> None:
+        editor.setPlainText("|aaa|bbb|ccc|\n|---|---|---|\n\n本文\n")
+        move_to(editor, 3)
+        assert hidden_ranges(editor, 0)
+        assert DecorationKind.TABLE_RULE in kinds(editor)
+
+    def test_打ちながら作っても1行目は消えない(self, editor, qtbot) -> None:
+        """ユーザーの再現手順そのまま: ヘッダ → Enter → 区切り行 → Enter。"""
+        editor.setPlainText("")
+        qtbot.keyClicks(editor, "|aaa|bbb|ccc|")
+        qtbot.keyClick(editor, Qt.Key.Key_Return)
+        assert hidden_ranges(editor, 0) == [], "ヘッダ行が一旦消える"
+        qtbot.keyClicks(editor, "|---|---|---|")
+        qtbot.keyClick(editor, Qt.Key.Key_Return)
+        assert hidden_ranges(editor, 0), "区切り行を確定しても表として組まれない"
+        assert DecorationKind.TABLE_RULE in kinds(editor)
 
 
 class TestHeaderStyle:
