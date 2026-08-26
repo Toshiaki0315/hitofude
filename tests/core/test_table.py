@@ -123,3 +123,24 @@ class TestForcedBreak:
         assert "| 上<br>下 | x" in fixed[2]
         # 見出し行の A の列は「上<br>下」の全長ぶん空く
         assert table.display_width(fixed[0].split("|")[1]) >= table.display_width(" 上<br>下 ")
+
+
+class TestTrailingBreak:
+    """末尾の `<br>` は空行を作らない（ユーザー報告 2026-08-25）。
+
+    `<td>dd<br></td>` をブラウザは空行にしない（行ボックスの規則）。
+    GitHub 互換の記法なので、見え方も合わせる。**中の空行は残す**
+    （`a<br><br>b` の真ん中の空行は書いた人の意図）。
+    """
+
+    def test_末尾のbrは無視する(self) -> None:
+        assert table.wrap_cell("dd<br>", 20) == ["dd"]
+
+    def test_末尾に連続していても無視する(self) -> None:
+        assert table.wrap_cell("dd<br><br>", 20) == ["dd"]
+
+    def test_中の空行は残す(self) -> None:
+        assert table.wrap_cell("a<br><br>b", 20) == ["a", "", "b"]
+
+    def test_先頭の空行も残す(self) -> None:
+        assert table.wrap_cell("<br>a", 20) == ["", "a"]

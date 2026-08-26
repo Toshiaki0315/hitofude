@@ -7,7 +7,7 @@
       [
         0,
         2,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         2,
@@ -48,7 +48,7 @@
       [
         3,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         5,
@@ -58,12 +58,12 @@
       [
         7,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         15,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         16,
@@ -73,12 +73,12 @@
       [
         18,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         25,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         27,
@@ -88,7 +88,7 @@
       [
         31,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ]
     ]
   },
@@ -106,7 +106,7 @@
       [
         11,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         13,
@@ -116,12 +116,12 @@
       [
         15,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         21,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         22,
@@ -131,12 +131,12 @@
       [
         24,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         29,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         31,
@@ -146,7 +146,7 @@
       [
         35,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ]
     ]
   },
@@ -164,7 +164,7 @@
       [
         11,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         13,
@@ -174,12 +174,12 @@
       [
         15,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         20,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         21,
@@ -189,17 +189,17 @@
       [
         23,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         27,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         34,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ]
     ]
   },
@@ -217,7 +217,7 @@
       [
         9,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         11,
@@ -227,7 +227,7 @@
       [
         16,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ]
     ]
   },
@@ -245,7 +245,7 @@
       [
         0,
         3,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         3,
@@ -309,7 +309,7 @@
       [
         0,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         1,
@@ -319,7 +319,7 @@
       [
         8,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ]
     ]
   },
@@ -343,7 +343,7 @@
       [
         28,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         29,
@@ -353,7 +353,7 @@
       [
         36,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ]
     ]
   },
@@ -371,7 +371,7 @@
       [
         0,
         3,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         3,
@@ -394,7 +394,7 @@
       [
         0,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         1,
@@ -404,7 +404,7 @@
       [
         2,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ]
     ]
   },
@@ -422,7 +422,7 @@
       [
         4,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         5,
@@ -432,7 +432,7 @@
       [
         9,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ]
     ]
   },
@@ -450,7 +450,7 @@
       [
         0,
         3,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         3,

@@ -261,7 +261,12 @@ def wrap_cell(text: str, width: int) -> list[str]:
     segments = split_forced(text)
     if len(segments) > 1:
         # `<br>` の位置で必ず折り、各断片をさらに幅で折り返す。
-        # 記号そのものは描かない（キャレットを入れた行では生で見える）
+        # 記号そのものは描かない（キャレットを入れた行では生で見える）。
+        # **末尾の空断片は落とす**（ユーザー報告 2026-08-25）。
+        # `dd<br>` をブラウザは空行にしない（行ボックスの規則）。
+        # 中と先頭の空行は書いた人の意図なので残す
+        while len(segments) > 1 and not segments[-1].strip():
+            segments.pop()
         found: list[str] = []
         for segment in segments:
             found.extend(wrap_cell(segment.strip(), width))

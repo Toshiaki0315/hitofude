@@ -41,7 +41,10 @@ def describe(fmt: QTextCharFormat) -> str:
     if fmt.background().style() != Qt.BrushStyle.NoBrush:
         tokens.append(f"bg:{fmt.background().color().name()}")
     if fmt.foreground().style() != Qt.BrushStyle.NoBrush:
-        tokens.append(f"fg:{fmt.foreground().color().name()}")
+        color = fmt.foreground().color()
+        # `name()` は alpha を落とすので、透明が黒（#000000）に化ける。
+        # 隠した文字の「描かない」判断がスナップショットで読めるようにする
+        tokens.append("fg:transparent" if color.alpha() == 0 else f"fg:{color.name()}")
     return "+".join(tokens) or "plain"
 
 

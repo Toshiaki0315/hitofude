@@ -7,7 +7,7 @@
       [
         0,
         2,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         2,
@@ -30,7 +30,7 @@
       [
         0,
         3,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         3,
@@ -107,7 +107,7 @@
       [
         0,
         3,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         3,
@@ -130,7 +130,7 @@
       [
         0,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         2,
@@ -140,7 +140,7 @@
       [
         8,
         1,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         9,
@@ -150,7 +150,7 @@
       [
         11,
         1,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         12,
@@ -160,7 +160,7 @@
       [
         16,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ]
     ]
   },
@@ -178,7 +178,7 @@
       [
         0,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         1,
@@ -188,7 +188,7 @@
       [
         7,
         2,
-        "hidden:0.5+italic"
+        "hidden:0.5+italic+fg:transparent"
       ],
       [
         9,
@@ -198,7 +198,7 @@
       [
         11,
         2,
-        "hidden:0.5+italic"
+        "hidden:0.5+italic+fg:transparent"
       ],
       [
         13,
@@ -208,7 +208,7 @@
       [
         17,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ]
     ]
   },
@@ -226,7 +226,7 @@
       [
         0,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         2,
@@ -236,7 +236,7 @@
       [
         8,
         1,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         9,
@@ -246,7 +246,7 @@
       [
         12,
         1,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         13,
@@ -256,7 +256,7 @@
       [
         17,
         2,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ]
     ]
   },
@@ -274,7 +274,7 @@
       [
         0,
         3,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         3,
@@ -297,7 +297,7 @@
       [
         0,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         1,
@@ -307,12 +307,12 @@
       [
         14,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         18,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         19,
@@ -322,12 +322,12 @@
       [
         29,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         33,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         34,
@@ -337,7 +337,7 @@
       [
         40,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ]
     ]
   },
@@ -355,12 +355,12 @@
       [
         0,
         10,
-        "hidden:0.5+mono+bg:#d8d8e0+fg:#3a3a3c"
+        "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
       ],
       [
         10,
         1,
-        "size:4.34783+fg:#000000"
+        "size:4.34783+fg:transparent"
       ]
     ]
   },
@@ -430,7 +430,7 @@
       [
         0,
         3,
-        "hidden:0.5+mono+bg:#d8d8e0+fg:#3a3a3c"
+        "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
       ]
     ]
   },
@@ -448,7 +448,7 @@
       [
         0,
         3,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         3,
@@ -471,12 +471,12 @@
       [
         0,
         2,
-        "hidden:0.5+mono+bg:#d8d8e0+fg:#3a3a3c"
+        "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
       ],
       [
         2,
         1,
-        "size:4.34783+fg:#000000"
+        "size:4.34783+fg:transparent"
       ]
     ]
   },
@@ -500,7 +500,7 @@
       [
         0,
         3,
-        "hidden:0.5+mono+bg:#d8d8e0+fg:#3a3a3c"
+        "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
       ]
     ]
   },
@@ -518,12 +518,12 @@
       [
         0,
         4,
-        "hidden:0.5+mono+bg:#d8d8e0+fg:#3a3a3c"
+        "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
       ],
       [
         4,
         1,
-        "size:4.34783+fg:#000000"
+        "size:4.34783+fg:transparent"
       ]
     ]
   },
@@ -557,7 +557,7 @@
       [
         0,
         3,
-        "hidden:0.5+mono+bg:#d8d8e0+fg:#3a3a3c"
+        "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
       ]
     ]
   },
@@ -575,12 +575,12 @@
       [
         0,
         2,
-        "hidden:0.5+mono+bg:#d8d8e0+fg:#3a3a3c"
+        "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
       ],
       [
         2,
         1,
-        "size:4.34783+fg:#000000"
+        "size:4.34783+fg:transparent"
       ]
     ]
   },
@@ -604,7 +604,7 @@
       [
         0,
         3,
-        "hidden:0.5+mono+bg:#d8d8e0+fg:#3a3a3c"
+        "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
       ]
     ]
   },
@@ -622,7 +622,7 @@
       [
         0,
         3,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         3,
@@ -663,7 +663,7 @@
       [
         0,
         3,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         3,
@@ -728,7 +728,7 @@
       [
         0,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ],
       [
         1,
@@ -738,7 +738,7 @@
       [
         5,
         1,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ]
     ]
   },
@@ -756,7 +756,7 @@
       [
         0,
         3,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         3,
@@ -779,7 +779,7 @@
       [
         0,
         1,
-        "hidden:0.5+bold+mono"
+        "hidden:0.5+bold+mono+fg:transparent"
       ],
       [
         1,
@@ -799,7 +799,7 @@
       [
         4,
         1,
-        "hidden:0.5+bold+mono"
+        "hidden:0.5+bold+mono+fg:transparent"
       ],
       [
         5,
@@ -819,7 +819,7 @@
       [
         8,
         1,
-        "hidden:0.5+bold+mono"
+        "hidden:0.5+bold+mono+fg:transparent"
       ]
     ]
   },
@@ -831,7 +831,7 @@
       [
         0,
         5,
-        "hidden:0.5+mono"
+        "hidden:0.5+mono+fg:transparent"
       ]
     ]
   },
@@ -843,7 +843,7 @@
       [
         0,
         1,
-        "hidden:0.5+mono"
+        "hidden:0.5+mono+fg:transparent"
       ],
       [
         1,
@@ -863,7 +863,7 @@
       [
         4,
         1,
-        "hidden:0.5+mono"
+        "hidden:0.5+mono+fg:transparent"
       ],
       [
         5,
@@ -883,7 +883,7 @@
       [
         8,
         1,
-        "hidden:0.5+mono"
+        "hidden:0.5+mono+fg:transparent"
       ],
       [
         9,
@@ -903,7 +903,7 @@
       [
         12,
         1,
-        "hidden:0.5+mono"
+        "hidden:0.5+mono+fg:transparent"
       ]
     ]
   },
@@ -921,7 +921,7 @@
       [
         0,
         3,
-        "hidden:0.5+bold"
+        "hidden:0.5+bold+fg:transparent"
       ],
       [
         3,
@@ -944,7 +944,7 @@
       [
         0,
         3,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ]
     ]
   },
@@ -980,7 +980,7 @@
       [
         0,
         3,
-        "hidden:0.5"
+        "hidden:0.5+fg:transparent"
       ]
     ]
   },

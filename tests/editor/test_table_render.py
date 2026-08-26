@@ -790,3 +790,28 @@ class TestForcedBreakInEditor:
         editor.setPlainText(self.NOTE)
         move_to(editor, 2)
         assert self.wrapped_of(editor, 2) is None  # 生の Markdown で編集できる
+
+
+class TestHiddenSourceIsInvisible:
+    """隠したソース文字列を描かせない（ユーザー報告 2026-08-25）。
+
+    0.5pt に潰しただけだと色が本文色のままで、潰れた文字がベースライン上に
+    **灰色のヘアライン**として残る。折り返し表示のセルの空き（末尾の
+    `<br>` や、高さの違うセルの下）で露出していた。
+    """
+
+    def test_隠した文字は透明(self, editor) -> None:
+        editor.setPlainText("| 項目 | 中身 |\n| --- | --- |\n| 上<br>下 | x |\n\n末尾\n")
+        move_to(editor, 4)
+        block = editor.document().findBlockByNumber(2)
+        # format ラッパは formats() のリストと寿命を共にする。リスト内包で
+        # 抜き出すと C++ 側が先に消える（PySide の所有権）ので、その場で見る
+        seen = 0
+        for piece in block.layout().formats():
+            if piece.format.fontPointSize() != pytest.approx(0.5):
+                continue
+            seen += 1
+            assert piece.format.foreground().color().alpha() == 0, (
+                "隠した文字に色が残っている（ベースラインにヘアラインが出る）"
+            )
+        assert seen, "隠し書式が無い"

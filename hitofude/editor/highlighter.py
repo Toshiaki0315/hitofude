@@ -1065,6 +1065,11 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         # フォントファミリは本文のまま、サイズだけ潰す。ファミリを変えると
         # 行の高さ計算が跳ねる（§3.3 の注意点）。
         merged.setFontPointSize(HIDDEN_POINT_SIZE)
+        # **色も消す**（ユーザー報告 2026-08-25）。0.5pt でも色が残ると、
+        # 潰れた文字がベースライン上に灰色のヘアラインとして描かれる。
+        # 折り返し表示のセルの空き（末尾の <br> や高さの違うセルの下）で
+        # 露出していた。文字は実在し続けるので R4 は無傷
+        merged.setForeground(QColor("transparent"))
         self.setFormat(start, length, merged)
 
     # ------------------------------------------------- 位置の単位変換（R4 の境界）
