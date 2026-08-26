@@ -5,17 +5,25 @@
 """
 
 import pytest
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QFontMetricsF
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QImage, QPainter
 from PySide6.QtWidgets import QApplication
 
 from hitofude.core.table import display_width
 from hitofude.editor.editor_widget import MarkdownEditor
-from hitofude.editor.painter_overlay import DecorationKind, visible_decorations
+from hitofude.editor.painter_overlay import (
+    Decoration,
+    DecorationKind,
+    paint,
+    paint_foreground,
+    visible_decorations,
+)
+from hitofude.theme import DARK, LIGHT
 
 pytestmark = pytest.mark.gui
 
 TABLE = "| 用語 | 解説 |\n|---|---|\n| クレート | Rust のパッケージ |\n| HAL | 橋渡し役 |\n\n本文\n"
+ZEBRA = "| 項目 | 値 |\n|---|---|\n| 一 | 1 |\n| 二 | 2 |\n| 三 | 3 |\n| 四 | 4 |\n\n本文\n"
 
 
 @pytest.fixture
@@ -243,6 +251,106 @@ class TestIncompleteTable:
         qtbot.keyClick(editor, Qt.Key.Key_Return)
         assert hidden_ranges(editor, 0), "区切り行を確定しても表として組まれない"
         assert DecorationKind.TABLE_RULE in kinds(editor)
+
+
+class TestZebra:
+    """本体の行は白→薄いグレーの繰り返し（ユーザー要望 2026-08-26）。"""
+
+    @staticmethod
+    def stripes(editor) -> list:
+        return [d for d in visible_decorations(editor) if d.kind is DecorationKind.TABLE_STRIPE]
+
+    @staticmethod
+    def row_top(editor, line: int) -> float:
+        """装飾と同じビューポート座標で行の上端を返す。"""
+        block = editor.document().findBlockByNumber(line)
+        return editor.blockBoundingGeometry(block).translated(editor.contentOffset()).top()
+
+    def test_本体の2行目と4行目に縞を敷く(self, editor) -> None:
+        editor.setPlainText(ZEBRA)
+        move_to(editor, 7)
+        tops = sorted(d.rect.top() for d in self.stripes(editor))
+        assert len(tops) == 2, "縞は偶数番目の本体行だけ"
+        assert tops[0] == pytest.approx(self.row_top(editor, 3), abs=2)
+        assert tops[1] == pytest.approx(self.row_top(editor, 5), abs=2)
+
+    def test_ヘッダと区切り行には敷かない(self, editor) -> None:
+        editor.setPlainText(TABLE)  # 本体 2 行 → 縞は 1 本
+        move_to(editor, 5)
+        assert len(self.stripes(editor)) == 1
+
+    def test_キャレットの行の縞は消える(self, editor) -> None:
+        """生の Markdown が見えている行に色を敷かない（リビールは行単位）。"""
+        editor.setPlainText(ZEBRA)
+        move_to(editor, 3)
+        tops = [d.rect.top() for d in self.stripes(editor)]
+        assert tops == [pytest.approx(self.row_top(editor, 5), abs=2)]
+
+    def test_キャレットが白い行にあっても縞はずれない(self, editor) -> None:
+        """交互は行の位置で数える。リビールで縞が引っ越すとちらつく。"""
+        editor.setPlainText(ZEBRA)
+        move_to(editor, 2)
+        tops = sorted(d.rect.top() for d in self.stripes(editor))
+        assert len(tops) == 2
+        assert tops[0] == pytest.approx(self.row_top(editor, 3), abs=2)
+
+
+class TestTableColors:
+    """ヘッダは濃い背景に白い文字（ユーザー要望 2026-08-26）。"""
+
+    @staticmethod
+    def fill_color(kind: DecorationKind, theme) -> str:
+        image = QImage(20, 20, QImage.Format.Format_RGB32)
+        image.fill(QColor("#123456"))
+        painter = QPainter(image)
+        paint(painter, [Decoration(kind, QRectF(0, 0, 20, 20))], theme)
+        painter.end()
+        return image.pixelColor(10, 10).name().upper()
+
+    def test_ヘッダの背景は専用の濃い色(self) -> None:
+        found = self.fill_color(DecorationKind.TABLE_HEADER, LIGHT)
+        assert found == LIGHT.table_header_background
+
+    def test_縞は専用の薄い色(self) -> None:
+        found = self.fill_color(DecorationKind.TABLE_STRIPE, LIGHT)
+        assert found == LIGHT.table_stripe_background
+
+    def test_ダークにも両方の色がある(self) -> None:
+        assert self.fill_color(DecorationKind.TABLE_HEADER, DARK) == DARK.table_header_background
+        assert self.fill_color(DecorationKind.TABLE_STRIPE, DARK) == DARK.table_stripe_background
+
+    def test_ヘッダの文字は専用の白系(self) -> None:
+        """全ベタのグリフ（█）を描けば、画素は塗り色そのものになる。"""
+        image = QImage(60, 30, QImage.Format.Format_RGB32)
+        image.fill(QColor("black"))
+        painter = QPainter(image)
+        font = QFont()
+        font.setPointSizeF(16)
+        paint_foreground(
+            painter,
+            [Decoration(DecorationKind.TABLE_TEXT_HEADER, QRectF(0, 0, 60, 30), "██")],
+            LIGHT,
+            font,
+        )
+        painter.end()
+        found = {image.pixelColor(x, 15).name().upper() for x in range(60)}
+        assert LIGHT.table_header_foreground in found
+
+    def test_本体の文字は本文色のまま(self) -> None:
+        image = QImage(60, 30, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        painter = QPainter(image)
+        font = QFont()
+        font.setPointSizeF(16)
+        paint_foreground(
+            painter,
+            [Decoration(DecorationKind.TABLE_TEXT, QRectF(0, 0, 60, 30), "██")],
+            LIGHT,
+            font,
+        )
+        painter.end()
+        found = {image.pixelColor(x, 15).name().upper() for x in range(60)}
+        assert LIGHT.foreground.upper() in found
 
 
 class TestHeaderFits:

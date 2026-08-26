@@ -69,6 +69,15 @@ class ThemeColors:
     note_alert_background: str
     """`:::note alert` の背景。薄い赤。"""
 
+    table_header_background: str
+    """表のヘッダ行の帯（ユーザー要望 2026-08-26）。濃い色に白抜き。"""
+
+    table_header_foreground: str
+    """ヘッダ行の文字色。濃い帯の上に乗るのでここだけ独立。"""
+
+    table_stripe_background: str
+    """表の本体の偶数行に敷く縞。地の色と交互に繰り返す。"""
+
 
 LIGHT = ThemeColors(
     is_dark=False,
@@ -103,6 +112,11 @@ LIGHT = ThemeColors(
     note_info_background="#E8F5E9",
     note_warn_background="#FFF8E1",
     note_alert_background="#FDECEC",
+    # 表のヘッダは濃い帯に白抜き、本体は白と薄いグレーの縞（ユーザー要望）。
+    # 帯はファイル名バッジより一段濃くして、行の幅いっぱいでも重くしすぎない
+    table_header_background="#55555E",
+    table_header_foreground="#FFFFFF",
+    table_stripe_background="#F2F2F5",
 )
 
 DARK = ThemeColors(
@@ -134,6 +148,10 @@ DARK = ThemeColors(
     note_info_background="#1E2B21",
     note_warn_background="#2E2913",
     note_alert_background="#33201F",
+    # ダークでは地より一段明るい帯。縞は地からわずかに持ち上げる
+    table_header_background="#45454E",
+    table_header_foreground="#F4F4F6",
+    table_stripe_background="#232327",
 )
 
 

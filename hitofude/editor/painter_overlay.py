@@ -150,7 +150,10 @@ class DecorationKind(Enum):
     """折り返した表のセルの中身（ADR-0017）。`text` に 1 行ぶんが入る。"""
 
     TABLE_TEXT_HEADER = auto()
-    """折り返した表のヘッダ行のセル。太字で描く。"""
+    """折り返した表のヘッダ行のセル。太字・白抜きで描く。"""
+
+    TABLE_STRIPE = auto()
+    """表の本体の偶数行に敷く縞（ユーザー要望 2026-08-26）。"""
 
     FOLD_MARKER = auto()
     """見出しの開閉三角（I-4 / ADR-0019）。状態は `text`（open / folded）。"""
@@ -339,7 +342,14 @@ def _wrapped_table(editor, run) -> list[Decoration]:
     result: list[Decoration] = []
     has_delimiter = any(delimiter for _rect, _wrapped, delimiter in rows)
     below_delimiter = False
+    body_count = 0
     for rect, wrapped, delimiter in rows:
+        # 縞は**行の位置**で数える（ユーザー要望 2026-08-26）。リビール中の
+        # 行も数に入れないと、キャレットの出入りで縞が引っ越してちらつく
+        striped = False
+        if below_delimiter and not delimiter:
+            body_count += 1
+            striped = body_count % 2 == 0
         if wrapped is None and not delimiter:
             continue  # キャレットの行。生の Markdown が見えている
 
@@ -350,6 +360,13 @@ def _wrapped_table(editor, run) -> list[Decoration]:
             result.append(
                 Decoration(
                     DecorationKind.TABLE_HEADER,
+                    QRectF(left, rect.top(), table_width, rect.height()),
+                )
+            )
+        if striped:
+            result.append(
+                Decoration(
+                    DecorationKind.TABLE_STRIPE,
                     QRectF(left, rect.top(), table_width, rect.height()),
                 )
             )
@@ -701,7 +718,9 @@ def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) 
             case DecorationKind.FIGURE_BACKGROUND:
                 painter.fillRect(decoration.rect, QColor(theme.figure_background))
             case DecorationKind.TABLE_HEADER:
-                painter.fillRect(decoration.rect, QColor(theme.code_background))
+                painter.fillRect(decoration.rect, QColor(theme.table_header_background))
+            case DecorationKind.TABLE_STRIPE:
+                painter.fillRect(decoration.rect, QColor(theme.table_stripe_background))
             case DecorationKind.TABLE_RULE:
                 painter.fillRect(decoration.rect, QColor(theme.rule))
             case DecorationKind.QUOTE_BAR:
@@ -785,13 +804,14 @@ def paint_foreground(
     ]
     if cells:
         painter.save()
-        # **本文と同じフォントで描く**（ADR-0029）。ヘッダだけ太字
+        # **本文と同じフォントで描く**（ADR-0029）。ヘッダだけ太字・白抜き
         body = QFont(font)
         bold = QFont(body)
         bold.setBold(True)
-        painter.setPen(QColor(theme.foreground))
         for decoration in cells:
-            painter.setFont(bold if decoration.kind is DecorationKind.TABLE_TEXT_HEADER else body)
+            header = decoration.kind is DecorationKind.TABLE_TEXT_HEADER
+            painter.setFont(bold if header else body)
+            painter.setPen(QColor(theme.table_header_foreground if header else theme.foreground))
             horizontal = {
                 Alignment.RIGHT: Qt.AlignmentFlag.AlignRight,
                 Alignment.CENTER: Qt.AlignmentFlag.AlignHCenter,
