@@ -121,7 +121,8 @@ prune_bundle の KEEP_FRAMEWORKS / KEEP_BINDINGS に入っている」検査を
 | | `make app` | `make app-lite` |
 |---|---|---|
 | できるもの | `dist/OboeGaki.app` | `dist/OboeGakiLite.app` |
-| Finder に出る名前 | 覚書 | 覚書（軽量版） |
+| Finder に出る名前 | 覚書 | 覚書Lite |
+| アイコン | `OboeGaki.icns` | `OboeGakiLite.icns`（右下に小さく `Lite`） |
 | 大きさ | 435 MB | **132 MB** |
 | Mermaid の図 | 出る | コードのまま出る（落ちない） |
 | 数式（$$） | 出る | **出る**（ziamath + QtSvg。WebEngine と無関係） |
@@ -131,6 +132,11 @@ prune_bundle の KEEP_FRAMEWORKS / KEEP_BINDINGS に入っている」検査を
 どちらか分からないと、軽いほうを配ってしまったり、Mermaid が出ない
 のを不具合と取り違えたりする。`CFBundleDisplayName` も変える——
 Finder が並べるのはそちらなので、ファイル名だけでは区別が付かない。
+**目印は 64px 未満には入れない。** 32px だと字の高さが 4px しか取れず、
+描いて見ると「Lite」ではなく右下の赤い滲みになる（実測）——見分けが
+付かないうえに絵が壊れて見える。Retina では 32pt の枠に 64px の絵が
+入るので、**いま出回っている Mac では 32pt から字が出る**。
+
 **バンドル ID は分けない**（`app.oboegaki.editor` のまま）。分けると
 QSettings の保存先も分かれ、軽量版で起動したときに設定も保管フォルダの
 記憶も別物になる。同じアプリの軽い作りであって、別のアプリではない。

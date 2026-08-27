@@ -68,10 +68,27 @@ class TestLiteBundle:
 
     def test_Finderでも見分けが付く(self) -> None:
         """**表示名も変える。** 同じだと Finder では区別できない。"""
-        full = self.names(lite=False)[1]
-        lite = self.names(lite=True)[1]
-        assert lite != full
-        assert APP_NAME in lite  # 「覚書」の仲間であることは残す
+        assert self.names(lite=False)[1] == APP_NAME
+        assert self.names(lite=True)[1] == "覚書Lite"
+
+    def test_絵も分ける(self) -> None:
+        """軽量版は右下に小さく `Lite` が入った `.icns`（ユーザー要望）。"""
+        import importlib
+        import sys
+
+        sys.path.insert(0, str(PROJECT_ROOT))
+        try:
+            module = importlib.import_module("setup")
+            assert module.icon_file(lite=False).name == "OboeGaki.icns"
+            assert module.icon_file(lite=True).name == "OboeGakiLite.icns"
+        finally:
+            sys.path.remove(str(PROJECT_ROOT))
+
+    def test_絵が両方そろっている(self) -> None:
+        """**片方だけ古いまま配らない。** `make icon` は 2 つとも作る。"""
+        resources = PROJECT_ROOT / "resources"
+        assert (resources / "OboeGaki.icns").is_file()
+        assert (resources / "OboeGakiLite.icns").is_file()
 
     def test_バンドルIDは分けない(self) -> None:
         """設定と保管フォルダの記憶を分断しない。"""

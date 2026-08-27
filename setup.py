@@ -44,6 +44,12 @@ def building_lite() -> bool:
     return os.environ.get(LITE_ENV) == "1"
 
 
+def icon_file(*, lite: bool) -> Path:
+    """使う `.icns`。軽量版は右下に小さく `Lite` が入った絵（ユーザー要望）。"""
+    name = "OboeGakiLite.icns" if lite else "OboeGaki.icns"
+    return ROOT / "resources" / name
+
+
 def bundle_names(*, lite: bool) -> tuple[str, str]:
     """`(.app の名前, Finder に出る名前)`（ユーザー要望 2026-08-28）。
 
@@ -55,7 +61,7 @@ def bundle_names(*, lite: bool) -> tuple[str, str]:
     別物になる。これは「同じアプリの軽い作り」であって別のアプリではない。
     """
     if lite:
-        return "OboeGakiLite", "覚書（軽量版）"
+        return "OboeGakiLite", "覚書Lite"
     return "OboeGaki", "覚書"
 
 
@@ -162,6 +168,7 @@ if __name__ == "__main__":
     name, display = bundle_names(lite=building_lite())
     OPTIONS["plist"]["CFBundleName"] = name
     OPTIONS["plist"]["CFBundleDisplayName"] = display
+    OPTIONS["iconfile"] = str(icon_file(lite=building_lite()))
 
     setup(
         name=name,
