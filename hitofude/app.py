@@ -706,7 +706,20 @@ class ThemeWatcher(QObject):
         self.changed.emit(colors)
 
 
-def acquire_vault_lock(managed_dir: Path) -> QLockFile | None:
+class NullLock:
+    """ロックを**置けなかった**ときの代わり（ADR-0030 / S-1）。
+
+    保管フォルダを開けないなら**守るものが無い**。中を読み書きできない
+    のだから、二重に開いても壊れるものがない。`None` は「別の窓が
+    持っている」の意味に取ってあるので、そちらと混ぜない——混ぜると
+    開いていないのに「別のウィンドウで開いています」と嘘をつく。
+    """
+
+    def unlock(self) -> None:
+        """何も持っていないので何もしない（`main` の `finally` が呼ぶ）。"""
+
+
+def acquire_vault_lock(managed_dir: Path) -> QLockFile | NullLock | None:
     """vault 単位の二重起動ロック（H-1 層 2 / spec §6.1）。
 
     同じ vault を 2 つのウィンドウで開くと、watcher が互いの保存に反応し、
@@ -718,13 +731,26 @@ def acquire_vault_lock(managed_dir: Path) -> QLockFile | None:
     残骸は QLockFile が PID の死活で自動回収する。時間による stale 判定は
     切る（アプリは何時間でも開きっぱなしになる）。
     """
-    # 改名の引っ越し（ADR-0032）を**フォルダを作る前に**通す。ここで先に
-    # 新フォルダを作ると ensure_layout の引っ越しが「両方ある」扱いになり、
-    # 履歴が旧側に取り残される（実機で発覚）
-    migrate_managed_dir(managed_dir.parent)
-    managed_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        # 改名の引っ越し（ADR-0032）を**フォルダを作る前に**通す。ここで先に
+        # 新フォルダを作ると ensure_layout の引っ越しが「両方ある」扱いになり、
+        # 履歴が旧側に取り残される（実機で発覚）
+        migrate_managed_dir(managed_dir.parent)
+        managed_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        # **ここで落ちない**（ADR-0030 / S-1）。macOS が書類フォルダへの
+        # 立ち入りを尋ねて断られると、ロックを置く前に例外が抜けて
+        # `MainWindow` に辿り着かなかった（`.app` では何も出ずに終わる）
+        logger.warning("ロックを置けない: %s", error)
+        return NullLock()
+
     lock = QLockFile(str(managed_dir / "instance.lock"))
     lock.setStaleLockTime(0)
-    if not lock.tryLock(0):
-        return None
-    return lock
+    if lock.tryLock(0):
+        return lock
+    if lock.error() == QLockFile.LockError.LockFailedError:
+        return None  # **本当に**別の窓が持っている
+    # 置けなかっただけ（読み取り専用の場所など）。開けない保管フォルダと
+    # 同じ扱いにする——**「別のウィンドウで開いています」は嘘になる**
+    logger.warning("ロックを取れない: %s", lock.error())
+    return NullLock()
