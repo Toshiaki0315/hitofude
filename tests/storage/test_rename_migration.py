@@ -6,6 +6,7 @@
 
 from pathlib import Path
 
+import pytest
 from PySide6.QtCore import QSettings
 
 from hitofude.config import Config, migrate_legacy_settings
@@ -150,3 +151,70 @@ class TestLockBeforeLayout:
 
         found = root / ".OboeGaki" / "history" / "keep.md"
         assert found.read_text(encoding="utf-8") == "v1"
+
+
+class TestCannotMove:
+    """**動かせなくても起動は止めない**（S-4 / ADR-0030 と同じ考え）。
+
+    `recovery_root()` は名前のとおり「場所を返す」顔をしているが、
+    改名（ADR-0032）でファイルシステムを書き換えるようになった。
+    `MainWindow` の組み立て（`SaveController`）から呼ばれるので、
+    ここで例外が抜けると**窓が 1 つも出ない**（実測）。
+
+    置き場を動かせなくても、**旧い置き場はそのまま使える**——
+    クラッシュ直後に読み出したい版はそこにある。
+    """
+
+    @pytest.fixture
+    def stuck(self, tmp_path):
+        import os
+        import stat
+
+        if os.geteuid() == 0:
+            pytest.skip("root は許可を無視して動かせてしまう")
+
+        support = tmp_path / "Library" / "Application Support"
+        old = support / "Hitofude" / "recovery" / "k"
+        old.mkdir(parents=True)
+        support.chmod(stat.S_IRUSR | stat.S_IXUSR)  # r-x。改名できない
+        yield tmp_path
+        support.chmod(stat.S_IRWXU)
+
+    def test_例外を上げない(self, stuck) -> None:
+        """**これが本題。** ここで抜けると窓が出ない。"""
+        autosave.recovery_root(Path("/v"), home=stuck)
+
+    def test_旧い置き場を使い続ける(self, stuck) -> None:
+        """動かせなくても、そこにある版は読める。"""
+        found = autosave.recovery_root(Path("/v"), home=stuck)
+        legacy = stuck / "Library" / "Application Support" / "Hitofude"
+        assert str(found).startswith(str(legacy))
+
+
+class TestUnreadableRecovery:
+    """退避の置き場が読めなくても起動する（S-4）。
+
+    `pending()` は `MainWindow.__init__` から `offer_recovery()` 経由で
+    呼ばれる。`Path.is_dir()` は 3.13 で**許可エラーを飲まない**ので、
+    置き場に立ち入れないと例外が抜けて**窓が 1 つも出ない**。
+
+    退避が読めないのは我慢できる（前回のクラッシュぶんを諦めるだけ）。
+    起動しないのは我慢できない（ADR-0030）。
+    """
+
+    @pytest.fixture
+    def unreadable(self, tmp_path):
+        import os
+        import stat
+
+        if os.geteuid() == 0:
+            pytest.skip("root は許可を無視して読めてしまう")
+
+        root = tmp_path / "recovery" / "k"
+        root.mkdir(parents=True)
+        root.parent.chmod(stat.S_IRUSR)  # r--。中へ立ち入れない
+        yield root
+        root.parent.chmod(stat.S_IRWXU)
+
+    def test_例外を上げない(self, unreadable) -> None:
+        assert autosave.pending(unreadable) == []

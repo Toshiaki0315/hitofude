@@ -11,6 +11,7 @@ macOS は書類フォルダへの立ち入りを尋ねる。**断ると読めな
 """
 
 import os
+import shutil
 import stat
 
 import pytest
@@ -168,5 +169,48 @@ class TestChoresAreNotOpening:
         try:
             assert window._vault_ready is False
             assert window.notice() == LOCKED_VAULT_NOTICE
+        finally:
+            window.close()
+
+
+class TestRecoveryPlaceIsNotOpening:
+    """退避の置き場が使えなくても窓は出る（S-4）。
+
+    保管フォルダとは別の場所（`~/Library/Application Support/`）の話。
+    `SaveController` が `MainWindow` の組み立て中に `recovery_root()` を
+    呼び、そこが改名（ADR-0032）でファイルシステムを書き換えるように
+    なった。**「場所を返す」顔をした関数が例外を上げる**ので、呼ぶ側は
+    身構えていない——抜けると窓が 1 つも出ない。
+    """
+
+    @pytest.fixture
+    def stuck(self, sandbox_home):
+        """旧名の置き場が在り、**改名できない**。"""
+        support = sandbox_home / "Library" / "Application Support"
+        support.mkdir(parents=True, exist_ok=True)
+        (support / "Hitofude").mkdir(exist_ok=True)
+        moved = support / "OboeGaki"
+        if moved.exists():
+            shutil.rmtree(moved)
+        support.chmod(stat.S_IRUSR | stat.S_IXUSR)  # r-x。改名できない
+        yield support
+        support.chmod(stat.S_IRWXU)
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root は許可を無視して動かせてしまう")
+    def test_窓は出る(self, config, qtbot, stuck) -> None:
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+        try:
+            assert window.isEnabled()
+        finally:
+            window.close()
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root は許可を無視して動かせてしまう")
+    def test_保管フォルダは開けている(self, config, qtbot, stuck) -> None:
+        """**別の場所の不調**なので、保管フォルダの見立てを曇らせない。"""
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+        try:
+            assert window._vault_ready is True
         finally:
             window.close()

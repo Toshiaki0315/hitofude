@@ -6,12 +6,15 @@ GUI 非依存（R3）。デバウンスは `QTimer` ではなく「いつ書く�
 """
 
 import hashlib
+import logging
 import os
 import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 DEBOUNCE_SECONDS = 0.8
 """spec §7.4: テキスト変更から 800ms 後に書く。"""
@@ -146,10 +149,19 @@ def recovery_root(vault_path: Path, home: Path | None = None) -> Path:
     # あるので、旧名の置き場が残っていれば新名へ改名して引き継ぐ
     legacy = support / LEGACY_APP_SUPPORT_NAME
     target = support / APP_SUPPORT_NAME
-    if legacy.is_dir() and not target.exists():
-        legacy.rename(target)
-    key = _key(vault_path)
-    return target / RECOVERY_DIRNAME / key
+    try:
+        if legacy.is_dir() and not target.exists():
+            legacy.rename(target)
+    except OSError as error:
+        # **動かせなくても起動を止めない**（S-4）。ここは `SaveController` を
+        # 通じて `MainWindow` の組み立てから呼ばれるので、例外が抜けると
+        # 窓が 1 つも出ない（実測）。ADR-0030 と同じ考え——退避が使えない
+        # のは我慢できるが、起動しないのは我慢できない
+        logger.warning("退避の置き場を引っ越せない: %s", error)
+        # 旧い置き場はそのまま使える。**クラッシュ直後に読み出したい版は
+        # そこにある**ので、動かせないなら動かさずに使い続ける
+        target = legacy
+    return target / RECOVERY_DIRNAME / _key(vault_path)
 
 
 def _key(note_path: Path) -> str:
@@ -175,11 +187,20 @@ def discard(root: Path, note_path: Path) -> None:
 
 def pending(root: Path) -> list[Stashed]:
     """起動時に拾う。壊れた退避は黙って飛ばす。"""
-    if not root.is_dir():
+    try:
+        if not root.is_dir():  # **ここも上げる**（3.13 は許可エラーを飲まない）
+            return []
+        sources = sorted(root.glob(f"*{SOURCE_SUFFIX}"))
+    except OSError as error:
+        # 立ち入れない置き場。ここは `MainWindow.__init__` から
+        # `offer_recovery()` 経由で呼ばれるので、抜けさせると**窓が 1 つも
+        # 出ない**（S-4）。退避を諦めるのは我慢できるが、起動しないのは
+        # 我慢できない（ADR-0030 / `history.prune` と同じ作法）
+        logger.warning("退避を読めません: %s", error)
         return []
 
     found: list[Stashed] = []
-    for source_file in sorted(root.glob(f"*{SOURCE_SUFFIX}")):
+    for source_file in sources:
         body = source_file.with_suffix(STASH_SUFFIX)
         if not body.is_file():
             continue
