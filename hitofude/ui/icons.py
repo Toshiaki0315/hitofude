@@ -113,6 +113,12 @@ class Glyph(Enum):
     TABLE = auto()
     """表。格子。**見出しの行を塗る**——本文での見え方に合わせる。"""
 
+    COPY = auto()
+    """写し。重なった 2 枚の紙（コードブロックのコピー。2026-08-27）。"""
+
+    CHECK = auto()
+    """チェック 1 本。コピーできた合図に一瞬出す。"""
+
 
 def glyph_icon(glyph: Glyph, color: str, *, filled: bool = False) -> QIcon:
     """線で描いたアイコン。同じ指定なら描き直さない。
@@ -361,6 +367,19 @@ def _draw_table(painter: QPainter) -> None:
     painter.drawLine(QPointF(32, frame.top()), QPointF(32, frame.bottom()))
 
 
+def _draw_copy(painter: QPainter) -> None:
+    """重なった 2 枚の紙。Qiita などのコピーの印と同じ構図。"""
+    painter.drawRoundedRect(QRectF(22, 22, 30, 32), 5, 5)
+    painter.drawPolyline(
+        [QPointF(16, 42), QPointF(12, 42), QPointF(12, 10), QPointF(42, 10), QPointF(42, 16)]
+    )
+
+
+def _draw_check(painter: QPainter) -> None:
+    """チェック 1 本。"""
+    painter.drawPolyline([QPointF(14, 34), QPointF(27, 47), QPointF(50, 18)])
+
+
 def _draw_quote(painter: QPainter) -> None:
     """縦線と行。本文での引用の見え方に合わせる。"""
     pen = painter.pen()
@@ -442,6 +461,8 @@ _DRAW = {
     Glyph.CHECKBOX: _draw_checkbox,
     Glyph.QUOTE: _draw_quote,
     Glyph.TABLE: _draw_table,
+    Glyph.COPY: _draw_copy,
+    Glyph.CHECK: _draw_check,
 }
 
 

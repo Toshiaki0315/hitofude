@@ -196,6 +196,9 @@ class MarkdownEditor(QPlainTextEdit):
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self.setFrameShape(QPlainTextEdit.Shape.NoFrame)
         self.setTabChangesFocus(False)
+        from hitofude.editor.code_copy import CodeCopyButton
+
+        self._code_copy = CodeCopyButton(self)
         # ボタンを押していない移動も受け取る。**これが無いと `mouseMoveEvent`
         # そのものが来ない**ので、ホバーの判定に一切入らない（G-2）
         self.viewport().setMouseTracking(True)
@@ -250,6 +253,7 @@ class MarkdownEditor(QPlainTextEdit):
         self._theme = theme
         self._apply_palette()
         self._mermaid.set_background(theme.figure_background)  # 図の下地もテーマに追従
+        self._code_copy.set_theme(theme)
         self._highlighter.set_theme(theme)
 
     def _apply_palette(self) -> None:
@@ -387,6 +391,11 @@ class MarkdownEditor(QPlainTextEdit):
         font.setFamily(family)
         self.setFont(font)
         self._apply_tab_width()  # 字幅が変わるとタブの文字数も変わる
+
+    @property
+    def code_copy(self):
+        """コードブロックのコピーの印（editor/code_copy.py）。"""
+        return self._code_copy
 
     def mono_family(self) -> str:
         """等幅フォント名。表のセルのコード片の描画・実測が使う（2026-08-26）。"""
@@ -1589,6 +1598,7 @@ class MarkdownEditor(QPlainTextEdit):
         """
         super().mouseMoveEvent(event)
         self._hover_point = event.position().toPoint()
+        self._code_copy.update(self._hover_point)  # コードのコピーの印（2026-08-27）
         self._update_hover(held=bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier))
 
     def _update_hover(self, *, held: bool) -> None:
