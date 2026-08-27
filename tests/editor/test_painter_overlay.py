@@ -877,11 +877,17 @@ class TestMarkOnFirstLine:
 
     @staticmethod
     def first_line_center(editor, line: int) -> float:
+        """1 行目の**文字の実寸**（ascent + descent）の中心。
+
+        行ボックス（line.height()）の中心にすると、行間が下側に付く
+        フォント（Hiragino Sans）で文字より下に見える（ユーザー報告
+        2026-08-27。帯と同じ理由）。
+        """
         block = editor.document().findBlockByNumber(line)
         geometry = editor.blockBoundingGeometry(block).translated(editor.contentOffset())
         first = block.layout().lineAt(0)
         assert block.layout().lineCount() >= 2, "前提: 折り返している"
-        return geometry.top() + first.y() + first.height() / 2
+        return geometry.top() + first.y() + (first.ascent() + first.descent()) / 2
 
     def test_点は1行目の高さ(self, editor) -> None:
         away(editor, "- " + "ながい文章がずっと続いて折り返します。" * 8)
@@ -892,3 +898,13 @@ class TestMarkOnFirstLine:
         away(editor, "- [ ] " + "ながい文章がずっと続いて折り返します。" * 8)
         box = of_kind(editor, DecorationKind.CHECKBOX)[0]
         assert box.rect.center().y() == pytest.approx(self.first_line_center(editor, 0), abs=2)
+
+    def test_行間ぶん下がらない(self, editor) -> None:
+        """行ボックスの中心より上に来る（leading は下側に付く）。"""
+        away(editor, "- " + "ながい文章がずっと続いて折り返します。" * 8)
+        dot = of_kind(editor, DecorationKind.BULLET)[0]
+        block = editor.document().findBlockByNumber(0)
+        geometry = editor.blockBoundingGeometry(block).translated(editor.contentOffset())
+        first = block.layout().lineAt(0)
+        box_center = geometry.top() + first.y() + first.height() / 2
+        assert dot.rect.center().y() < box_center - 1

@@ -664,16 +664,21 @@ def checkbox_rect(editor, block: QTextBlock, info, geometry: QRectF) -> QRectF |
 
 
 def _first_line(block: QTextBlock, geometry: QRectF) -> tuple[float, float]:
-    """ブロックの **1 行目**の上端と高さ。
+    """ブロックの **1 行目の文字の実寸**（上端と ascent + descent）。
 
     折り返した項目でブロック全体の高さから中央を出すと、点や箱が
     2 行目の横に浮く（ユーザー報告 2026-08-27）。記号は 1 行目の文字の
-    横に付くもの。レイアウトがまだ無ければブロック全体で代用する。
+    横に付くもの。
+
+    高さは行ボックス（line.height()）ではなく**文字の実寸**で返す。
+    行間（leading）が下側に付くフォント（Hiragino Sans）では、行ボックスの
+    中心は文字より下に見える（同日の続報。帯 INLINE_BAND と同じ理由）。
+    レイアウトがまだ無ければブロック全体で代用する。
     """
     layout = block.layout()
     if layout is not None and layout.lineCount() > 0:
         line = layout.lineAt(0)
-        return geometry.top() + line.y(), line.height()
+        return geometry.top() + line.y(), line.ascent() + line.descent()
     return geometry.top(), geometry.height()
 
 
