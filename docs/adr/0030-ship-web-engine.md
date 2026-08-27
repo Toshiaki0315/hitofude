@@ -118,6 +118,10 @@ prune_bundle の KEEP_FRAMEWORKS / KEEP_BINDINGS に入っている」検査を
 
 ユーザー要望で、Mermaid を使える版と使えない版を選べるようにした。
 
+**`make all` で両方を一度に作れる**（ユーザー要望 2026-08-28）。`app` と
+`app-lite` は先頭で `dist` ごと消すので、並べて呼ぶだけでは先に作ったほうが
+消える——`all` は最初に 1 回だけ消し、以後は `build` だけ消して積む。
+
 | | `make app` | `make app-lite` |
 |---|---|---|
 | できるもの | `dist/OboeGaki.app` | `dist/OboeGakiLite.app` |

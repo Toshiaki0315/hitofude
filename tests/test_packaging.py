@@ -203,3 +203,50 @@ class TestLiteVariant:
         frameworks, bindings = prune.keep_sets(lite=False)
         assert frameworks == prune.KEEP_FRAMEWORKS
         assert bindings == prune.KEEP_BINDINGS
+
+
+class TestMakefileTargets:
+    """`Makefile` と `setup.py` の名前が食い違わないこと。
+
+    バンドル名は**両方に出てくる**——`setup.py` が `.app` の名前を決め、
+    `Makefile` が `prune_bundle.py` にその道を渡す。片方だけ直すと、
+    削る相手が見つからずビルドがそこで止まる。
+
+    `make all` は通常版と軽量版を**一度に**作る（ユーザー要望 2026-08-28）。
+    `app` / `app-lite` は先頭で `dist` ごと消すので、並べて呼ぶだけでは
+    先に作ったほうが消える。
+    """
+
+    def makefile(self) -> str:
+        return (PROJECT_ROOT / "Makefile").read_text(encoding="utf-8")
+
+    def bundle_names(self) -> tuple[str, str]:
+        import importlib
+        import sys
+
+        sys.path.insert(0, str(PROJECT_ROOT))
+        try:
+            module = importlib.import_module("setup")
+            return module.bundle_names(lite=False)[0], module.bundle_names(lite=True)[0]
+        finally:
+            sys.path.remove(str(PROJECT_ROOT))
+
+    def test_allがある(self) -> None:
+        assert "\nall:" in self.makefile()
+
+    def test_allが両方作る(self) -> None:
+        full, lite = self.bundle_names()
+        body = self.makefile().split("\nall:")[1].split("\n\n")[0]
+        assert full in body
+        assert lite in body
+
+    def test_allはdistを途中で消さない(self) -> None:
+        """**2 つ目を作るときに 1 つ目を消さない。** `build` だけ消す。"""
+        body = self.makefile().split("\nall:")[1].split("\n\n")[0]
+        assert body.count("rm -rf build dist") <= 1
+
+    def test_名前がsetupと揃っている(self) -> None:
+        full, lite = self.bundle_names()
+        text = self.makefile()
+        assert f"dist/{full}.app" in text
+        assert f"dist/{lite}.app" in text

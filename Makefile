@@ -1,5 +1,6 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup run test test-fast cov bench fmt lint check clean ocr-tool
+.PHONY: help setup run test test-fast cov bench fmt lint check clean ocr-tool \
+	app app-lite all _bundle icon run-lite
 
 UV := uv
 
@@ -58,11 +59,18 @@ clean: ## キャッシュと成果物を削除
 # 開発用の venv はそのままに、ビルドだけ別インタプリタで走らせる。
 BUILD_PYTHON ?= /opt/homebrew/bin/python3.13
 
+# **組み立ての中身はここ 1 か所だけ。** app / app-lite / all が呼ぶ。
+# 通常版と軽量版の違いは合図（HITOFUDE_LITE）と削り方と名前だけなので、
+# 写しを作ると片方を直し忘れる
+_bundle:
+	rm -rf build
+	$(if $(LITE),HITOFUDE_LITE=1) $(UV) run --python $(BUILD_PYTHON) --with py2app --with setuptools python setup.py py2app
+	$(UV) run python scripts/prune_bundle.py $(if $(LITE),--lite) dist/$(NAME).app
+
 app: ## macOS アプリ（dist/OboeGaki.app）をビルド
 	rm -rf build dist
 	$(UV) run python scripts/make_icon.py
-	$(UV) run --python $(BUILD_PYTHON) --with py2app --with setuptools python setup.py py2app
-	$(UV) run python scripts/prune_bundle.py dist/OboeGaki.app
+	$(MAKE) _bundle NAME=OboeGaki
 	@echo "できました: dist/OboeGaki.app（署名はアドホック。配布には Developer ID が要る）"
 
 run-lite: ## 軽量版の動きをソースから試す（Mermaid はコードのまま出る）
@@ -71,9 +79,15 @@ run-lite: ## 軽量版の動きをソースから試す（Mermaid はコード�
 app-lite: ## 軽量版（dist/OboeGakiLite.app。Mermaid なし・数式は出る。約 130MB）
 	rm -rf build dist
 	$(UV) run python scripts/make_icon.py
-	HITOFUDE_LITE=1 $(UV) run --python $(BUILD_PYTHON) --with py2app --with setuptools python setup.py py2app
-	$(UV) run python scripts/prune_bundle.py --lite dist/OboeGakiLite.app
+	$(MAKE) _bundle NAME=OboeGakiLite LITE=1
 	@echo "できました: dist/OboeGakiLite.app（軽量版。Mermaid の図はコードのまま出ます）"
+
+all: ## 通常版と軽量版を一度に作る（dist に 2 つ並ぶ）
+	rm -rf build dist
+	$(UV) run python scripts/make_icon.py
+	$(MAKE) _bundle NAME=OboeGaki
+	$(MAKE) _bundle NAME=OboeGakiLite LITE=1
+	@echo "できました: dist/OboeGaki.app と dist/OboeGakiLite.app"
 
 icon: ## アプリアイコンを再生成
 	$(UV) run python scripts/make_icon.py
