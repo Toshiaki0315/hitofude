@@ -198,6 +198,7 @@ class MainWindow(QMainWindow):
             self._vault.managed_dir / "index.sqlite" if self._vault_ready else MEMORY_DB
         )
         self._note: Note | None = None
+        self._deferred_reload: Note | None = None
         self._loading = False
         self._opening = False
         self._filter: Filter = ALL
@@ -370,6 +371,7 @@ class MainWindow(QMainWindow):
         self._pane.toolbar.outline_toggled.connect(self.toggle_outline)
         self._pane.toolbar.table_requested.connect(self.insert_table)
         self._pane.favorite_toggled.connect(self._on_favorite_clicked)
+        self._editor.composition_ended.connect(self._on_composition_ended)
         self._pane.backlinks.note_activated.connect(self._on_backlink_opened)
         self._pane.backlinks.toggled.connect(self._remember_backlinks)
         self._pane.backlinks.set_expanded(self._config.backlinks_expanded)
@@ -974,7 +976,16 @@ class MainWindow(QMainWindow):
 
         カーソル位置は保つ。ノートを開くときと違い、**ユーザーは今そこを
         見ている**ので、先頭へ飛ばされると操作の流れが切れる。
+
+        **変換中は待たせる**（R6 / ユーザー報告 2026-08-27）。変換中に
+        setPlainText するとプリエディットが古い文書に取り残されて
+        描かれなくなる（未確定の文字が消えて見え、確定で現れる）。
+        自分の保存のエコーが抑制窓（1.5 秒）を超えて届いたときに
+        この経路へ入り得る。
         """
+        if self._editor.is_composing():
+            self._deferred_reload = note
+            return
         position = self._editor.textCursor().position()
         self._note = note
         self._loading = True
@@ -991,6 +1002,20 @@ class MainWindow(QMainWindow):
             self._loading = False
         self._debouncer.clear()
         self._pane.refresh_highlights()
+
+    def _on_composition_ended(self) -> None:
+        """変換が終わった。待たせていた読み直しがあれば裁く（R6）。
+
+        **確定で本文が変わっていたら捨てる。** 読み直すと打った文字を
+        失う。ずれはいつも通り、次の保存の競合裁きが引き受ける。
+        """
+        note = self._deferred_reload
+        self._deferred_reload = None
+        if note is None or self._note is None or self._note.path != note.path:
+            return
+        if self._editor.document().isModified():
+            return
+        self._reload_open_note(note)
 
     # ------------------------------------------------------------------ 編集
 

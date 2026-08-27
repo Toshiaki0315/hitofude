@@ -148,6 +148,10 @@ class MarkdownEditor(QPlainTextEdit):
     ので、片方で変えたらもう片方も追従させる。"""
 
     modes_changed = Signal()
+    composition_ended = Signal()
+    """IME の変換が終わった（確定または取り消し）。
+
+    変換中に控えた仕事（外部変更の読み直しなど）をここで流す（R6）。"""
     """書き方のモード（Raw / フォーカス / タイプライタ）が変わった。
 
     **何がどう変わったかは載せない。** 受け手（ステータスバー）は今の状態を
@@ -570,8 +574,13 @@ class MarkdownEditor(QPlainTextEdit):
             # 変換の開始位置を本文の中へ寄せる。変換中に動かすと
             # プリエディットが壊れるので、始まる前だけ
             self._guard_front_matter()
+        was_composing = self._composing
         self._composing = bool(event.preeditString())
         super().inputMethodEvent(event)
+        if was_composing and not self._composing:
+            # super() のあと = 確定文字が本文に入ったあと。受け手が
+            # isModified で「確定したか」を見られる順にする
+            self.composition_ended.emit()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key.Key_Control:
