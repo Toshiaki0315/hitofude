@@ -425,23 +425,23 @@ class TestVaultLock:
     def test_取れたらロックを返す(self, qapp, tmp_path) -> None:
         from hitofude.app import acquire_vault_lock
 
-        lock = acquire_vault_lock(tmp_path / ".hitofude")
+        lock = acquire_vault_lock(tmp_path / ".OboeGaki")
         assert lock is not None
         lock.unlock()
 
     def test_二重には取れない(self, qapp, tmp_path) -> None:
         from hitofude.app import acquire_vault_lock
 
-        first = acquire_vault_lock(tmp_path / ".hitofude")
-        assert acquire_vault_lock(tmp_path / ".hitofude") is None
+        first = acquire_vault_lock(tmp_path / ".OboeGaki")
+        assert acquire_vault_lock(tmp_path / ".OboeGaki") is None
         first.unlock()
 
     def test_解放すれば取り直せる(self, qapp, tmp_path) -> None:
         from hitofude.app import acquire_vault_lock
 
-        first = acquire_vault_lock(tmp_path / ".hitofude")
+        first = acquire_vault_lock(tmp_path / ".OboeGaki")
         first.unlock()
-        second = acquire_vault_lock(tmp_path / ".hitofude")
+        second = acquire_vault_lock(tmp_path / ".OboeGaki")
         assert second is not None
         second.unlock()
 

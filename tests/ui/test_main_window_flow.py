@@ -66,10 +66,10 @@ class TestLayout:
 class TestVaultSetup:
     def test_vaultが作られる(self, window, config) -> None:
         assert config.vault_path.is_dir()
-        assert (config.vault_path / ".hitofude").is_dir()
+        assert (config.vault_path / ".OboeGaki").is_dir()
 
     def test_索引ファイルが作られる(self, window, config) -> None:
-        assert (config.vault_path / ".hitofude" / "index.sqlite").is_file()
+        assert (config.vault_path / ".OboeGaki" / "index.sqlite").is_file()
 
     def test_既存のノートを読み込む(self, qtbot, config, tmp_path) -> None:
         vault_root = config.vault_path

@@ -43,7 +43,29 @@ MARKDOWN_SUFFIXES = (".md", ".markdown")
 ATTACHMENTS_DIR = "attachments"
 TEMPLATES_DIR = "templates"
 TRASH_DIR = ".trash"
-MANAGED_DIR = ".hitofude"
+MANAGED_DIR = ".OboeGaki"
+LEGACY_MANAGED_DIR = ".hitofude"
+"""旧名（改名 2026-08-27 / ADR-0032）。開くときに一度だけ改名して引き継ぐ。"""
+
+
+def migrate_managed_dir(root: Path) -> None:
+    """旧名 `.hitofude` を `.OboeGaki` へ改名して引き継ぐ（ADR-0032）。
+
+    索引は捨ててよいが、`history/` の版は作り直せない（ADR-0023）ので
+    **中身ごと連れて行く**。同一ボリューム内の rename 1 回で原子的。
+    両方あるとき（引っ越し済み）は新しい側が正で、旧側は触らない。
+
+    **管理フォルダに触るすべての入口がこれを先に通す**こと。起動は
+    ロック（app.acquire_vault_lock）が ensure_layout より先に管理フォルダを
+    作るため、ロック側が通さないと「両方ある」扱いになり履歴が旧側に
+    取り残される（実機で発覚）。
+    """
+    legacy = root / LEGACY_MANAGED_DIR
+    target = root / MANAGED_DIR
+    if legacy.is_dir() and not target.exists():
+        legacy.rename(target)
+
+
 DEFAULT_TRASH_DAYS = 30
 
 # 一時ファイルの拡張子。autosave が正で、こちらは名前を借りるだけ
@@ -54,7 +76,7 @@ TEMP_SWEEP_AGE_SECONDS = 3600.0
 # UNTITLED は core/document.py が持つ（タイトル導出のフォールバックと同じ値）。
 # ここからは import で再輸出している（既存の `vault.UNTITLED` 参照のため）
 
-MANUAL_TITLE = "Hitofude の使い方"
+MANUAL_TITLE = "覚書の使い方"
 MANUAL_RESOURCE = "manual.md"
 # 一度置いたら二度と置き直さない印。ユーザーが消したものを復活させない
 SEED_MARKER = "seeded"
@@ -187,6 +209,7 @@ class Vault:
     # ------------------------------------------------------------- レイアウト
 
     def ensure_layout(self) -> None:
+        migrate_managed_dir(self.root)
         for directory in (self.root, self.trash_dir, self.managed_dir, self.attachments_dir):
             directory.mkdir(parents=True, exist_ok=True)
 
@@ -209,7 +232,7 @@ class Vault:
     # ----------------------------------------------------------------- 走査
 
     def scan(self) -> Iterator[Path]:
-        """vault 内の `.md` を返す。`.trash` と `.hitofude` は除く。"""
+        """vault 内の `.md` を返す。`.trash` と管理フォルダは除く。"""
         if not self.root.is_dir():
             return
         yield from self._walk(self.root, frozenset({self.root.resolve()}))

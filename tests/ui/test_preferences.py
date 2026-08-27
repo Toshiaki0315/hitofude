@@ -997,7 +997,7 @@ class TestHistoryUsage:
 
         config = Config(QSettings(str(tmp_path / "t.ini"), QSettings.Format.IniFormat))
         config.vault_path = tmp_path / "Notes"
-        store = tmp_path / "Notes" / ".hitofude" / "history" / "01TEST"
+        store = tmp_path / "Notes" / ".OboeGaki" / "history" / "01TEST"
         for index in range(versions):
             store.mkdir(parents=True, exist_ok=True)
             (store / f"2026-08-2{index}T10-00-00.md").write_bytes(b"x" * size)

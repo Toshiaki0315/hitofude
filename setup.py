@@ -1,6 +1,6 @@
 """py2app による macOS アプリのビルド（spec §8.1）。
 
-    make app          # dist/Hitofude.app を作る
+    make app          # dist/OboeGaki.app を作る
 
 py2app を選んでいる理由（§8.1）: PyInstaller の `--onedir` ビルドには
 PySide6 の QtNetwork / QtSvg フレームワークの署名が不正になり公証に失敗する
@@ -70,7 +70,7 @@ OPTIONS = {
     # validation" で止まる（Pillow の liblzma で実際に踏んだ。341KB→184KB に
     # 削られて署名の領域が合わなくなる）。配布には署名が要るので削らない
     "strip": False,
-    "iconfile": str(ROOT / "resources" / "Hitofude.icns"),
+    "iconfile": str(ROOT / "resources" / "OboeGaki.icns"),
     "packages": [
         "PySide6",
         "shiboken6",
@@ -102,9 +102,9 @@ OPTIONS = {
     "includes": ["sqlite3", "mdurl"],
     "excludes": EXCLUDES,
     "plist": {
-        "CFBundleName": "Hitofude",
-        "CFBundleDisplayName": "Hitofude",
-        "CFBundleIdentifier": "app.hitofude.editor",
+        "CFBundleName": "OboeGaki",
+        "CFBundleDisplayName": "覚書",
+        "CFBundleIdentifier": "app.oboegaki.editor",
         "CFBundleShortVersionString": "0.1.0",
         "CFBundleVersion": "1",
         "LSMinimumSystemVersion": "13.0",
@@ -132,7 +132,7 @@ OPTIONS = {
 }
 
 setup(
-    name="Hitofude",
+    name="OboeGaki",
     app=APP,
     options={"py2app": OPTIONS},
     distclass=_Py2appDistribution,

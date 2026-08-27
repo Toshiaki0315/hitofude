@@ -1,6 +1,8 @@
-# CLAUDE.md — Hitofude 開発ガイド
+# CLAUDE.md — 覚書（OboeGaki）開発ガイド
 
-ライブプレビュー型 Markdown エディタ **Hitofude**（macOS 13+ / Python 3.12+ / PySide6）。
+ライブプレビュー型 Markdown エディタ **覚書（OboeGaki）**（旧名 Hitofude。macOS 13+ / Python 3.12+ / PySide6）。
+表示名は「覚書」、ファイル名・フォルダ名・ID 系は「OboeGaki」（ADR-0032）。
+Python パッケージ名 `hitofude` はユーザーに見えないので据え置き。
 
 このファイルは Claude Code がセッション開始時に必ず読む作業規約。
 **設計の根拠と詳細仕様は [docs/spec.md](docs/spec.md) にある**（節番号は仕様書のもの）。

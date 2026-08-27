@@ -4,7 +4,7 @@
 
 外部の画像編集ソフトを要らなくするため、Qt で描いて `iconutil` に渡す。
 デザインは「一筆」— 一本の筆致を表す弧を、紙色の角丸の上に置いただけのもの。
-差し替えたくなったら `resources/Hitofude.icns` を上書きすればよい。
+差し替えたくなったら `resources/OboeGaki.icns` を上書きすればよい。
 """
 
 import os
@@ -22,7 +22,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt  # noqa: E402
 from PySide6.QtGui import QColor, QImage, QPainter, QPainterPath, QPen  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-OUTPUT = ROOT / "resources" / "Hitofude.icns"
+OUTPUT = ROOT / "resources" / "OboeGaki.icns"
 # .icns に必要な解像度（Retina 用の @2x を含む）
 SIZES = [16, 32, 64, 128, 256, 512, 1024]
 

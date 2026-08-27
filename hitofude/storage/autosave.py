@@ -110,7 +110,7 @@ class Debouncer:
 # --------------------------------------------------------------------------
 # クラッシュリカバリ（spec §9 Phase 6）
 #
-# 未保存の内容を `~/Library/Application Support/Hitofude/recovery/` に退避する。
+# 未保存の内容を `~/Library/Application Support/OboeGaki/recovery/` に退避する。
 # 通常は 800ms で保存されるので出番は少ないが、保存できない状態（競合の未解決、
 # ディスクエラー）のまま落ちたときに書いたものを失わないための保険。
 #
@@ -118,7 +118,8 @@ class Debouncer:
 # 復元の仕組み自体が壊れても、Finder から中身を読んで手で救い出せる。
 # --------------------------------------------------------------------------
 
-APP_SUPPORT_NAME = "Hitofude"
+APP_SUPPORT_NAME = "OboeGaki"
+LEGACY_APP_SUPPORT_NAME = "Hitofude"
 RECOVERY_DIRNAME = "recovery"
 SOURCE_SUFFIX = ".source"
 STASH_SUFFIX = ".md"
@@ -140,8 +141,15 @@ def recovery_root(vault_path: Path, home: Path | None = None) -> Path:
     起動時に出てくると混乱する。vault のパスから作った鍵で分離する。
     """
     base = home if home is not None else Path.home()
+    support = base / "Library" / "Application Support"
+    # 改名の引っ越し（ADR-0032）。退避はクラッシュ直後の 1 回にだけ意味が
+    # あるので、旧名の置き場が残っていれば新名へ改名して引き継ぐ
+    legacy = support / LEGACY_APP_SUPPORT_NAME
+    target = support / APP_SUPPORT_NAME
+    if legacy.is_dir() and not target.exists():
+        legacy.rename(target)
     key = _key(vault_path)
-    return base / "Library" / "Application Support" / APP_SUPPORT_NAME / RECOVERY_DIRNAME / key
+    return target / RECOVERY_DIRNAME / key
 
 
 def _key(note_path: Path) -> str:

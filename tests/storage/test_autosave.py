@@ -140,7 +140,7 @@ class TestRecovery:
         from hitofude.storage.autosave import recovery_root
 
         got = recovery_root(Path("/vault"), home=tmp_path)
-        expected = tmp_path / "Library" / "Application Support" / "Hitofude" / "recovery"
+        expected = tmp_path / "Library" / "Application Support" / "OboeGaki" / "recovery"
         assert got.parent == expected
 
     def test_退避先はvaultごとに分かれる(self, tmp_path: Path) -> None:

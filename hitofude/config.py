@@ -15,6 +15,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QSettings
 
+from hitofude import LEGACY_ORG_DOMAIN, LEGACY_ORG_NAME
 from hitofude.core import graph, llm, ocr
 from hitofude.core.paths import relative_inside
 from hitofude.storage.history import DEFAULT_INTERVAL_MINUTES as DEFAULT_HISTORY_INTERVAL
@@ -63,7 +64,32 @@ CONTENT_WIDTH_PIXELS = {
     ContentWidth.FULL: 0,
 }
 
-DEFAULT_VAULT_NAME = "HitofudeNotes"
+DEFAULT_VAULT_NAME = "OboeGakiNotes"
+LEGACY_VAULT_NAME = "HitofudeNotes"
+"""旧の既定名（改名 2026-08-27 / ADR-0032）。在れば使い続ける。"""
+
+
+def migrate_legacy_settings(settings: QSettings, legacy: QSettings) -> bool:
+    """旧名（Hitofude）の設定を新しい保存先へ写す（初回だけ）。
+
+    改名（2026-08-27 / ADR-0032）で QSettings の保存先ドメインが変わった。
+    新しい側に何かあれば触らない——引っ越しは一方向・一度きりで、
+    以後は新しい側が正。旧側は消さない（旧版に戻しても壊れない）。
+
+    **fallback は切る。** macOS の QSettings は OS のグローバル既定
+    （AppleLanguages など）を混ぜて見せるため、切らないと「新しい側が
+    空」の判定が壊れ、Apple の鍵まで写してしまう（実機で確認）。
+    """
+    settings.setFallbacksEnabled(False)
+    legacy.setFallbacksEnabled(False)
+    if settings.allKeys() or not legacy.allKeys():
+        return False
+    for key in legacy.allKeys():
+        settings.setValue(key, legacy.value(key))
+    settings.sync()
+    return True
+
+
 DEFAULT_FONT_FAMILY = "Hiragino Sans"
 # `SF Mono` は macOS がアプリに公開していないので既定にできない（§5.2）
 DEFAULT_MONO_FAMILY = "Menlo"
@@ -123,8 +149,16 @@ _LLM_KEEP_ALIVE = "llm/keep_alive_minutes"
 
 
 class Config:
-    def __init__(self, settings: QSettings | None = None) -> None:
-        self.settings = settings if settings is not None else QSettings()
+    def __init__(self, settings: QSettings | None = None, *, home: Path | None = None) -> None:
+        if settings is None:
+            # 製品の経路だけ引っ越しを見る（テストは settings を渡してくる）。
+            # 改名（Hitofude → 覚書。2026-08-27）で QSettings の保存先が
+            # 変わった。初回だけ旧ドメインから写す
+            settings = QSettings()
+            migrate_legacy_settings(settings, QSettings(LEGACY_ORG_DOMAIN, LEGACY_ORG_NAME))
+        self.settings = settings
+        self._home = home if home is not None else Path.home()
+        """テストが差し替える。既定の保管フォルダの位置を決める。"""
 
     # -------------------------------------------------------- 読み方の共通形
     #
@@ -165,7 +199,15 @@ class Config:
         stored = self.settings.value(_VAULT, "", type=str)
         if stored:
             return Path(stored)
-        return Path.home() / "Documents" / DEFAULT_VAULT_NAME
+        # 既定値運用（パス未保存）の人を置き去りにしない（ADR-0032）。
+        # 旧の既定フォルダが在ればそれを使い続ける。**フォルダは動かさない**
+        # （iCloud / Dropbox の同期下にあり得る）。新しい既定が既にあるなら
+        # 引っ越し済みなのでそちらが正
+        documents = self._home / "Documents"
+        fallback = documents / LEGACY_VAULT_NAME
+        if not (documents / DEFAULT_VAULT_NAME).exists() and fallback.is_dir():
+            return fallback
+        return documents / DEFAULT_VAULT_NAME
 
     @vault_path.setter
     def vault_path(self, value: Path) -> None:

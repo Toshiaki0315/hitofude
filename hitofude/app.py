@@ -19,6 +19,7 @@ from PySide6.QtGui import QColor, QFont, QGuiApplication, QPalette
 from PySide6.QtWidgets import QApplication, QProxyStyle, QStyle, QToolTip, QWidget
 
 from hitofude import APP_NAME, ORG_DOMAIN, ORG_NAME, __version__
+from hitofude.storage.vault import migrate_managed_dir
 from hitofude.theme import ThemeColors, ThemeMode, colors_for
 
 logger = logging.getLogger(__name__)
@@ -713,10 +714,14 @@ def acquire_vault_lock(managed_dir: Path) -> QLockFile | None:
     **アプリが生きている間は参照を保持し続けること**（手放すと GC で
     ロックが外れる）。取れなければ None。
 
-    ロックは `.hitofude/` 内 = 捨ててよい（R9）。クラッシュの残骸は
-    QLockFile が PID の死活で自動回収する。時間による stale 判定は
+    ロックは管理フォルダ（`.OboeGaki/`）内 = 捨ててよい（R9）。クラッシュの
+    残骸は QLockFile が PID の死活で自動回収する。時間による stale 判定は
     切る（アプリは何時間でも開きっぱなしになる）。
     """
+    # 改名の引っ越し（ADR-0032）を**フォルダを作る前に**通す。ここで先に
+    # 新フォルダを作ると ensure_layout の引っ越しが「両方ある」扱いになり、
+    # 履歴が旧側に取り残される（実機で発覚）
+    migrate_managed_dir(managed_dir.parent)
     managed_dir.mkdir(parents=True, exist_ok=True)
     lock = QLockFile(str(managed_dir / "instance.lock"))
     lock.setStaleLockTime(0)

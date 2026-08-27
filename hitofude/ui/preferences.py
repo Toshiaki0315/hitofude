@@ -335,7 +335,7 @@ class PreferencesDialog(QDialog):
         # 窓が広がらない（中で横に流れる）
         self._vault_label = QLineEdit(self)
         self._vault_label.setFixedWidth(VAULT_LABEL_WIDTH)
-        self._vault_label.setPlaceholderText("~/Documents/HitofudeNotes")
+        self._vault_label.setPlaceholderText("~/Documents/OboeGakiNotes")
         self._vault_label.textChanged.connect(self._on_vault_typed)
         self._show_vault(config.vault_path)
         self._vault_button = QPushButton("変更…", self)
