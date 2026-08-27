@@ -341,7 +341,7 @@ def _size(path: Path) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("app", type=Path, help="アプリバンドル（dist/Hitofude.app）")
+    parser.add_argument("app", type=Path, help="アプリバンドル（dist/OboeGaki.app）")
     parser.add_argument(
         "--lite",
         action="store_true",

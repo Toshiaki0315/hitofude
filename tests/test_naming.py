@@ -8,7 +8,7 @@ from hitofude import APP_NAME, LEGACY_ORG_DOMAIN, ORG_DOMAIN, ORG_NAME
 from hitofude.config import DEFAULT_VAULT_NAME
 from hitofude.storage.autosave import APP_SUPPORT_NAME
 from hitofude.storage.vault import LEGACY_MANAGED_DIR, MANAGED_DIR, MANUAL_TITLE
-from tests.test_packaging import _setup_options
+from tests.test_packaging import PROJECT_ROOT, _setup_options
 
 
 class TestNames:
@@ -35,3 +35,45 @@ class TestNames:
         assert options["plist"]["CFBundleIdentifier"] == ORG_DOMAIN
         assert options["plist"]["CFBundleName"] == "OboeGaki"
         assert options["plist"]["CFBundleDisplayName"] == APP_NAME
+
+
+class TestLiteBundle:
+    """軽量版は `OboeGakiLite.app`（ユーザー要望 2026-08-28）。
+
+    **ファイル名を変えるだけでは足りない。** Finder が並べるのは
+    `CFBundleDisplayName` なので、そこが「覚書」のままだと**どちらの
+    `.app` も同じ名前に見える**——区別を付けたいという目的を果たさない。
+
+    **バンドル ID は変えない。** 分けると QSettings の保存先も分かれ、
+    軽量版で起動したときに設定も保管フォルダの記憶も別物になる。
+    これは「同じアプリの軽い作り」であって、別のアプリではない。
+    """
+
+    def names(self, *, lite: bool):
+        import importlib
+        import sys
+
+        sys.path.insert(0, str(PROJECT_ROOT))
+        try:
+            module = importlib.import_module("setup")
+            return module.bundle_names(lite=lite)
+        finally:
+            sys.path.remove(str(PROJECT_ROOT))
+
+    def test_通常版は今までどおり(self) -> None:
+        assert self.names(lite=False) == ("OboeGaki", "覚書")
+
+    def test_軽量版はLiteが付く(self) -> None:
+        assert self.names(lite=True)[0] == "OboeGakiLite"
+
+    def test_Finderでも見分けが付く(self) -> None:
+        """**表示名も変える。** 同じだと Finder では区別できない。"""
+        full = self.names(lite=False)[1]
+        lite = self.names(lite=True)[1]
+        assert lite != full
+        assert APP_NAME in lite  # 「覚書」の仲間であることは残す
+
+    def test_バンドルIDは分けない(self) -> None:
+        """設定と保管フォルダの記憶を分断しない。"""
+        options = _setup_options()["OPTIONS"]
+        assert options["plist"]["CFBundleIdentifier"] == ORG_DOMAIN

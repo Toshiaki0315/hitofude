@@ -68,12 +68,12 @@ app: ## macOS アプリ（dist/OboeGaki.app）をビルド
 run-lite: ## 軽量版の動きをソースから試す（Mermaid はコードのまま出る）
 	HITOFUDE_LITE=1 $(UV) run python -m hitofude
 
-app-lite: ## 軽量版（Mermaid なし・数式は出る。約 130MB）
+app-lite: ## 軽量版（dist/OboeGakiLite.app。Mermaid なし・数式は出る。約 130MB）
 	rm -rf build dist
 	$(UV) run python scripts/make_icon.py
-	$(UV) run --python $(BUILD_PYTHON) --with py2app --with setuptools python setup.py py2app
-	$(UV) run python scripts/prune_bundle.py --lite dist/OboeGaki.app
-	@echo "できました: dist/OboeGaki.app（軽量版。Mermaid の図はコードのまま出ます）"
+	HITOFUDE_LITE=1 $(UV) run --python $(BUILD_PYTHON) --with py2app --with setuptools python setup.py py2app
+	$(UV) run python scripts/prune_bundle.py --lite dist/OboeGakiLite.app
+	@echo "できました: dist/OboeGakiLite.app（軽量版。Mermaid の図はコードのまま出ます）"
 
 icon: ## アプリアイコンを再生成
 	$(UV) run python scripts/make_icon.py

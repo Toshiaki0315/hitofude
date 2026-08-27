@@ -235,7 +235,7 @@ NG は直す前に回帰テストを書く（CLAUDE.md §1）。
 | [ ] | **ビルドしたら必ず一度起動する**             | 起動して編集・保存できる。**包み方のずれはここでしか出ない**（ADR-0030 で 3 つ踏んだ） |
 | [ ] | `.app` で Mermaid のノートを開く             | 図が出る（Chromium を同梱している。ADR-0030）      |
 | [ ] | `.app` で数式（`$$`）のノートを開く          | 組版される（`ziamath` のフォントが入っている）     |
-| [ ] | `make app-lite` で組んで起動する             | 起動する。数式は出る・Mermaid はコードのまま（ADR-0030） |
+| [ ] | `make app-lite` で組んで起動する             | `dist/OboeGakiLite.app` ができる（Finder では「覚書（軽量版）」）。起動する。数式は出る・Mermaid はコードのまま（ADR-0030） |
 | [x] | `~/Documents` へのアクセス許可を求められる   | 許可すると保管フォルダが作られる                   |
 | [ ] | 署名 → 公証 → DMG（Developer ID 取得後）   | `spctl -a -vvv -t exec` が accepted                |
 | [ ] | **クリーンな macOS** に DMG からインストール | Gatekeeper の警告なしに起動する                    |

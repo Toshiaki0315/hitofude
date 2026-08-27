@@ -1,6 +1,7 @@
 """py2app による macOS アプリのビルド（spec §8.1）。
 
     make app          # dist/OboeGaki.app を作る
+    make app-lite     # dist/OboeGakiLite.app（Mermaid なし）
 
 py2app を選んでいる理由（§8.1）: PyInstaller の `--onedir` ビルドには
 PySide6 の QtNetwork / QtSvg フレームワークの署名が不正になり公証に失敗する
@@ -12,6 +13,7 @@ PySide6 の QtNetwork / QtSvg フレームワークの署名が不正になり�
 止められる。
 """
 
+import os
 from pathlib import Path
 
 from setuptools import setup
@@ -32,6 +34,29 @@ class _Py2appDistribution(Distribution):
     def parse_config_files(self, *args: object, **kwargs: object) -> None:
         super().parse_config_files(*args, **kwargs)
         self.install_requires = []
+
+
+LITE_ENV = "HITOFUDE_LITE"
+"""軽量版として組むかどうかの合図（`make run-lite` と同じ名前を使う）。"""
+
+
+def building_lite() -> bool:
+    return os.environ.get(LITE_ENV) == "1"
+
+
+def bundle_names(*, lite: bool) -> tuple[str, str]:
+    """`(.app の名前, Finder に出る名前)`（ユーザー要望 2026-08-28）。
+
+    **表示名も変える。** Finder が並べるのは `CFBundleDisplayName` なので、
+    ファイル名だけ変えても**どちらも「覚書」に見えて区別が付かない**。
+
+    **バンドル ID は分けない**（呼ぶ側で固定）。分けると QSettings の
+    保存先も分かれ、軽量版で起動したときに設定も保管フォルダの記憶も
+    別物になる。これは「同じアプリの軽い作り」であって別のアプリではない。
+    """
+    if lite:
+        return "OboeGakiLite", "覚書（軽量版）"
+    return "OboeGaki", "覚書"
 
 
 APP = ["hitofude/__main__.py"]
@@ -131,9 +156,16 @@ OPTIONS = {
     },
 }
 
-setup(
-    name="OboeGaki",
-    app=APP,
-    options={"py2app": OPTIONS},
-    distclass=_Py2appDistribution,
-)
+if __name__ == "__main__":
+    # **軽量版だけ名前を差し替える。** ここより上は素の値のままにしておく
+    # （`tests/test_packaging.py` が AST で literal を読むため）
+    name, display = bundle_names(lite=building_lite())
+    OPTIONS["plist"]["CFBundleName"] = name
+    OPTIONS["plist"]["CFBundleDisplayName"] = display
+
+    setup(
+        name=name,
+        app=APP,
+        options={"py2app": OPTIONS},
+        distclass=_Py2appDistribution,
+    )

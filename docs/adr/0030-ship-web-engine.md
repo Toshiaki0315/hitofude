@@ -120,10 +120,20 @@ prune_bundle の KEEP_FRAMEWORKS / KEEP_BINDINGS に入っている」検査を
 
 | | `make app` | `make app-lite` |
 |---|---|---|
+| できるもの | `dist/OboeGaki.app` | `dist/OboeGakiLite.app` |
+| Finder に出る名前 | 覚書 | 覚書（軽量版） |
 | 大きさ | 435 MB | **132 MB** |
 | Mermaid の図 | 出る | コードのまま出る（落ちない） |
 | 数式（$$） | 出る | **出る**（ziamath + QtSvg。WebEngine と無関係） |
 | PDF 取り込み・書き出し・他の機能 | すべて同じ | すべて同じ |
+
+**名前を分ける**（ユーザー要望 2026-08-28）。同じ `dist/` に置いたとき
+どちらか分からないと、軽いほうを配ってしまったり、Mermaid が出ない
+のを不具合と取り違えたりする。`CFBundleDisplayName` も変える——
+Finder が並べるのはそちらなので、ファイル名だけでは区別が付かない。
+**バンドル ID は分けない**（`app.oboegaki.editor` のまま）。分けると
+QSettings の保存先も分かれ、軽量版で起動したときに設定も保管フォルダの
+記憶も別物になる。同じアプリの軽い作りであって、別のアプリではない。
 
 軽量版は `prune_bundle.py --lite` が WebEngine（Chromium）ごと削る。
 アプリ側は本文の「無いなら諦める」設計（この ADR の
