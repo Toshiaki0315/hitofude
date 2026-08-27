@@ -6,7 +6,7 @@ HitofudeNotes/
 ├── attachments/         ← 画像等
 ├── templates/           ← 雛形（E-4）。ノートとしては読まない
 ├── .trash/              ← 削除したノート（既定 30 日で自動消去）
-└── .hitofude/           ← アプリの管理領域（index.sqlite）
+└── .OboeGaki/          ← アプリの管理領域（index.sqlite）
 ```
 
 **フォルダ階層で分類しない。** 分類はタグで行う（§7.1）。ユーザーが手で
@@ -658,7 +658,7 @@ class Vault:
         **`_inside()` とは別物。** あちらは走査中のリンクを辿るかどうかの
         判定（真偽）で、こちらは書き込み先の受け取り（駄目なら止める）。
 
-        予約フォルダ（.trash / .hitofude / templates / attachments）も
+        予約フォルダ（.trash / .OboeGaki / templates / attachments）も
         弾く（コードレビュー指摘）。生きたノートがそこへ入ると、走査
         （scan）から見えない迷子になる。
         """
@@ -911,7 +911,7 @@ class Vault:
     def seed_manual(self) -> Note | None:
         """初回だけ使い方ノートを置く。置いたノートを返す。置かなければ None。
 
-        条件は「vault が空」かつ「まだ置いたことがない」。印を `.hitofude` に
+        条件は「vault が空」かつ「まだ置いたことがない」。印を管理フォルダに
         残すのは、**ユーザーが消したマニュアルを起動のたびに復活させない**ため。
         印は消えてもよい（R9 と同じ扱い。最悪もう一度置かれるだけ）。
         """

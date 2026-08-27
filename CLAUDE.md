@@ -158,12 +158,16 @@ uv sync --dry-run
 markdown-it のインライントークンは `map=None` で文字オフセットを持たないため、
 `highlightBlock()` からは使えない。この分担は妥協ではなく必然。
 
-### R9. `.hitofude/index.sqlite` は捨ててよいキャッシュ（§7.1）
+### R9. `.OboeGaki/index.sqlite` は捨ててよいキャッシュ（§7.1）
 
 削除しても `.md` から完全再構築できること。真実は常にファイル側にある。
 
-**捨ててよいのは索引だけ**（ADR-0023）。`.hitofude/history/` の版は
-`.md` から作り直せない。`.hitofude` ごと消すと履歴も失う。
+**捨ててよいのは索引だけ**（ADR-0023）。`.OboeGaki/history/` の版は
+`.md` から作り直せない。`.OboeGaki` ごと消すと履歴も失う。
+
+管理フォルダは改名で `.hitofude` → `.OboeGaki` になった（ADR-0032）。
+**旧名は開くときに一度だけ改名して引き継ぐ**ので、`.hitofude` を
+見に行くコードを新しく書かないこと（`vault.migrate_managed_dir`）。
 
 ---
 

@@ -123,7 +123,7 @@ def classify_event(
 ) -> tuple[ChangeKind, Path] | None:
     """watchdog のイベントを扱うべき変更に翻訳する。対象外なら None。
 
-    落とすもの: ディレクトリ、`.md` 以外、`.trash` / `.hitofude` /
+    落とすもの: ディレクトリ、`.md` 以外、`.trash` / 管理フォルダ /
     `attachments` の中、vault の外、そして `save_atomic` が作る `.md.tmp`。
     最後のひとつを落とし忘れると、自分の保存が毎回「新しいファイルの作成」
     として見えてしまう。

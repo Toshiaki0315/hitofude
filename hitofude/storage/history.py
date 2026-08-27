@@ -54,7 +54,7 @@ _STAMP_RE = re.compile(r"\A\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}")
 
 
 def store_root(managed_dir: Path) -> Path:
-    """版の置き場（`.hitofude/history`）。名前はここが唯一の出所。
+    """版の置き場（`.OboeGaki/history`）。名前はここが唯一の出所。
 
     使う側が 2 ついる——保存の道（HistoryActions）と、使用量の表示
     （設定画面）。別々に組み立てると、名前を変えたときに片方だけ

@@ -25,7 +25,7 @@ class HistoryActions:
         self._window = window
 
     def root(self) -> Path:
-        """版の置き場（ADR-0023）。`.hitofude` の中で、一覧にも検索にも出ない。"""
+        """版の置き場（ADR-0023）。管理フォルダの中で、一覧にも検索にも出ない。"""
         return history.store_root(self._window._vault.managed_dir)
 
     def prune(self) -> None:

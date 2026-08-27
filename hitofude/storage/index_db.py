@@ -265,7 +265,7 @@ class IndexDb:
         表を作り直せば、開いたままの接続からも新しい中身が見える。
 
         **捨てるのは索引だけ**（R9 / ADR-0023）。`.md` も
-        `.hitofude/history/` も触らない。
+        `.OboeGaki/history/` も触らない。
         """
         self._rebuild_schema()
         return self.sync(vault)
@@ -951,7 +951,7 @@ def _to_hit(row: sqlite3.Row) -> SearchHit:
 def rebuild(db_path: Path, vault) -> SyncResult:
     """索引を作り直す（R9 の担保）。
 
-    `.hitofude/index.sqlite` を消しても `.md` から完全に復元できることを、
+    `.OboeGaki/index.sqlite` を消しても `.md` から完全に復元できることを、
     この関数の存在と回帰テストで保証する。
     """
     db_path.unlink(missing_ok=True)

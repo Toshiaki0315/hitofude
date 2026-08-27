@@ -1,6 +1,9 @@
 # ライブプレビュー型 Markdownエディタ 仕様書
 
-**プロジェクト名（仮）**: `Hitofude`
+**プロジェクト名**: `覚書`（OboeGaki）
+> 旧名は `Hitofude`。表示名・ファイル名・ID 系の対応は [ADR-0032](adr/0032-rename-to-oboegaki.md)。
+> Python パッケージ名 `hitofude` だけはユーザーに見えないので据え置き。
+
 **対象OS**: macOS 13 Ventura 以降（Apple Silicon。~~Intel~~ → **ADR-0012 で対象外**）
 **開発言語**: Python 3.12+
 **GUIフレームワーク**: PySide6（Qt 6.8 LTS 系 / 6.9系）
@@ -667,10 +670,10 @@ def scan(text: str) -> list[InlineSpan]:
 
 ### 7.1 ディレクトリ構成（vault）
 
-ユーザーが「保管フォルダ（vault）」を 1 つ選ぶ。既定は `~/Documents/HitofudeNotes`。
+ユーザーが「保管フォルダ（vault）」を 1 つ選ぶ。既定は `~/Documents/OboeGakiNotes`。
 
 ```
-HitofudeNotes/
+OboeGakiNotes/
 ├── 2026-08-07-会議メモ.md          ← ノートは vault 直下のフラット構成
 ├── 読書メモ.md
 ├── attachments/                    ← 画像等の添付
@@ -679,20 +682,20 @@ HitofudeNotes/
 │   └── 議事録.md
 ├── .trash/                         ← 削除したノート（30 日後に自動消去。K-5 で階層を保つ）
 │   └── 仕事/古いメモ.md
-└── .hitofude/                          ← アプリの管理領域（ユーザーは触らない）
+└── .OboeGaki/                          ← アプリの管理領域（ユーザーは触らない）
     ├── index.sqlite                ← 検索インデックス（キャッシュ。消えても再構築可能）
     ├── index.sqlite-wal
     └── history/                    ← 版の履歴（ADR-0023）。**これは作り直せない**
         └── 01J.../2026-08-20T10-00-00.md
 ```
 
-> **`.hitofude` ごと消してよいのは索引だけ**（R9 / ADR-0023）。`history/` の
+> **`.OboeGaki` ごと消してよいのは索引だけ**（R9 / ADR-0023）。`history/` の
 > 版は `.md` から作り直せない。
 
 **設計判断**:
 
 - **フォルダ階層で分類しない**。分類はタグで行う（タグベースのノートアプリと同じ方針）。ユーザーが手でサブフォルダを作った場合は再帰的に読み込む。アプリからもフォルダを作れる（[ADR-0024](adr/0024-folders.md) と追記 1。サイドバーの右クリック「新しいフォルダ…」と「フォルダへ移動…」の両方から。当初は「作らせない」だった）。空になったフォルダは残す（追記 2）。
-- **`.hitofude/index.sqlite` は完全なキャッシュ**。削除しても `.md` から全再構築できること。真実は常にファイル側にある。これが G3 の担保。
+- **`.OboeGaki/index.sqlite` は完全なキャッシュ**。削除しても `.md` から全再構築できること。真実は常にファイル側にある。これが G3 の担保。
 - ファイル名は `sanitize(タイトル) + .md`。重複時は `-2`, `-3` を付与。タイトル変更時はファイルをリネームする（旧名は `.trash` に残さない）。UI の「名前を変更」がどちらを変えるかは **ADR-0005 で補足**。
 
 ### 7.2 ノートファイルの形式
@@ -851,7 +854,7 @@ from setuptools import setup
 APP = ["hitofude/__main__.py"]
 OPTIONS = {
     "argv_emulation": False,  # True にすると Carbon 依存で Apple Silicon で問題が出る
-    "iconfile": "resources/Hitofude.icns",
+    "iconfile": "resources/OboeGaki.icns",
     "packages": ["PySide6", "markdown_it", "yaml", "watchdog"],
     "includes": ["sqlite3"],
     "excludes": [  # バンドルサイズ削減。PySide6 は巨大なので必須
@@ -869,8 +872,9 @@ OPTIONS = {
         "unittest",
     ],
     "plist": {
-        "CFBundleName": "Hitofude",
-        "CFBundleIdentifier": "app.hitofude.editor",
+        "CFBundleName": "OboeGaki",
+        "CFBundleDisplayName": "覚書",
+        "CFBundleIdentifier": "app.OboeGaki.editor",
         "CFBundleShortVersionString": "1.0.0",
         "CFBundleVersion": "1",
         "LSMinimumSystemVersion": "13.0",
@@ -913,13 +917,13 @@ setup(app=APP, options={"py2app": OPTIONS}, setup_requires=["py2app"])
 
 ```bash
 # 1. 内部のバイナリを個別に署名（--deep は信頼できないので、内側から順に明示的に署名する）
-find dist/Hitofude.app -name "*.so" -o -name "*.dylib" | while read f; do
+find dist/OboeGaki.app -name "*.so" -o -name "*.dylib" | while read f; do
   codesign --force --timestamp --options=runtime \
     --sign "Developer ID Application: NAME (TEAMID)" "$f"
 done
 
 # 2. Qt フレームワークを個別署名
-for fw in dist/Hitofude.app/Contents/Resources/lib/python3.12/PySide6/Qt/lib/*.framework; do
+for fw in dist/OboeGaki.app/Contents/Resources/lib/python3.12/PySide6/Qt/lib/*.framework; do
   codesign --force --timestamp --options=runtime \
     --sign "Developer ID Application: NAME (TEAMID)" "$fw"
 done
@@ -927,16 +931,16 @@ done
 # 3. アプリ本体
 codesign --force --timestamp --options=runtime \
   --entitlements entitlements.plist \
-  --sign "Developer ID Application: NAME (TEAMID)" dist/Hitofude.app
+  --sign "Developer ID Application: NAME (TEAMID)" dist/OboeGaki.app
 
 # 4. 検証
-codesign --verify --deep --strict --verbose=2 dist/Hitofude.app
-spctl -a -vvv -t install dist/Hitofude.app
+codesign --verify --deep --strict --verbose=2 dist/OboeGaki.app
+spctl -a -vvv -t install dist/OboeGaki.app
 
 # 5. 公証
-ditto -c -k --keepParent dist/Hitofude.app Hitofude.zip
-xcrun notarytool submit Hitofude.zip --keychain-profile "AC_PASSWORD" --wait
-xcrun stapler staple dist/Hitofude.app
+ditto -c -k --keepParent dist/OboeGaki.app OboeGaki.zip
+xcrun notarytool submit OboeGaki.zip --keychain-profile "AC_PASSWORD" --wait
+xcrun stapler staple dist/OboeGaki.app
 ```
 
 **ハマりどころ**: 署名は**必ず内側（.so / .dylib / .framework）から外側（.app）へ**の順で行う。`--deep` を使うと entitlements が正しく伝播せず公証で弾かれる。また、一度署名したアプリを再署名するとエラーになることがあるため、ビルドは常にクリーンな `dist/` から行う。
@@ -944,9 +948,9 @@ xcrun stapler staple dist/Hitofude.app
 ### 8.3 DMG 作成
 
 ```bash
-create-dmg --volname "Hitofude" --window-size 600 400 \
-  --icon "Hitofude.app" 150 180 --app-drop-link 450 180 \
-  Hitofude-1.0.0.dmg dist/Hitofude.app
+create-dmg --volname "覚書" --window-size 600 400 \
+  --icon "OboeGaki.app" 150 180 --app-drop-link 450 180 \
+  OboeGaki-1.0.0.dmg dist/OboeGaki.app
 ```
 
 DMG 自体も署名 + 公証すること。
@@ -1021,7 +1025,7 @@ DMG 自体も署名 + 公証すること。
   - vault を指定 → 既存 `.md` が一覧に出る
   - 編集 → 800ms 後にファイルが更新される
   - 外部エディタで書き換える → アプリに反映される
-  - `.hitofude/index.sqlite` を消して再起動 → 完全に復元される
+  - `.OboeGaki/index.sqlite` を消して再起動 → 完全に復元される
 
 ### Phase 5: アプリ UI（2.5 日）
 
@@ -1040,7 +1044,7 @@ DMG 自体も署名 + 公証すること。
 - [x] HTML / PDF エクスポート（~~ここでのみ `QTextDocument.setMarkdown()` を使ってよい~~ → **ADR-0007 で markdown-it-py へ移行**。`QPrinter` で PDF 出力）
 - [ ] アプリアイコン（`.icns`）、About ダイアログ
 - [ ] `setup.py`（py2app）でビルド → 署名 → 公証 → DMG
-- [ ] クラッシュ時のリカバリ（未保存バッファを `~/Library/Application Support/Hitofude/recovery/` に退避）
+- [ ] クラッシュ時のリカバリ（未保存バッファを `~/Library/Application Support/OboeGaki/recovery/` に退避）
 - **完了条件**: 署名済み DMG を別の Mac にコピーして、Gatekeeper の警告なしに起動する
 
 **合計目安: 13.5 人日**

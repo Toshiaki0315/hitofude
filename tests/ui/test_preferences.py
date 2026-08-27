@@ -1037,3 +1037,23 @@ class TestFormatBytes:
         from hitofude.ui.preferences import format_bytes
 
         assert format_bytes(size) == shown
+
+
+class TestManagedDirName:
+    """画面に出す管理フォルダの名前が、実物と食い違わないこと。
+
+    改名（ADR-0032）で `.hitofude` → `.OboeGaki` になったが、履歴の
+    使用量の説明だけ**旧名を直書きしたまま**残っていた。存在しない場所を
+    ユーザーに教えることになる（`docs/` の書き漏らしと違い、これは
+    画面に出る）。
+
+    直書きをやめて定数から組む。ここを試験で縛っておけば、次に名前が
+    変わっても置き去りにならない。
+    """
+
+    def test_履歴の説明が今の名前を指す(self, dialog) -> None:
+        from hitofude.storage.vault import LEGACY_MANAGED_DIR, MANAGED_DIR
+
+        tip = dialog._history_usage.toolTip()
+        assert MANAGED_DIR in tip
+        assert LEGACY_MANAGED_DIR not in tip

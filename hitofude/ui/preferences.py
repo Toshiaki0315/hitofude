@@ -357,7 +357,7 @@ class PreferencesDialog(QDialog):
 
         # 版を残す間隔（ユーザー要望 2026-08-24）。**本文の保存とは別。**
         # 本文は打ち終わって 0.8 秒で書く（§7.4）。ここで決めるのは
-        # `.hitofude/history/` に何分おきに 1 版残すか
+        # 管理フォルダの `history/` に何分おきに 1 版残すか
         self._history = QComboBox(self)
         self._history.setMinimumWidth(FIELD_WIDTH)
         for minutes in HISTORY_INTERVAL_CHOICES:
@@ -374,8 +374,10 @@ class PreferencesDialog(QDialog):
         self._history_usage = QLabel(
             format_bytes(history.total_bytes(history.store_root(config.vault_path / MANAGED_DIR)))
         )
+        # **名前を直書きしない。** 改名（ADR-0032）のとき、ここだけ
+        # `.hitofude` のまま残って**存在しない場所**を案内していた
         self._history_usage.setToolTip(
-            "版の履歴（.hitofude/history）が使っている量。"
+            f"版の履歴（{MANAGED_DIR}/history）が使っている量。"
             "1 ノートにつき 50 版まで、30 日で消えます。"
         )
         vault_form.addRow(_label("履歴の使用量"), self._history_usage)

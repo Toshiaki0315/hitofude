@@ -192,7 +192,7 @@ class MainWindow(QMainWindow):
         self._vault_ready = self._prepare_vault()
 
         # **開けない保管フォルダでも窓は出す**（ADR-0030 / ユーザー報告）。
-        # 索引は `.hitofude` の中なので、開けないときは覚えないだけにする。
+        # 索引は管理フォルダの中なので、開けないときは覚えないだけにする。
         # 一覧は空になるが、設定から別の場所を選び直せる
         self._db = IndexDb(
             self._vault.managed_dir / "index.sqlite" if self._vault_ready else MEMORY_DB
@@ -706,7 +706,7 @@ class MainWindow(QMainWindow):
 
         全部読み直すので時間がかかる（実測: 5,000 本で 19 秒。差分の 100 倍）。
         **捨ててよいのは索引だけ**（R9 / ADR-0023）——`.md` も
-        `.hitofude/history/` も触らない。
+        `.OboeGaki/history/` も触らない。
         """
         self.flush()
         if not self.start_index_sync(full=True):
