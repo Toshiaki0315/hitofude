@@ -136,11 +136,32 @@ def sanitize_filename(title: str) -> str:
     return text or UNTITLED
 
 
-def unique_path(directory: Path, stem: str, suffix: str = ".md") -> Path:
-    """重複しないパスを返す。衝突したら `-2`, `-3` を付ける（spec §7.1）。"""
+def _is_same_file(candidate: Path, other: Path | None) -> bool:
+    """同じ実体を指しているか。**名前ではなく実体で見る**（S-3）。
+
+    macOS の既定（APFS）は大文字小文字を区別しないので、`Meeting.md` と
+    `meeting.md` は**同じファイル**。名前を比べると別物に見える。
+    """
+    if other is None:
+        return False
+    try:
+        return candidate.samefile(other)
+    except OSError:
+        return False  # 片方が無い・読めない。別物として扱えば安全側
+
+
+def unique_path(
+    directory: Path, stem: str, suffix: str = ".md", *, ignoring: Path | None = None
+) -> Path:
+    """重複しないパスを返す。衝突したら `-2`, `-3` を付ける（spec §7.1）。
+
+    `ignoring` に**動かそうとしている当人**を渡すと、それは衝突と数えない。
+    渡さないと、大文字小文字だけ変えた改名で**自分自身を衝突相手と見て**
+    `-2` が付く（S-3。APFS は区別しないため `meeting.md` が「既に在る」）。
+    """
     candidate = directory / f"{stem}{suffix}"
     index = 2
-    while candidate.exists():
+    while candidate.exists() and not _is_same_file(candidate, ignoring):
         candidate = directory / f"{stem}-{index}{suffix}"
         index += 1
     return candidate
@@ -598,7 +619,9 @@ class Vault:
         stem = sanitize_filename(title)
         if folder / f"{stem}.md" == path:
             return path  # 同じ名前。動かす意味が無い
-        target = unique_path(folder, stem)
+        # **当人を衝突相手にしない**（S-3）。APFS は大文字小文字を区別しない
+        # ので、`Meeting` → `meeting` は「既に在る」ように見えて `-2` が付いた
+        target = unique_path(folder, stem, ignoring=path)
         before = path.relative_to(self.root).as_posix()
         path.replace(target)
         self._follow_history(before, target)

@@ -1012,3 +1012,37 @@ class TestRecoveryKeepsFolder:
         restored = window.restore_pending()
         assert len(restored) == 1
         assert restored[0].parent == window.vault.root  # 無い箱は作らない（§7.1）
+
+
+class TestCaseOnlyTitleChange:
+    """見出しの大文字小文字だけ変えたとき（S-3）。
+
+    `-2` が付くと、以後ファイル名（`meeting-2`）とタイトル（`meeting`）が
+    食い違うため、`_rename_if_title_changed` の「**ファイル名がそれまでの
+    タイトルと一致していたときだけ動かす**」という条件に掛からなくなる。
+    **そのノートは二度とファイル名がタイトルに追従しない。**
+    ここは保存の道から通しで見る。
+    """
+
+    def test_番号を付けずに改名する(self, window) -> None:
+        note = window._vault.create("Meeting", "# Meeting\n\n本文\n")
+        window._db.upsert_note(note, window._vault.root)
+        window.refresh()
+        window.open_and_select(note.path)
+
+        window.editor.setPlainText("# meeting\n\n本文\n")
+        window.flush()
+        assert window.current_note.path.name == "meeting.md"
+
+    def test_その後もタイトルに追従する(self, window) -> None:
+        """**後遺症が残らないこと。** ここが本題。"""
+        note = window._vault.create("Meeting", "# Meeting\n\n本文\n")
+        window._db.upsert_note(note, window._vault.root)
+        window.refresh()
+        window.open_and_select(note.path)
+
+        window.editor.setPlainText("# meeting\n\n本文\n")
+        window.flush()
+        window.editor.setPlainText("# 会議\n\n本文\n")
+        window.flush()
+        assert window.current_note.path.name == "会議.md"
