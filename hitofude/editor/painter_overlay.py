@@ -663,12 +663,27 @@ def checkbox_rect(editor, block: QTextBlock, info, geometry: QRectF) -> QRectF |
     return _checkbox(editor, block, info, geometry).rect
 
 
+def _first_line(block: QTextBlock, geometry: QRectF) -> tuple[float, float]:
+    """ブロックの **1 行目**の上端と高さ。
+
+    折り返した項目でブロック全体の高さから中央を出すと、点や箱が
+    2 行目の横に浮く（ユーザー報告 2026-08-27）。記号は 1 行目の文字の
+    横に付くもの。レイアウトがまだ無ければブロック全体で代用する。
+    """
+    layout = block.layout()
+    if layout is not None and layout.lineCount() > 0:
+        line = layout.lineAt(0)
+        return geometry.top() + line.y(), line.height()
+    return geometry.top(), geometry.height()
+
+
 def _checkbox(editor, block: QTextBlock, info, geometry: QRectF) -> Decoration:
     """潰した `[ ]` の位置に箱を描く（§6.4）。"""
     column = block.text().find("[", 0, info.marker_len)
     x = geometry.left() + _column_x(block, max(column, 0))
-    size = min(checkbox_size(editor.font()), geometry.height())
-    top = geometry.top() + (geometry.height() - size) / 2
+    line_top, line_height = _first_line(block, geometry)
+    size = min(checkbox_size(editor.font()), line_height)
+    top = line_top + (line_height - size) / 2
     return Decoration(
         DecorationKind.CHECKBOX,
         QRectF(x, top, size, size),
@@ -725,7 +740,8 @@ def _bullet(editor, block: QTextBlock, info, geometry: QRectF) -> Decoration:
     column = max(bullet_column(block.text(), info.marker_len), 0)
     x = geometry.left() + _column_x(block, column)
     size = bullet_size(editor.font())
-    top = geometry.top() + (geometry.height() - size) / 2
+    line_top, line_height = _first_line(block, geometry)
+    top = line_top + (line_height - size) / 2
     return Decoration(
         DecorationKind.BULLET,
         QRectF(x, top, size, size),

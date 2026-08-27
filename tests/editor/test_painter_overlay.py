@@ -866,3 +866,29 @@ class TestFoldMarkerBreathing:
     def test_縁に貼り付かない(self, editor) -> None:
         marker = self.marker(editor)
         assert marker.rect.left() - editor.contentOffset().x() >= 12
+
+
+class TestMarkOnFirstLine:
+    """折り返した項目でも、点と箱は **1 行目**に付く（ユーザー報告 2026-08-27）。
+
+    ブロック全体の高さで中央寄せしていたので、3 行に折り返すと点が
+    2 行目の横に浮いていた。
+    """
+
+    @staticmethod
+    def first_line_center(editor, line: int) -> float:
+        block = editor.document().findBlockByNumber(line)
+        geometry = editor.blockBoundingGeometry(block).translated(editor.contentOffset())
+        first = block.layout().lineAt(0)
+        assert block.layout().lineCount() >= 2, "前提: 折り返している"
+        return geometry.top() + first.y() + first.height() / 2
+
+    def test_点は1行目の高さ(self, editor) -> None:
+        away(editor, "- " + "ながい文章がずっと続いて折り返します。" * 8)
+        dot = of_kind(editor, DecorationKind.BULLET)[0]
+        assert dot.rect.center().y() == pytest.approx(self.first_line_center(editor, 0), abs=2)
+
+    def test_箱も1行目の高さ(self, editor) -> None:
+        away(editor, "- [ ] " + "ながい文章がずっと続いて折り返します。" * 8)
+        box = of_kind(editor, DecorationKind.CHECKBOX)[0]
+        assert box.rect.center().y() == pytest.approx(self.first_line_center(editor, 0), abs=2)
