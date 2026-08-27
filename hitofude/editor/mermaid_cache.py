@@ -28,7 +28,10 @@ def web_engine_view_class():
 
     無い組み方（Chromium を同梱しない `.app`）では ImportError が飛ぶ。
     呼び出し側はそれを「描けなかった」として扱う（ユーザー報告 2026-08-26）。
+    HITOFUDE_LITE は `make run-lite` の「無いふり」（開発環境には入っている）。
     """
+    if os.environ.get("HITOFUDE_LITE"):
+        raise ImportError("HITOFUDE_LITE が立っている（軽量版の動きを試す）")
     from PySide6.QtWebEngineWidgets import QWebEngineView
 
     return QWebEngineView

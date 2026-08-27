@@ -65,6 +65,9 @@ app: ## macOS アプリ（dist/Hitofude.app）をビルド
 	$(UV) run python scripts/prune_bundle.py dist/Hitofude.app
 	@echo "できました: dist/Hitofude.app（署名はアドホック。配布には Developer ID が要る）"
 
+run-lite: ## 軽量版の動きをソースから試す（Mermaid はコードのまま出る）
+	HITOFUDE_LITE=1 $(UV) run python -m hitofude
+
 app-lite: ## 軽量版（Mermaid なし・数式は出る。約 130MB）
 	rm -rf build dist
 	$(UV) run python scripts/make_icon.py

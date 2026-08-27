@@ -2,6 +2,7 @@
 
 import importlib
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import cast
@@ -33,6 +34,11 @@ def preload_web_engine() -> bool:
     同梱しない組み方があり得る。無ければ図を諦めるだけ——`.app` が
     py2app の "Launch error" で立ち上がらないほうがずっと困る。
     """
+    if os.environ.get("HITOFUDE_LITE"):
+        # `make run-lite`（ユーザー要望 2026-08-27）。軽量版（app-lite）の
+        # 動きをソースから試すための「無いふり」。読みに行かずに諦める
+        logger.info("HITOFUDE_LITE: Mermaid の図は出ません（軽量版の動き）")
+        return False
     try:
         importlib.import_module("PySide6.QtWebEngineWidgets")
     except ImportError as error:  # 同梱されていない組み方
