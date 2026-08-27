@@ -1040,12 +1040,20 @@ class Vault:
         deadline = time.time() - days * 24 * 3600
         removed: list[Path] = []
         for entry in sorted(self.trash_dir.rglob("*")):
-            if not entry.is_file():
+            try:
+                if not entry.is_file():
+                    continue
+                if entry.stat().st_mtime < deadline:
+                    entry.unlink()
+                    removed.append(entry)
+                    self._prune_empty_dirs(entry.parent, boundary=self.trash_dir)
+            except OSError:
+                # **1 件の不調で掃除ごと投げ出さない**（`sweep_temp_files` と
+                # 同じ作法。S-2）。同期の下では走査と `stat()` の間に
+                # ファイルが消える——iCloud / Dropbox / 別マシンが同じ vault を
+                # 触っていれば普通に起きる。抜けさせると呼び出し元
+                # （`_prepare_vault`）が**「保管フォルダを開けない」に化かす**
                 continue
-            if entry.stat().st_mtime < deadline:
-                entry.unlink()
-                removed.append(entry)
-                self._prune_empty_dirs(entry.parent, boundary=self.trash_dir)
         return removed
 
 

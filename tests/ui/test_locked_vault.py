@@ -15,7 +15,7 @@ import stat
 
 import pytest
 
-from hitofude.ui.main_window import MainWindow
+from hitofude.ui.main_window import LOCKED_VAULT_NOTICE, MainWindow
 
 pytestmark = pytest.mark.gui
 
@@ -104,5 +104,69 @@ class TestStartsAnyway:
             window.resync()
             window.wait_for_index_sync()
             qtbot.waitUntil(lambda: bool(window.notice()), timeout=5000)
+        finally:
+            window.close()
+
+
+class TestChoresAreNotOpening:
+    """**掃除の失敗は「開けない」ではない**（S-2）。
+
+    `_prepare_vault` は 4 つを 1 つの `try` で受けていた。うち 3 つ
+    （ゴミ箱・履歴・一時ファイル）は**片付け**であって、失敗しても
+    保管フォルダが使えないことを意味しない。それが `vault_ready = False`
+    に化けると、一覧が空・監視も止まり、**ノートが消えたようにしか
+    見えない**（2026-08-23 のユーザー報告と同じ絵）。
+
+    本当に「開けない」のは `ensure_layout()` が通らないときだけ。
+    """
+
+    def _window(self, config, qtbot):
+        window = MainWindow(config)
+        qtbot.addWidget(window)
+        return window
+
+    @pytest.mark.parametrize(
+        "chore",
+        ["purge_trash", "sweep_temp_files"],
+    )
+    def test_掃除が失敗しても開けている(self, config, qtbot, monkeypatch, chore) -> None:
+        from hitofude.storage.vault import Vault
+
+        def boom(*args, **kwargs):
+            raise OSError(5, "Input/output error")
+
+        monkeypatch.setattr(Vault, chore, boom)
+        window = self._window(config, qtbot)
+        try:
+            assert window._vault_ready is True
+            assert window.notice() == ""
+        finally:
+            window.close()
+
+    def test_履歴の掃除が失敗しても開けている(self, config, qtbot, monkeypatch) -> None:
+        from hitofude.ui.history_actions import HistoryActions
+
+        def boom(self):
+            raise OSError(5, "Input/output error")
+
+        monkeypatch.setattr(HistoryActions, "prune", boom)
+        window = self._window(config, qtbot)
+        try:
+            assert window._vault_ready is True
+        finally:
+            window.close()
+
+    def test_土台が作れないときだけ開けていない(self, config, qtbot, monkeypatch) -> None:
+        """**直しすぎない。** ADR-0030 の見極めそのものは残す。"""
+        from hitofude.storage.vault import Vault
+
+        def boom(self):
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(Vault, "ensure_layout", boom)
+        window = self._window(config, qtbot)
+        try:
+            assert window._vault_ready is False
+            assert window.notice() == LOCKED_VAULT_NOTICE
         finally:
             window.close()

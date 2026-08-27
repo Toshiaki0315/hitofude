@@ -424,13 +424,34 @@ class MainWindow(QMainWindow):
         """
         try:
             self._vault.ensure_layout()
-            self._vault.purge_trash(self._config.trash_days)
-            self._versions.prune()
-            self._vault.sweep_temp_files()  # クラッシュで残った .tmp の掃除（H-1）
         except OSError as error:
             logger.warning("保管フォルダを開けない: %s", error)
             return False
+        self._tidy_vault()
         return True
+
+    def _tidy_vault(self) -> None:
+        """起動時の片付け。**失敗しても「開けない」ではない**（S-2）。
+
+        かつては `ensure_layout()` と同じ `try` に入れていたので、掃除が
+        1 つ転ぶだけで `vault_ready = False` に化けた——一覧が空、監視も
+        止まり、**ノートが消えたようにしか見えない**（2026-08-23 の
+        ユーザー報告と同じ絵）。同期の下ではファイルが走査の途中で消える
+        ので、これは珍しい話ではない。
+
+        **開けるかどうかを決めるのは `ensure_layout()` だけ。** 片付けは
+        次の起動でやり直せる。
+        """
+        chores = (
+            ("ゴミ箱", lambda: self._vault.purge_trash(self._config.trash_days)),
+            ("版の履歴", self._versions.prune),
+            ("一時ファイル", self._vault.sweep_temp_files),  # クラッシュの残骸（H-1）
+        )
+        for name, chore in chores:
+            try:
+                chore()
+            except OSError as error:
+                logger.warning("%sを片付けられない: %s", name, error)
 
     def _build_menus(self) -> None:
         build_menus(self)
