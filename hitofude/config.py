@@ -69,6 +69,24 @@ LEGACY_VAULT_NAME = "HitofudeNotes"
 """旧の既定名（改名 2026-08-27 / ADR-0032）。在れば使い続ける。"""
 
 
+def legacy_settings() -> QSettings:
+    """旧名（Hitofude）の保存先を開く。
+
+    **形を省かない。** `QSettings(組織, アプリ)` は macOS では常に
+    ネイティブ（plist）で開き、`setDefaultFormat` / `setPath` による
+    差し替えを素通りする。試験の擬似ホームも例外ではないので、省くと
+    **テストが実ユーザーの設定を読む**（実測: 隔離下でも旧ドメインだけ
+    88 鍵が見えていた）。`defaultFormat()` を明示すれば、製品では
+    今までどおりネイティブ、試験では擬似ホームの ini になる。
+    """
+    return QSettings(
+        QSettings.defaultFormat(),
+        QSettings.Scope.UserScope,
+        LEGACY_ORG_DOMAIN,
+        LEGACY_ORG_NAME,
+    )
+
+
 def migrate_legacy_settings(settings: QSettings, legacy: QSettings) -> bool:
     """旧名（Hitofude）の設定を新しい保存先へ写す（初回だけ）。
 
@@ -155,7 +173,7 @@ class Config:
             # 改名（Hitofude → 覚書。2026-08-27）で QSettings の保存先が
             # 変わった。初回だけ旧ドメインから写す
             settings = QSettings()
-            migrate_legacy_settings(settings, QSettings(LEGACY_ORG_DOMAIN, LEGACY_ORG_NAME))
+            migrate_legacy_settings(settings, legacy_settings())
         self.settings = settings
         self._home = home if home is not None else Path.home()
         """テストが差し替える。既定の保管フォルダの位置を決める。"""

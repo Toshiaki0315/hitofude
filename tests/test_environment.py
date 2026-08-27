@@ -68,3 +68,20 @@ class TestIsolation:
         from hitofude.config import Config
 
         assert Config().vault_path.is_relative_to(sandbox_home)
+
+    def test_旧ドメインも隔離されている(self, qapp, sandbox_home) -> None:
+        """改名（ADR-0032）で入った引っ越しの読み口。
+
+        `QSettings(組織, アプリ)` と書くと macOS では常にネイティブ
+        （plist）で開き、擬似ホームへの差し替えを**素通りする**。
+        `vault_path` の検査だけでは、実ユーザーの旧設定を持つ機械でしか
+        落ちない（＝CI は緑のまま）ので、ここで直に見る。
+        """
+        from PySide6.QtCore import QSettings
+
+        from hitofude.config import legacy_settings
+
+        opened = legacy_settings()
+        assert opened.format() == QSettings.defaultFormat()
+        assert str(sandbox_home) in opened.fileName()
+        assert opened.allKeys() == [], "実ユーザーの設定が見えている"
