@@ -3,7 +3,9 @@
     uv run python scripts/make_icon.py
 
 外部の画像編集ソフトを要らなくするため、Qt で描いて `iconutil` に渡す。
-デザインは「一筆」— 一本の筆致を表す弧を、紙色の角丸の上に置いただけのもの。
+デザインは「覚書」（改名 2026-08-27 / ADR-0032）— 角を折ったメモ用紙に、
+墨の題と本文の線、書き始めの朱点。筆致の弧だった旧デザインから、
+墨と朱のアクセントだけを引き継いだ。
 差し替えたくなったら `resources/OboeGaki.icns` を上書きすればよい。
 """
 
@@ -18,7 +20,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from PySide6.QtCore import QPointF, QRectF, Qt  # noqa: E402
+from PySide6.QtCore import QPointF, Qt  # noqa: E402
 from PySide6.QtGui import QColor, QImage, QPainter, QPainterPath, QPen  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
@@ -27,7 +29,9 @@ OUTPUT = ROOT / "resources" / "OboeGaki.icns"
 SIZES = [16, 32, 64, 128, 256, 512, 1024]
 
 PAPER = "#FCFBF7"
+FOLD = "#E7E3D8"
 INK = "#1D1D1F"
+FAINT = "#9A9AA0"
 ACCENT = "#D2553C"
 
 
@@ -39,31 +43,58 @@ def render(size: int) -> QImage:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
     inset = size * 0.06
-    body = QRectF(inset, inset, size - inset * 2, size - inset * 2)
+    radius = size * 0.22
+    left, top = inset, inset
+    right, bottom = size - inset, size - inset
+    fold = size * 0.24  # 折り返しの一辺
+
+    # 紙。右上の角だけ折り返しぶんを切り欠く
+    body = QPainterPath()
+    body.moveTo(QPointF(right - fold, top))
+    body.lineTo(QPointF(left + radius, top))
+    body.quadTo(QPointF(left, top), QPointF(left, top + radius))
+    body.lineTo(QPointF(left, bottom - radius))
+    body.quadTo(QPointF(left, bottom), QPointF(left + radius, bottom))
+    body.lineTo(QPointF(right - radius, bottom))
+    body.quadTo(QPointF(right, bottom), QPointF(right, bottom - radius))
+    body.lineTo(QPointF(right, top + fold))
+    body.closeSubpath()
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(QColor(PAPER))
-    painter.drawRoundedRect(body, size * 0.22, size * 0.22)
+    painter.drawPath(body)
 
-    # 一本の筆致。始点を太く、終点を細くして払いを表す
-    stroke = QPainterPath()
-    stroke.moveTo(QPointF(size * 0.28, size * 0.66))
-    stroke.cubicTo(
-        QPointF(size * 0.42, size * 0.26),
-        QPointF(size * 0.62, size * 0.74),
-        QPointF(size * 0.76, size * 0.36),
+    # 折り返した角（覚書らしさの要）。紙より一段沈んだ色の三角
+    ear = QPainterPath()
+    ear.moveTo(QPointF(right - fold, top))
+    ear.lineTo(QPointF(right - fold, top + fold * 0.18))
+    ear.quadTo(
+        QPointF(right - fold, top + fold),
+        QPointF(right - fold * 0.18, top + fold),
     )
-    pen = QPen(QColor(INK))
-    pen.setWidthF(size * 0.085)
-    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-    painter.setPen(pen)
-    painter.setBrush(Qt.BrushStyle.NoBrush)
-    painter.drawPath(stroke)
+    ear.lineTo(QPointF(right, top + fold))
+    ear.closeSubpath()
+    painter.setBrush(QColor(FOLD))
+    painter.drawPath(ear)
 
-    # 筆を置いた点。アクセント色で「書き始め」を示す
+    # 題の墨線。始点を丸く置いて筆の含みを残す
+    pen = QPen(QColor(INK))
+    pen.setWidthF(size * 0.075)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    painter.setPen(pen)
+    painter.drawLine(QPointF(size * 0.40, size * 0.36), QPointF(size * 0.62, size * 0.36))
+
+    # 本文の線。薄くして題と読み分ける
+    pen = QPen(QColor(FAINT))
+    pen.setWidthF(size * 0.055)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    painter.setPen(pen)
+    painter.drawLine(QPointF(size * 0.26, size * 0.54), QPointF(size * 0.74, size * 0.54))
+    painter.drawLine(QPointF(size * 0.26, size * 0.70), QPointF(size * 0.60, size * 0.70))
+
+    # 書き始めの朱点（旧デザインから引き継ぎ）。題の頭に置く
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(QColor(ACCENT))
-    painter.drawEllipse(QPointF(size * 0.28, size * 0.66), size * 0.055, size * 0.055)
+    painter.drawEllipse(QPointF(size * 0.28, size * 0.36), size * 0.055, size * 0.055)
 
     painter.end()
     return image
