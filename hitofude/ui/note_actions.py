@@ -54,7 +54,7 @@ def add_item(menu: QMenu, label: str) -> QAction:
     return action
 
 
-PINNED_NOTICE = "ピン留めしているノートは削除できません。先にピン留めを外してください。"
+PINNED_NOTICE = "お気に入りのノートは削除できません。先にお気に入りから外してください。"
 
 
 class NoteActions:
@@ -284,6 +284,7 @@ class NoteActions:
         if current:
             window._reload_open_note(note)
         window.refresh()
+        window._sync_favorite()  # 本文の左の星に映す（どの入口からでも）
         return note.pinned
 
     def toggle_pin_current(self) -> bool:
@@ -612,7 +613,7 @@ class NoteActions:
             add_item(menu, "完全に削除…").triggered.connect(lambda: self.delete_permanently(path))
             return menu
 
-        label = "ピン留めを外す" if self.is_pinned(path) else "ピン留め"
+        label = "お気に入りから外す" if self.is_pinned(path) else "お気に入りに入れる"
         add_item(menu, label).triggered.connect(lambda: self.toggle_pin(path))
         add_item(menu, "名前を変更…").triggered.connect(lambda: self.prompt_rename(path))
         add_item(menu, "複製").triggered.connect(lambda: self.duplicate_note(path))

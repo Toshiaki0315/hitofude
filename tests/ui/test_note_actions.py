@@ -168,19 +168,19 @@ class TestContextMenu:
         window.set_filter(TRASH)
         assert "元に戻す" in self.labels(window, trashed)
 
-    def test_ゴミ箱ではピン留めを出さない(self, window) -> None:
+    def test_ゴミ箱ではお気に入りを出さない(self, window) -> None:
         path = make_note(window, "ノート")
         trashed = window.vault.trash(path)
         window.set_filter(TRASH)
-        assert "ピン留め" not in self.labels(window, trashed)
+        assert not any("お気に入り" in label for label in self.labels(window, trashed))
 
-    def test_通常はピン留めを出す(self, window) -> None:
-        assert "ピン留め" in self.labels(window, make_note(window, "ノート"))
+    def test_通常はお気に入りを出す(self, window) -> None:
+        assert "お気に入りに入れる" in self.labels(window, make_note(window, "ノート"))
 
-    def test_留めてあるなら外す表示になる(self, window) -> None:
+    def test_入れてあるなら外す表示になる(self, window) -> None:
         path = make_note(window, "ノート")
         window.toggle_pin(path)
-        assert "ピン留めを外す" in self.labels(window, path)
+        assert "お気に入りから外す" in self.labels(window, path)
 
     def test_ゴミ箱へ移動も出す(self, window) -> None:
         path = make_note(window, "ノート")
@@ -227,7 +227,7 @@ class TestPinnedIsProtected:
         path = make_note(window, "留めたノート")
         window.toggle_pin(path)
         window.trash_note(path)
-        assert "ピン留め" in window.notice()
+        assert "お気に入り" in window.notice()
 
     def test_ピン留めを外せば消せる(self, window) -> None:
         path = make_note(window, "留めたノート")

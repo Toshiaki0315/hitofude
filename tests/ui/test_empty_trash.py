@@ -180,11 +180,11 @@ class TestEmptyNotice:
         window.set_filter(ALL)
         assert "＋" in window.note_list_pane.empty_notice_text()
 
-    def test_お気に入りではピン留めを案内する(self, window) -> None:
+    def test_お気に入りでは入れ方を案内する(self, window) -> None:
         from hitofude.ui.sidebar import PINNED
 
         window.set_filter(PINNED)
-        assert "ピン留め" in window.note_list_pane.empty_notice_text()
+        assert "右クリック" in window.note_list_pane.empty_notice_text()
 
     def test_タグではそのタグの話をする(self, window) -> None:
         from hitofude.ui.sidebar import Filter, FilterKind

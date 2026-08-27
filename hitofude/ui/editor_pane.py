@@ -5,7 +5,8 @@
 座標を取り合うことになる。レイアウトに任せれば衝突しない。
 """
 
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, Signal
+from PySide6.QtWidgets import QToolButton, QVBoxLayout, QWidget
 
 from hitofude.editor.editor_widget import (
     DEFAULT_FONT_FAMILY,
@@ -16,9 +17,21 @@ from hitofude.theme import LIGHT, ThemeColors
 from hitofude.ui.backlink_bar import BacklinkBar
 from hitofude.ui.find_bar import FindBar
 from hitofude.ui.format_toolbar import FormatToolbar
+from hitofude.ui.icons import Glyph, glyph_icon
+
+# お気に入りの星（ユーザー要望 2026-08-27 / Qiita 風）。本文の左の
+# 沈んだ領域に浮かせる。大きめ——遠目にも入り切りが分かる的
+FAVORITE_BUTTON_SIZE = 40
+FAVORITE_ICON_SIZE = 26
+FAVORITE_TOP = 16
+"""本文の上端（documentMargin ぶん下がった 1 行目）に目線が揃う高さ。"""
 
 
 class EditorPane(QWidget):
+    favorite_toggled = Signal()
+    """お気に入りの星を押された。**切り替えるのは呼び出し側**
+    （ここはノートを知らない。アウトラインのボタンと同じ形）。"""
+
     def __init__(
         self,
         parent: QWidget | None = None,
@@ -46,6 +59,27 @@ class EditorPane(QWidget):
         layout.addWidget(self._editor, 1)
         layout.addWidget(self._backlinks)
 
+        # お気に入りの星（ユーザー要望 2026-08-27 / Qiita 風）。エディタの
+        # 子として浮かせ、本文の左の沈んだ領域（幅を絞ったときの余白）に置く
+        self._theme = theme
+        self._favorite = QToolButton(self._editor)
+        self._favorite.setCheckable(True)
+        self._favorite.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._favorite.setFixedSize(FAVORITE_BUTTON_SIZE, FAVORITE_BUTTON_SIZE)
+        self._favorite.setIconSize(QSize(FAVORITE_ICON_SIZE, FAVORITE_ICON_SIZE))
+        self._favorite.setAccessibleName("お気に入り")
+        self._favorite.setToolTip("お気に入り（⇧⌘P）")
+        self._favorite.setStyleSheet("QToolButton { border: none; background: transparent; }")
+        self._favorite.toggled.connect(lambda _on: self._apply_favorite_icon())
+        self._favorite.clicked.connect(lambda _checked: self.favorite_toggled.emit())
+        self._favorite_allowed = False
+        """ノートが開いているか。場所の有無（沈んだ領域）とは別の条件。"""
+        self._favorite.hide()
+        self._apply_favorite_icon()
+        # 置き直しはエディタの大きさが決まってから。resize の**あと**に
+        # 走らせる（余白 setViewportMargins は resize の中で確定する）
+        self._editor.installEventFilter(_Relayout(self, self._reposition_favorite))
+
         self._find.query_changed.connect(self._on_query_changed)
         self._find.find_requested.connect(self._on_find)
         self._find.replace_requested.connect(self._on_replace)
@@ -69,6 +103,58 @@ class EditorPane(QWidget):
     @property
     def backlinks(self) -> BacklinkBar:
         return self._backlinks
+
+    @property
+    def favorite_button(self) -> QToolButton:
+        return self._favorite
+
+    # ------------------------------------------------------------ お気に入り
+
+    def set_favorite(self, on: bool) -> None:
+        """星の塗りを状態に合わせる（押した通知は出さない）。"""
+        self._favorite.blockSignals(True)
+        self._favorite.setChecked(on)
+        self._favorite.blockSignals(False)
+        self._apply_favorite_icon()
+
+    def favorite_visible(self) -> bool:
+        """出す意思があるか（ノートが開いているか）。
+
+        **`isVisible()` では答えられない**（`toolbar_visible` と同じ罠）。
+        実際に見えるかは場所（左の沈んだ領域の幅）しだい。
+        """
+        return self._favorite_allowed
+
+    def set_favorite_visible(self, visible: bool) -> None:
+        """ノートが開いているときだけ出す。実際に見えるかは場所しだい。"""
+        self._favorite_allowed = visible
+        self._reposition_favorite()
+
+    def _apply_favorite_icon(self) -> None:
+        if self._favorite.isChecked():
+            # 一覧の星（note_list）と同じ金色・塗り潰し
+            self._favorite.setIcon(glyph_icon(Glyph.PINNED, self._theme.pin_mark, filled=True))
+        else:
+            self._favorite.setIcon(glyph_icon(Glyph.PINNED, self._theme.muted_foreground))
+
+    def _reposition_favorite(self) -> None:
+        """左の沈んだ領域の真ん中に置く。領域が狭ければ隠す。
+
+        本文に重ねると開閉三角（左余白のクリックで開閉）と取り合いに
+        なるので、**置き場が無いときは出さない**。メニューと ⇧⌘P は
+        いつでも効く。
+        """
+        margin = self._editor.viewportMargins().left()
+        # ふつうの窓（1280px・標準幅）で領域は 50px 前後。ここで隠れると
+        # 実質出番が無いので、ボタン + 両側 4px から出す
+        fits = margin >= FAVORITE_BUTTON_SIZE + 8
+        if not (self._favorite_allowed and fits):
+            self._favorite.hide()
+            return
+        x = (margin - FAVORITE_BUTTON_SIZE) // 2
+        self._favorite.move(x, FAVORITE_TOP)
+        self._favorite.show()
+        self._favorite.raise_()
 
     # ------------------------------------------------------------------ 操作
 
@@ -135,3 +221,20 @@ class EditorPane(QWidget):
     def _on_replace_all(self, query: str, replacement: str) -> None:
         self._editor.replace_all_text(query, replacement, case_sensitive=self._find.case_sensitive)
         self._on_query_changed(query)
+
+
+class _Relayout(QObject):
+    """エディタの大きさが変わったら置き直す。
+
+    余白（setViewportMargins）は resize の処理の中で確定するので、
+    **一拍あと**（イベントループ経由）に読む。
+    """
+
+    def __init__(self, parent: QObject, reposition) -> None:
+        super().__init__(parent)
+        self._reposition = reposition
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
+            QTimer.singleShot(0, self._reposition)
+        return False

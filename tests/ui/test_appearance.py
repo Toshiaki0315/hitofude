@@ -210,7 +210,7 @@ class TestShortcutRegistration:
             ("Ctrl+G", "次を検索"),
             ("Ctrl+Shift+G", "前を検索"),
             ("Ctrl+Shift+L", "表を整形"),
-            ("Ctrl+Shift+P", "ピン留め"),
+            ("Ctrl+Shift+P", "お気に入り"),
             ("Ctrl+Shift+M", "Markdown…"),
             ("Ctrl+Shift+E", "HTML…"),
             # macOS の慣習に合わせて印刷へ譲った（C-9）。PDF はそこからも出せる

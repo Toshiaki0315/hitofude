@@ -168,7 +168,7 @@ def _empty_notice(target: Filter) -> str:
         case FilterKind.TRASH:
             return "ゴミ箱は空です。\n捨てたノートがここに 30 日残ります。"
         case FilterKind.PINNED:
-            return "お気に入りはありません。\n一覧を右クリックしてピン留めできます。"
+            return "お気に入りはありません。\n一覧を右クリックして入れられます。"
         case FilterKind.TAG:
             return f"「#{target.tag}」のノートはありません。\n本文に書くとここに集まります。"
         case FilterKind.FOLDER:
@@ -369,6 +369,7 @@ class MainWindow(QMainWindow):
         self._editor.modes_changed.connect(self._update_modes)
         self._pane.toolbar.outline_toggled.connect(self.toggle_outline)
         self._pane.toolbar.table_requested.connect(self.insert_table)
+        self._pane.favorite_toggled.connect(self._on_favorite_clicked)
         self._pane.backlinks.note_activated.connect(self._on_backlink_opened)
         self._pane.backlinks.toggled.connect(self._remember_backlinks)
         self._pane.backlinks.set_expanded(self._config.backlinks_expanded)
@@ -920,6 +921,22 @@ class MainWindow(QMainWindow):
     def toggle_pin_current(self) -> bool:
         return self._notes.toggle_pin_current()
 
+    def _on_favorite_clicked(self) -> None:
+        """本文の左の星（ユーザー要望 2026-08-27）。入口が増えるだけで、
+        中身はメニューの「お気に入り」（⇧⌘P）と同じ。"""
+        self.toggle_pin_current()
+
+    def _sync_favorite(self) -> None:
+        """星の塗りと出し入れを、今のノートの状態に合わせる。
+
+        入口（星・メニュー・一覧の右クリック）がいくつあっても状態は
+        1 つ。切り替えの実体（NoteActions.toggle_pin）がここを呼ぶ。
+        """
+        note = self._note
+        self._pane.set_favorite_visible(note is not None)
+        if note is not None:
+            self._pane.set_favorite(self._notes.is_pinned(note.path))
+
     def prompt_rename(self, path: Path) -> Path | None:
         return self._notes.prompt_rename(path)
 
@@ -1058,6 +1075,7 @@ class MainWindow(QMainWindow):
         self._show_saved(None)
         self._remember_note(note.path)
         self._update_backlinks()
+        self._sync_favorite()
         self._update_outline()
 
     def new_note(self) -> None:

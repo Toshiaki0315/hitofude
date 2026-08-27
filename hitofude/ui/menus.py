@@ -111,7 +111,7 @@ def _file_menu(window, bar) -> None:
     add(file_menu, "版の履歴…", "", window.show_history)
 
     file_menu.addSeparator()
-    add(file_menu, "ピン留め", "Ctrl+Shift+P", window.toggle_pin_current)
+    add(file_menu, "お気に入り", "Ctrl+Shift+P", window.toggle_pin_current)
     add(file_menu, "ゴミ箱へ移動", "Ctrl+Backspace", window.trash_current)
 
     file_menu.addSeparator()

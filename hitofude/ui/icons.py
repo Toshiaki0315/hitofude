@@ -491,8 +491,9 @@ MENU_ICONS = {
     #
     # 右クリックとメニューバーで**同じ言葉には同じ絵**を使う。
     # 一覧・サイドバーの右クリック
-    "ピン留め": "emblem-favorite",
-    "ピン留めを外す": "emblem-favorite",
+    "お気に入り": "emblem-favorite",
+    "お気に入りに入れる": "emblem-favorite",
+    "お気に入りから外す": "emblem-favorite",
     "名前を変更…": "document-properties",
     "複製": "edit-copy",
     "テンプレートに登録…": "document-new",
