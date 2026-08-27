@@ -7,6 +7,7 @@
 import pytest
 from PySide6.QtCore import Qt
 
+from hitofude.ui import editor_pane
 from hitofude.ui.editor_pane import EditorPane
 
 pytestmark = pytest.mark.gui
@@ -39,14 +40,31 @@ class TestButton:
     def test_フォーカスは奪わない(self, pane) -> None:
         assert pane.favorite_button.focusPolicy() is Qt.FocusPolicy.NoFocus
 
-    def test_左の沈んだ領域に浮く(self, pane, qtbot) -> None:
+    def test_紙の左端に寄せて浮く(self, pane, qtbot) -> None:
+        """領域の真ん中ではなく**本文寄り**（ユーザー要望 2026-08-27）。"""
         pane.editor.set_content_width(720)
         pane.set_favorite_visible(True)
         qtbot.wait(80)  # 置き直しはイベントループ経由
         margin = pane.editor.viewportMargins().left()
-        assert margin > 60, "前提: 左に沈んだ領域がある"
-        assert pane.favorite_button.isVisible()
-        assert pane.favorite_button.geometry().right() <= margin
+        assert margin > 100, "前提: 左に沈んだ領域がある"
+        button = pane.favorite_button
+        assert button.isVisible()
+        gap = margin - (button.x() + button.width())
+        assert gap == editor_pane.FAVORITE_GAP
+
+    def test_本文との間隔は幅の設定によらず一定(self, pane, qtbot) -> None:
+        """標準（720）でも広め（880）でも、星と本文の間は同じ。"""
+        pane.resize(1200, 500)
+        gaps = []
+        for width in (720, 880):
+            pane.editor.set_content_width(width)
+            pane.set_favorite_visible(True)
+            qtbot.wait(80)
+            margin = pane.editor.viewportMargins().left()
+            button = pane.favorite_button
+            assert button.isVisible(), f"幅 {width} で隠れている"
+            gaps.append(margin - (button.x() + button.width()))
+        assert gaps[0] == gaps[1]
 
     def test_領域が無ければ隠れる(self, pane, qtbot) -> None:
         """全幅では置き場が無い。本文に重ねると開閉三角と取り合いになる。"""

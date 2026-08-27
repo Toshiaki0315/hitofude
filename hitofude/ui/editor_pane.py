@@ -21,8 +21,13 @@ from hitofude.ui.icons import Glyph, glyph_icon
 
 # お気に入りの星（ユーザー要望 2026-08-27 / Qiita 風）。本文の左の
 # 沈んだ領域に浮かせる。大きめ——遠目にも入り切りが分かる的
-FAVORITE_BUTTON_SIZE = 40
-FAVORITE_ICON_SIZE = 26
+FAVORITE_BUTTON_SIZE = 48
+FAVORITE_ICON_SIZE = 34
+FAVORITE_GAP = 16
+"""星と紙（本文の左端）の間。**幅の設定（標準 / 広め）によらず一定**
+（ユーザー要望 2026-08-27）。領域の真ん中に置くと、幅の設定で星が
+泳いで見える。"""
+
 FAVORITE_TOP = 16
 """本文の上端（documentMargin ぶん下がった 1 行目）に目線が揃う高さ。"""
 
@@ -145,13 +150,13 @@ class EditorPane(QWidget):
         いつでも効く。
         """
         margin = self._editor.viewportMargins().left()
-        # ふつうの窓（1280px・標準幅）で領域は 50px 前後。ここで隠れると
-        # 実質出番が無いので、ボタン + 両側 4px から出す
-        fits = margin >= FAVORITE_BUTTON_SIZE + 8
-        if not (self._favorite_allowed and fits):
+        # **紙に寄せる**（ユーザー要望 2026-08-27）。間隔は幅の設定
+        # （標準 / 広め）によらず FAVORITE_GAP で一定。全幅（余白 0）や
+        # 置き場が足りない窓では出さない
+        x = margin - FAVORITE_GAP - FAVORITE_BUTTON_SIZE
+        if not (self._favorite_allowed and x >= 0):
             self._favorite.hide()
             return
-        x = (margin - FAVORITE_BUTTON_SIZE) // 2
         self._favorite.move(x, FAVORITE_TOP)
         self._favorite.show()
         self._favorite.raise_()
