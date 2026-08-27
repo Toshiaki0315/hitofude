@@ -82,8 +82,13 @@ class EditorPane(QWidget):
         self._favorite.hide()
         self._apply_favorite_icon()
         # 置き直しはエディタの大きさが決まってから。resize の**あと**に
-        # 走らせる（余白 setViewportMargins は resize の中で確定する）
-        self._editor.installEventFilter(_Relayout(self, self._reposition_favorite))
+        # 走らせる（余白 setViewportMargins は resize の中で確定する）。
+        # **viewport も見張る**（ユーザー報告 2026-08-27）。幅の設定
+        # （標準 / 広め / 全幅）の変更は余白＝viewport の大きさだけが
+        # 変わり、エディタ本体は resize されない
+        relayout = _Relayout(self, self._reposition_favorite)
+        self._editor.installEventFilter(relayout)
+        self._editor.viewport().installEventFilter(relayout)
 
         self._find.query_changed.connect(self._on_query_changed)
         self._find.find_requested.connect(self._on_find)

@@ -66,6 +66,22 @@ class TestButton:
             gaps.append(margin - (button.x() + button.width()))
         assert gaps[0] == gaps[1]
 
+    def test_あとから幅を絞ると現れる(self, pane, qtbot) -> None:
+        """全幅で起動 → 設定で「広め」へ（ユーザー報告 2026-08-27）。
+
+        幅の変更は viewport の余白だけが変わり、エディタ本体は resize
+        されない。本体の resize しか見ていないと置き直されず、星が
+        隠れたままになる。
+        """
+        pane.resize(1200, 500)
+        pane.editor.set_content_width(0)
+        pane.set_favorite_visible(True)
+        qtbot.wait(80)
+        assert not pane.favorite_button.isVisible()
+        pane.editor.set_content_width(880)
+        qtbot.wait(80)
+        assert pane.favorite_button.isVisible(), "幅を絞っても星が出ない"
+
     def test_領域が無ければ隠れる(self, pane, qtbot) -> None:
         """全幅では置き場が無い。本文に重ねると開閉三角と取り合いになる。"""
         pane.editor.set_content_width(0)
