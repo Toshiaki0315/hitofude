@@ -80,3 +80,90 @@ class TestStillHidden:
                 return
             block = block.next()
         raise AssertionError("閉じフェンスが無い")
+
+
+NOTE_BLOCK = "前の本文\n\n:::note info\n気をつけること\n:::\n\n後の本文\n"
+MATH_BLOCK = "前の本文\n\n$$\nE = mc^2\n$$\n\n後の本文\n"
+
+
+def heights_of(editor: MarkdownEditor, kind: BlockType) -> list[float]:
+    found: list[float] = []
+    block = editor.document().begin()
+    while block.isValid():
+        data = block.userData()
+        if data is not None and data.info.type is kind:
+            found.append(editor.blockBoundingGeometry(block).height())
+        block = block.next()
+    return found
+
+
+class TestOtherBands:
+    """注釈と数式の帯も同じ作り（ユーザー要望 2026-08-28）。
+
+    どれも「隠した縁の行に高さを持たせる」という同じ仕組みで、
+    コードだけ直すと**同じ見た目の箱で余白が揃わない**。
+    """
+
+    @pytest.fixture
+    def shown(self, qtbot):
+        def build(text: str) -> MarkdownEditor:
+            widget = MarkdownEditor()
+            qtbot.addWidget(widget)
+            widget.resize(800, 400)
+            widget.show()
+            qtbot.waitExposed(widget)
+            widget.setPlainText(text)
+            widget.moveCursor(QTextCursor.MoveOperation.End)
+            return widget
+
+        return build
+
+    def test_注釈の上下が揃う(self, shown) -> None:
+        editor = shown(NOTE_BLOCK)
+        found = heights_of(editor, BlockType.NOTE_DELIMITER)
+        assert len(found) == 2, "開きと閉じが揃っていない"
+        assert found[0] == pytest.approx(found[1], abs=1.5)
+
+    def test_注釈の閉じにも余白がある(self, shown) -> None:
+        editor = shown(NOTE_BLOCK)
+        assert heights_of(editor, BlockType.NOTE_DELIMITER)[-1] >= BAND_EDGE_PADDING
+
+    def test_数式の上下が揃う(self, shown) -> None:
+        editor = shown(MATH_BLOCK)
+        found = heights_of(editor, BlockType.MATH_DELIMITER)
+        assert len(found) == 2, "開きと閉じが揃っていない"
+        assert found[0] == pytest.approx(found[1], abs=1.5)
+
+    def test_数式の閉じにも余白がある(self, shown) -> None:
+        editor = shown(MATH_BLOCK)
+        assert heights_of(editor, BlockType.MATH_DELIMITER)[-1] >= BAND_EDGE_PADDING
+
+
+class TestFigureBands:
+    """図として描く帯（数式・Mermaid）も同じ（ユーザー要望 2026-08-28）。
+
+    こちらは `_apply_figure` が**別経路で**縁の余白を当てており、
+    そこも開き行だけだった。文字の帯を直しても図の帯が残る形だったので、
+    両方を縛る。
+    """
+
+    @pytest.fixture
+    def shown(self, qtbot):
+        def build(text: str) -> MarkdownEditor:
+            widget = MarkdownEditor()
+            qtbot.addWidget(widget)
+            widget.resize(800, 400)
+            widget.show()
+            qtbot.waitExposed(widget)
+            widget.setPlainText(text)
+            widget.moveCursor(QTextCursor.MoveOperation.End)
+            return widget
+
+        return build
+
+    def test_図のフェンスも上下が揃う(self, shown) -> None:
+        editor = shown("前の本文\n\n```mermaid\ngraph TD\n  A-->B\n```\n\n後の本文\n")
+        opens = heights_of(editor, BlockType.CODE_FENCE_OPEN)
+        closes = heights_of(editor, BlockType.CODE_FENCE_CLOSE)
+        assert opens and closes
+        assert opens[0] == pytest.approx(closes[0], abs=1.5)

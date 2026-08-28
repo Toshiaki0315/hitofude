@@ -678,9 +678,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
         `run` は `(開始行, 終了行, 中身)`。キャレットが範囲に触れていれば
         生のまま（**式・図の全体で**リビールする。途中の行だけ生に戻ると、
-        断片と絵が同時に見えて読めない）。開きの行（start）は帯の縁の
-        余白になり、その次の行の 1 文字目を透明なまま大きくして絵の高さを
-        予約する（画像 ADR-0004 と同じ手）。
+        断片と絵が同時に見えて読めない）。縁の行（start と end）は帯の
+        上下の余白になり、start の次の行の 1 文字目を透明なまま大きくして
+        絵の高さを予約する（画像 ADR-0004 と同じ手）。
         """
         if run is None:
             return False
@@ -698,8 +698,11 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             tall.setForeground(QColor("transparent"))
             self.setFormat(0, 1, tall)
             setattr(self, remember_as, source)
-        elif number == start:
-            self._pad_band_edge(text)
+        elif number in (start, end):
+            # **上下とも空ける**（ユーザー要望 2026-08-28）。開き行しか
+            # 当てていなかったので、図の帯も下だけ詰まっていた（数式と
+            # Mermaid の両方。文字の帯と同じ直し）
+            self._pad_band_edge(text, always=True)
         return True
 
     def _caret_in_lines(self, start: int, end: int) -> bool:
@@ -938,14 +941,13 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         elif info.type is BlockType.NOTE_DELIMITER:
             if info.note_kind != UNKNOWN_NOTE_KIND:
                 self._hide(0, len(text))
-                if text.strip() != ":::":
-                    self._pad_band_edge(text)  # 開き（:::note 種類）だけ
+                # **閉じ側にも当てる**（ユーザー要望 2026-08-28）。コードの
+                # 帯と同じ作りなので、片方だけ直すと同じ見た目の箱で
+                # 余白が揃わない
+                self._pad_band_edge(text, always=True)
         elif info.type in _FULLY_HIDDEN_TYPES and info.type is not BlockType.TABLE_DELIMITER:
             self._hide(0, len(text))
-            if info.type in _BAND_EDGE_TYPES or (
-                info.type is BlockType.MATH_DELIMITER
-                and not _decode_in_math(self.currentBlock().previous())
-            ):
+            if info.type in _BAND_EDGE_TYPES or info.type is BlockType.MATH_DELIMITER:
                 # **上下とも空ける**（ユーザー要望 2026-08-28）。閉じ側に
                 # 当てていなかったので、帯が下だけ詰まって見えていた
                 # （実測: 上 8px・下 2px）
