@@ -781,10 +781,23 @@ class MainWindow(QMainWindow):
 
     def refresh(self) -> None:
         """索引から一覧・フォルダ・タグツリーを引き直す。"""
-        self._note_list.set_rows(self._rows_for(self._filter))
+        self._note_list.set_rows(self._rows_for(self._filter), showing=self._shown_path())
         # 件数は索引、存在はディスク（空フォルダも見せる。ユーザー要望）
         self._sidebar.set_folders(merge_folders(self._db.folder_tree(), self._vault.folders()))
         self._sidebar.set_tags(self._db.tag_tree())
+
+    def _shown_path(self) -> Path | None:
+        """いま本文に出しているノート（保管フォルダからの相対）。
+
+        一覧が持つのは相対パスなので、そちらに合わせる。開いていなければ
+        `None`——**開いていないのに何かを選ばせない**。
+        """
+        if self._note is None:
+            return None
+        try:
+            return self._note.path.relative_to(self._vault.root)
+        except ValueError:
+            return None  # 保管フォルダの外（ありえないが、選ばない側へ倒す）
 
     def _rows_for(self, target: Filter) -> list[NoteRow]:
         order = self._config.sort_order
@@ -825,7 +838,7 @@ class MainWindow(QMainWindow):
     def set_filter(self, target: Filter) -> None:
         self._filter = target
         self._list_pane.set_empty_notice(_empty_notice(target))
-        self._note_list.set_rows(self._rows_for(target))
+        self._note_list.set_rows(self._rows_for(target), showing=self._shown_path())
 
     def _on_filter_changed(self, target: Filter) -> None:
         self.set_filter(target)

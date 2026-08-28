@@ -678,7 +678,12 @@ class TestRefreshDoesNotReopen:
         assert "書きかけの内容" in window.editor.toPlainText()
 
     def test_ユーザー操作の選択では開く(self, window) -> None:
-        """止めるのはプログラムからの選択だけ。"""
+        """止めるのはプログラムからの選択だけ。
+
+        **今いる行を選び直しても何も起きない**（Qt は変化が無ければ
+        `currentChanged` を出さない）。一覧は開いているノートに選択を
+        合わせるようになったので、**別の行**へ動かして見る。
+        """
         window.new_note()
         window.editor.setPlainText("# 一枚目\n\n本文\n")
         window.flush()
@@ -688,7 +693,8 @@ class TestRefreshDoesNotReopen:
 
         opened: list = []
         window.note_list.note_activated.connect(opened.append)
-        window.note_list.setCurrentIndex(window.note_list.model().index(1))
+        here = window.note_list.currentIndex().row()
+        window.note_list.setCurrentIndex(window.note_list.model().index(1 if here != 1 else 0))
         assert len(opened) == 1
 
 

@@ -476,11 +476,24 @@ class NoteListView(QListView):
         if current is not None:
             self.select_path(current)
 
-    def set_rows(self, rows: list[NoteRow]) -> None:
+    def set_rows(self, rows: list[NoteRow], *, showing: Path | None = None) -> None:
+        """並びを差し替える。**選択は当て直す。**
+
+        前の選択が新しい並びに無ければ、`showing`（いま本文に出している
+        ノート）で当て直す（ユーザー要望 2026-08-28）。0 件の絞り込みを
+        挟んでフォルダへ戻すと、**開いているノートが一覧にあるのに選ばれて
+        いない**状態になっていた——本文は出ているのに、一覧のどれか分からない。
+
+        **当てずっぽうで別のノートは選ばない。** どちらも当たらなければ
+        選択なしのまま。
+        """
         current = self.current_path()
         self._model.set_rows(rows)
-        if current is not None:
-            self.select_path(current)
+        for wanted in (current, showing):
+            if wanted is not None:
+                self.select_path(wanted)
+                if self.current_path() == wanted:
+                    return
 
     def set_theme(self, theme: ThemeColors) -> None:
         self._delegate.set_theme(theme)
