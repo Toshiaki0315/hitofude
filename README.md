@@ -13,6 +13,42 @@ Markdown のマーカー（`**`, `#`, `- ` など）はキャレットが要素�
 | GUI | PySide6（Qt 6.8 LTS / 6.9） |
 | 保存形式 | ローカルの `.md` プレーンテキスト |
 
+## 使ってみる（配布版）
+
+[Releases](https://github.com/Toshiaki0315/hitofude/releases) から zip を落として、
+中の `OboeGaki.app` を「アプリケーション」フォルダへ入れる
+（Finder には**「覚書」**と表示される。軽量版は `OboeGakiLite.app` /「覚書Lite」）。
+
+| | 中身 | 大きさ |
+|---|---|---|
+| `OboeGaki-*.zip` | 全部入り | 約 164MB |
+| `OboeGakiLite-*.zip` | Mermaid の図だけ出ない（数式は出る） | 約 49MB |
+
+迷ったら軽い方でよい。**違いは Mermaid の図が出るかどうかだけ**で、
+軽い方では図がコードのまま表示される（落ちはしない）。
+
+### 初回だけ「壊れている」と出る
+
+> 「"覚書"は壊れているため開けません。ゴミ箱に入れる必要があります。」
+
+**壊れていない。** Apple の公証（notarization）を受けていないアプリを
+インターネットから落とすと、macOS が必ずこう言う。開き方は 2 つ。
+
+1. アプリを**右クリック →「開く」**→ 出てくるダイアログでもう一度「開く」
+2. それでも駄目なら、ターミナルで隔離の印を外す
+
+```bash
+xattr -d com.apple.quarantine /Applications/OboeGaki.app
+```
+
+**Finder の表示は「覚書」だが、ファイル名は `OboeGaki.app`** なので、
+ここは表示名ではなくファイル名で打つ（軽量版は `OboeGakiLite.app`）。
+
+一度開けば、次からは普通にダブルクリックで起動する。
+
+公証には Apple Developer Program（年 99 ドル）が要るため、いまは
+未署名で配っている。取得したらこの手順は不要になる。
+
 ## セットアップ
 
 [uv](https://docs.astral.sh/uv/) が必要。

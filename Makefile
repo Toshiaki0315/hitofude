@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 .PHONY: help setup run test test-fast cov bench fmt lint check clean ocr-tool \
-	app app-lite all _bundle icon run-lite
+	app app-lite all dist _bundle icon run-lite
 
 UV := uv
 
@@ -81,6 +81,18 @@ app-lite: ## 軽量版（dist/OboeGakiLite.app。Mermaid なし・数式は出�
 	$(UV) run python scripts/make_icon.py
 	$(MAKE) _bundle NAME=OboeGakiLite LITE=1
 	@echo "できました: dist/OboeGakiLite.app（軽量版。Mermaid の図はコードのまま出ます）"
+
+# 配る zip に付ける版。**2 か所に書かない**——食い違うと、配ったものが
+# どの版か分からなくなる
+VERSION := $(shell grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+
+dist: all ## 配る形（zip）まで作る（版は pyproject.toml から取る）
+	@# **`zip -r` を使わない。** Framework の中のシンボリックリンクが壊れ、
+	@# 起動しない `.app` ができる。ditto は macOS のメタデータごと保つ
+	ditto -c -k --keepParent dist/OboeGaki.app dist/OboeGaki-$(VERSION).zip
+	ditto -c -k --keepParent dist/OboeGakiLite.app dist/OboeGakiLite-$(VERSION).zip
+	@ls -lh dist/*.zip | awk '{print $$5, $$9}'
+	@echo "※ 未署名。受け取った人は初回だけ右クリック →「開く」が要る"
 
 all: ## 通常版と軽量版を一度に作る（dist に 2 つ並ぶ）
 	rm -rf build dist

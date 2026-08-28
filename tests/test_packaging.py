@@ -250,3 +250,25 @@ class TestMakefileTargets:
         text = self.makefile()
         assert f"dist/{full}.app" in text
         assert f"dist/{lite}.app" in text
+
+    def test_distがある(self) -> None:
+        """配る形（zip）を作る目標。**手で固めない**——`zip -r` では
+        Framework の中のシンボリックリンクが壊れ、起動しない `.app` が
+        できる（`ditto -c -k --keepParent` が要る）。
+        """
+        assert "\ndist:" in self.makefile()
+
+    def test_distが両方を固める(self) -> None:
+        full, lite = self.bundle_names()
+        body = self.makefile().split("\ndist:")[1].split("\n\n")[0]
+        assert full in body
+        assert lite in body
+
+    def test_distはdittoで固める(self) -> None:
+        body = self.makefile().split("\ndist:")[1].split("\n\n")[0]
+        assert "ditto -c -k --keepParent" in body
+
+    def test_版はpyprojectから取る(self) -> None:
+        """**版を 2 か所に書かない。** 食い違うと、配ったものの版が分からない。"""
+        text = self.makefile()
+        assert "pyproject.toml" in text.split("\ndist:")[0].split("VERSION")[-1][:200]
