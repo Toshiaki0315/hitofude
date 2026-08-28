@@ -63,6 +63,14 @@ INLINE_BAND_RADIUS = 3.0
 # 本文は動かせない（R5）ので、CONTENT_MARGIN との差（24 - 12 = 12px）が
 # そのまま帯の中の左右の余白になる。**本文の余白より狭く保つ**——
 # 逆転すると帯の縁から文字がはみ出す
+BAND_EDGE_PADDING = 14.0
+"""帯の上下の余白。
+
+フェンス（``` / $$ / :::）があるときは、隠したその行に**この高さを
+持たせて**内側の余白にする（`highlighter._pad_band_edge`）。
+**字下げのコードには縁の行が無い**ので、そのときだけ描く側で帯を
+伸ばす（ユーザー報告 2026-08-28）。"""
+
 BAND_MARGIN = 12.0
 BAND_RADIUS = 6.0
 
@@ -485,12 +493,35 @@ def _table_runs(entries) -> list[list]:
     return [run for run in runs if len(run) >= 2]
 
 
+def _code_neighbour(block: QTextBlock, previous: bool) -> bool:
+    """隣の行もコードの帯か（＝縁ではない）。"""
+    other = block.previous() if previous else block.next()
+    if not other.isValid():
+        return False
+    data = other.userData()
+    return data is not None and data.info.type in _CODE_TYPES
+
+
+def _open_edge(block: QTextBlock) -> float:
+    """上に足す余白。フェンスが上にあるなら 0。"""
+    return 0.0 if _code_neighbour(block, True) else BAND_EDGE_PADDING
+
+
+def _close_edge(block: QTextBlock) -> float:
+    """下に足す余白。フェンスが下にあるなら 0。"""
+    return 0.0 if _code_neighbour(block, False) else BAND_EDGE_PADDING
+
+
 def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decoration]:
     result: list[Decoration] = []
 
     # 帯は紙の端まで伸ばさない（BAND_MARGIN。ユーザー要望 2026-08-26）
     banded = QRectF(geometry).adjusted(BAND_MARGIN, 0, -BAND_MARGIN, 0)
     if info.type in _CODE_TYPES:
+        # **縁の行が無いなら描く側で空ける**（字下げのコード。
+        # ユーザー報告 2026-08-28）。フェンスがあるときは隠したその行が
+        # 既に余白を持っているので、ここで足すと二重になる
+        banded.adjust(0, -_open_edge(block), 0, _close_edge(block))
         band = (
             DecorationKind.FIGURE_BACKGROUND
             if getattr(block.userData(), "figure_band", False)

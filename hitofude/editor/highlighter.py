@@ -47,6 +47,7 @@ from hitofude.core.table import (
 )
 from hitofude.core.textpos import py_to_utf16, utf16_to_py
 from hitofude.editor.painter_overlay import (
+    BAND_EDGE_PADDING,
     BULLET_GAP_RATIO,
     CELL_PAD,
     CHECKBOX_GAP_RATIO,
@@ -191,8 +192,6 @@ _MONO_TYPES = frozenset({BlockType.TABLE_ROW, BlockType.TABLE_DELIMITER})
 # 空いて見える（ユーザー指摘）
 _BAND_EDGE_TYPES = frozenset({BlockType.CODE_FENCE_OPEN, BlockType.CODE_FENCE_CLOSE})
 """帯の上下の縁。ここに余白ぶんの高さを残す。"""
-
-BAND_EDGE_PADDING = 14.0
 
 
 def _data_type(block: QTextBlock):

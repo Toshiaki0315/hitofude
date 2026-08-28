@@ -167,3 +167,66 @@ class TestFigureBands:
         closes = heights_of(editor, BlockType.CODE_FENCE_CLOSE)
         assert opens and closes
         assert opens[0] == pytest.approx(closes[0], abs=1.5)
+
+
+INDENTED = "書き方はこうです。\n\n    :::note info\n    お知らせです。\n    :::\n\n末尾\n"
+
+
+class TestIndentedCode:
+    """字下げ（4 字）のコードブロック（ユーザー報告 2026-08-28）。
+
+    **フェンス行が無い。** 3 行とも `CODE_FENCE_BODY` に分類されるので、
+    余白を載せる縁の行が存在しない——帯が中身にぴったり張り付いて、
+    上下の余白がゼロになっていた（使い方ノートの `:::note` の例で報告）。
+
+    縁が無いなら**描く側で空ける**。帯の上下は空行に食い込むが、字下げの
+    コードは前後に空行が要る（CommonMark）ので本文には掛からない。
+    """
+
+    @pytest.fixture
+    def shown(self, qtbot):
+        widget = MarkdownEditor()
+        qtbot.addWidget(widget)
+        widget.resize(800, 400)
+        widget.show()
+        qtbot.waitExposed(widget)
+        widget.setPlainText(INDENTED)
+        widget.moveCursor(QTextCursor.MoveOperation.End)
+        return widget
+
+    def bands(self, editor):
+        from hitofude.editor.painter_overlay import DecorationKind
+        from tests.editor.test_painter_overlay import visible_decorations
+
+        return [d for d in visible_decorations(editor) if d.kind is DecorationKind.CODE_BACKGROUND]
+
+    def test_帯が出る(self, shown) -> None:
+        assert len(self.bands(shown)) == 3
+
+    def test_上に余白がある(self, shown) -> None:
+        """**これが本題。** 1 行目の字が帯の上端に張り付いていた。"""
+        from hitofude.editor.painter_overlay import BAND_EDGE_PADDING
+
+        editor = shown
+        block = editor.document().findBlockByNumber(2)
+        top = editor.blockBoundingGeometry(block).translated(editor.contentOffset()).top()
+        assert self.bands(editor)[0].rect.top() <= top - BAND_EDGE_PADDING + 1
+
+    def test_下にも余白がある(self, shown) -> None:
+        from hitofude.editor.painter_overlay import BAND_EDGE_PADDING
+
+        editor = shown
+        block = editor.document().findBlockByNumber(4)
+        bottom = editor.blockBoundingGeometry(block).translated(editor.contentOffset()).bottom()
+        assert self.bands(editor)[-1].rect.bottom() >= bottom + BAND_EDGE_PADDING - 1
+
+    def test_フェンスのときは広げない(self, shown, qtbot) -> None:
+        """**二重に空けない。** フェンスなら縁の行が既に余白を持っている。"""
+        editor = shown
+        editor.setPlainText("本文\n\n```python\nprint(1)\n```\n\n末尾\n")
+        editor.moveCursor(QTextCursor.MoveOperation.End)
+        qtbot.wait(10)
+        body = editor.document().findBlockByNumber(3)
+        top = editor.blockBoundingGeometry(body).translated(editor.contentOffset()).top()
+        middle = [d for d in self.bands(editor) if abs(d.rect.top() - top) < 1.0]
+        assert middle, "中身の行の帯が行の高さと合っていない（広げてしまった）"
