@@ -464,9 +464,17 @@ class NoteListView(QListView):
 
         `setUniformItemSizes(True)` は高さを 1 度だけ測って全行に当てる。
         **測り直させないと古い高さのまま**なので、明示的に組み直す。
+
+        **選択は覚えて戻す**（`set_rows` と同じ作法。ユーザー報告
+        2026-08-28）。`reset()` は高さと一緒に選択も落とすので、設定を
+        閉じただけで一覧の選択が消え、本文は出ているのにどれを見ているのか
+        分からなくなっていた。
         """
+        current = self.current_path()
         self._delegate.set_metrics(metrics_for(spacing))
         self.reset()
+        if current is not None:
+            self.select_path(current)
 
     def set_rows(self, rows: list[NoteRow]) -> None:
         current = self.current_path()
