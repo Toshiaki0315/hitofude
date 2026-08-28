@@ -13,7 +13,7 @@ from PySide6.QtGui import QTextBlock
 from PySide6.QtWidgets import QApplication, QToolButton
 
 from hitofude.core.models import BlockType
-from hitofude.editor.painter_overlay import BAND_MARGIN
+from hitofude.editor.painter_overlay import BAND_MARGIN, band_top
 from hitofude.theme import LIGHT, ThemeColors
 from hitofude.ui.icons import Glyph, glyph_icon
 
@@ -134,9 +134,9 @@ class CodeCopyButton(QObject):
 
     def _place(self, start_line: int) -> None:
         block = self._editor.document().findBlockByNumber(start_line)
-        top = (
-            self._editor.blockBoundingGeometry(block).translated(self._editor.contentOffset()).top()
-        )
+        # **帯の上端に合わせる**（行の上端ではない）。字下げのコードには
+        # 縁の行が無く、帯だけが上へ伸びるので、行に合わせると印が下がる
+        top = band_top(self._editor, block)
         band_right = self._editor.viewport().width() - BAND_MARGIN
         self._button.move(round(band_right - PAD - BUTTON_SIZE), round(top + PAD))
         self._button.show()

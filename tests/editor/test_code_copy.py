@@ -114,3 +114,42 @@ class TestRawMode:
         editor.set_source_mode(False)
         hover(editor, 3)
         assert editor._code_copy.button.isVisible()
+
+
+class TestPlacement:
+    """印は**帯の右上**に置く（ユーザー要望 2026-08-28）。
+
+    合わせていたのは「最初の行の上端」だった。フェンスなら縁の行が帯の
+    上端なので合うが、**字下げのコードには縁の行が無く**、帯だけが上へ
+    伸びる（`BAND_EDGE_PADDING`）。そのぶん印が下がって、真ん中あたりに
+    浮いて見えていた（報告の画像）。
+    """
+
+    def band(self, editor: MarkdownEditor):
+        from hitofude.editor.painter_overlay import _band_runs
+        from hitofude.theme import LIGHT
+        from tests.editor.test_painter_overlay import visible_decorations
+
+        runs = _band_runs(visible_decorations(editor), LIGHT)
+        assert runs, "帯が無い"
+        return runs[-1][0]
+
+    def check(self, editor: MarkdownEditor, line: int) -> None:
+        from hitofude.editor.code_copy import PAD
+
+        hover(editor, line)
+        assert editor._code_copy.button.isVisible()
+        top = editor._code_copy.button.pos().y()
+        assert top == pytest.approx(self.band(editor).top() + PAD, abs=1.5)
+
+    def test_フェンスは今までどおり(self, editor) -> None:
+        self.check(editor, 3)
+
+    def test_字下げでも帯の上端に付く(self, editor, qtbot) -> None:
+        """**これが本題。** 真ん中あたりに浮いていた。"""
+        from PySide6.QtGui import QTextCursor
+
+        editor.setPlainText("前の本文\n\n    hhhh\n    iiii\n\n後の本文\n")
+        editor.moveCursor(QTextCursor.MoveOperation.End)
+        qtbot.wait(10)
+        self.check(editor, 2)

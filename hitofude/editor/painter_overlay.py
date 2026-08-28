@@ -554,6 +554,17 @@ def _text_height(block: QTextBlock, geometry: QRectF) -> float:
     return layout.boundingRect().height() if layout is not None else geometry.height()
 
 
+def band_top(editor, block: QTextBlock) -> float:
+    """その行が属する帯の上端（縁の余白を含む）。
+
+    **写しの印はここに合わせる。** 行の上端に合わせると、縁の行が無い
+    字下げのコードでは帯だけが上へ伸びるぶん印が下がる（ユーザー報告
+    2026-08-28）。
+    """
+    geometry = editor.blockBoundingGeometry(block).translated(editor.contentOffset())
+    return geometry.top() - _edge_padding(editor, block, previous=True)
+
+
 def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decoration]:
     result: list[Decoration] = []
     # 末尾の余白は帯・縦線の外（上記）。**位置は動かさず高さだけ抑える**
