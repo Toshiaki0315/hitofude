@@ -557,8 +557,12 @@ class Sidebar(QTreeView):
             )
 
     def _acceptable_index(self, index) -> bool:
+        """その行を塗るか。**受け入れの判定と同じ口を使う**——別に書くと、
+        落とせる行が増えたときに「受けるのに塗られない」がまた起きる
+        （ゴミ箱を足したとき実際に踏んだ。ユーザー報告 2026-08-28）。
+        """
         target = index.data(_FILTER_ROLE) if index.isValid() else None
-        return target is not None and target.kind is FilterKind.FOLDER
+        return self.drop_kind(target)
 
     def _paint_drop(self, index, *, marked: bool) -> None:
         # 組み直し（refresh）を挟むと行そのものが消えている

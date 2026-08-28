@@ -930,8 +930,20 @@ class MainWindow(QMainWindow):
         **メニューの「ゴミ箱へ入れる」と同じ道を通す**（`trash_note`）。
         お気に入りは捨てない、開いていれば閉じる、といった後始末が
         そちらに揃っているので、ここで真似ない。
+
+        そのうえで**フォルダへ移したときと同じ動き**にする（ユーザー要望
+        2026-08-28）——行き先で絞り、左の選択も動かし、知らせる。移した
+        ものが今の一覧から消えるので、動かないと入ったのか分からない。
+
+        **捨てられなかったときは動かさない**（お気に入りなど）。捨てて
+        いないのに画面だけ動くと、入ったように見える。
         """
-        self._notes.trash_note(self._vault.root / relative)
+        path = self._vault.root / relative
+        title = path.stem
+        if not self._notes.trash_note(path):
+            return
+        self._show_filter(Filter(FilterKind.TRASH))
+        self.notify(f"「{title}」をゴミ箱へ入れました")
 
     def move_note_to(self, path: Path, folder: str) -> Path | None:
         """ノートをフォルダへ移す（対話なし）。実体は NoteActions。"""

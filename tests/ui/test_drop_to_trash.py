@@ -56,9 +56,12 @@ class TestDropMovesToTrash:
         assert not path.exists()
         assert (opened._vault.trash_dir / "捨てるノート.md").exists()
 
-    def test_一覧から消える(self, opened) -> None:
+    def test_ふつうの一覧から消える(self, opened) -> None:
+        """落としたあとはゴミ箱で絞られるので、**「すべて」へ戻して見る。**"""
+        from hitofude.ui.sidebar import Filter, FilterKind
+
         opened._on_note_trashed(Path("捨てるノート.md"))
-        opened.refresh()
+        opened.set_filter(Filter(FilterKind.ALL))
         names = [
             opened.note_list.model().index(row, 0).data()
             for row in range(opened.note_list.model().rowCount())
@@ -105,3 +108,62 @@ class TestRealDrop:
 
     def test_お気に入りの行では届かない(self, opened) -> None:
         assert self.drop_on(opened, "お気に入り") == []
+
+
+class TestSameAsFolderMove:
+    """**フォルダへ移すのと同じ動き**にする（ユーザー要望 2026-08-28）。
+
+    ドラッグ中に行が塗られず、落としたあとも画面が動かないので、
+    「ゴミ箱に入ったのか分からない」と報告された。フォルダへの移動は
+    ①落とす先を塗る ②行き先で絞る（左の選択も動く）③知らせる、の
+    3 つを揃えている。
+    """
+
+    def test_ドラッグ中にゴミ箱の行を塗る(self, opened) -> None:
+        """**これが見えないと、受けるかどうかが矢印でしか分からない。**"""
+        sidebar = opened._sidebar
+        index = sidebar._find_label("ゴミ箱")
+        assert index is not None
+        assert sidebar._acceptable_index(index) is True
+
+    def test_フォルダの行は今までどおり塗る(self, opened) -> None:
+        """フォルダは入れ子の行なので、フィルタで引く（見出しの直下ではない）。"""
+        from hitofude.ui.sidebar import Filter, FilterKind
+
+        sidebar = opened._sidebar
+        opened._notes.move_note_to(opened._vault.root / "残すノート.md", "箱")
+        index = sidebar._find(Filter(FilterKind.FOLDER, folder="箱"))
+        assert index is not None
+        assert sidebar._acceptable_index(index) is True
+
+    def test_お気に入りの行は塗らない(self, opened) -> None:
+        sidebar = opened._sidebar
+        index = sidebar._find_label("お気に入り")
+        assert index is not None
+        assert sidebar._acceptable_index(index) is False
+
+    def test_落としたらゴミ箱で絞る(self, opened) -> None:
+        """行き先を見せる（フォルダ移動と同じ理屈。移したものが画面から消える）。"""
+        from hitofude.ui.sidebar import FilterKind
+
+        opened._on_note_trashed(Path("捨てるノート.md"))
+        assert opened.filter.kind is FilterKind.TRASH
+
+    def test_左の選択も動く(self, opened) -> None:
+        """一覧だけ変わると、今どれで絞っているのか分からない。"""
+        from hitofude.ui.sidebar import FilterKind
+
+        opened._on_note_trashed(Path("捨てるノート.md"))
+        assert opened._sidebar.current_filter().kind is FilterKind.TRASH
+
+    def test_知らせる(self, opened) -> None:
+        opened._on_note_trashed(Path("捨てるノート.md"))
+        assert "ゴミ箱" in opened.notice()
+
+    def test_捨てられなければ動かない(self, opened) -> None:
+        """**お気に入りは捨てない。** 捨てていないのに画面だけ動かさない。"""
+        from hitofude.ui.sidebar import FilterKind
+
+        opened._notes.toggle_pin(opened._vault.root / "捨てるノート.md")
+        opened._on_note_trashed(Path("捨てるノート.md"))
+        assert opened.filter.kind is not FilterKind.TRASH
