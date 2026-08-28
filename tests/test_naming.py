@@ -94,3 +94,29 @@ class TestLiteBundle:
         """設定と保管フォルダの記憶を分断しない。"""
         options = _setup_options()["OPTIONS"]
         assert options["plist"]["CFBundleIdentifier"] == ORG_DOMAIN
+
+
+class TestBundledManual:
+    """同梱の使い方ノートに旧名を残さない（ユーザー指摘 2026-08-28）。
+
+    **中身は目視でしか気づけない。** 題名（`MANUAL_TITLE`）は定数なので
+    改名で直ったが、本文は文章なので取り残される。実際 `.hitofude` を
+    消してよいと案内したままで、**いまは存在しないフォルダ**を指していた。
+    """
+
+    def manual(self) -> str:
+        from importlib.resources import files
+
+        return (files("hitofude.resources") / "manual.md").read_text(encoding="utf-8")
+
+    def test_題名が今の名前(self) -> None:
+        assert self.manual().splitlines()[0] == f"# {MANUAL_TITLE}"
+
+    def test_管理フォルダの名前が今のもの(self) -> None:
+        text = self.manual()
+        assert LEGACY_MANAGED_DIR not in text
+        assert MANAGED_DIR in text, "管理フォルダの説明そのものが消えている"
+
+    def test_旧名を書かない(self) -> None:
+        slips = [line for line in self.manual().splitlines() if "itofude" in line]
+        assert slips == [], f"旧名が残っている: {slips}"
