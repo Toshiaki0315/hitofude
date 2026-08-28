@@ -1228,7 +1228,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
         tag = QTextCharFormat()
         tag.setForeground(QColor(theme.tag_foreground))
-        tag.setBackground(QColor(theme.tag_background))
+        # **下地は塗らない**（ユーザー要望 2026-08-28）。`setBackground` は
+        # 行の高さいっぱいの四角になり、マーカーや行内コードの角丸の帯と
+        # 上下が揃わない。下地は `painter_overlay` が INLINE_BAND で描く
 
         self._span_formats: dict[SpanType, QTextCharFormat] = {
             SpanType.STRONG: strong,

@@ -576,7 +576,18 @@ _INLINE_BAND_NAMES = {
     SpanType.CODE: "code",
     SpanType.MATH: "code",
     SpanType.HIGHLIGHT: "highlight",
+    # タグも同じ帯で描く（ユーザー要望 2026-08-28）。文字書式の背景では
+    # Qt が**行の高さいっぱいの四角**を塗り、角が立ち上下が揃わない
+    SpanType.TAG: "tag",
 }
+
+
+_INLINE_BAND_COLORS = {
+    "code": lambda theme: theme.code_background,
+    "highlight": lambda theme: theme.highlight_background,
+    "tag": lambda theme: theme.tag_background,
+}
+"""帯の名前から色へ。名前は装飾の `text` に載る（テーマを知らずに組める）。"""
 
 
 def _span_rects(block: QTextBlock, geometry: QRectF, start: int, end: int) -> list[QRectF]:
@@ -864,11 +875,7 @@ def paint(painter: QPainter, decorations: list[Decoration], theme: ThemeColors) 
             case kind if kind in _BLOCK_BAND_KINDS:
                 pass  # まとめて描いた
             case DecorationKind.INLINE_BAND:
-                color = (
-                    theme.highlight_background
-                    if decoration.text == "highlight"
-                    else theme.code_background
-                )
+                color = _INLINE_BAND_COLORS[decoration.text](theme)
                 painter.save()
                 painter.setRenderHint(QPainter.RenderHint.Antialiasing)
                 painter.setBrush(QColor(color))
