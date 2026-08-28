@@ -13,6 +13,10 @@ Markdown のマーカー（`**`, `#`, `- ` など）はキャレットが要素�
 | GUI | PySide6（Qt 6.8 LTS / 6.9） |
 | 保存形式 | ローカルの `.md` プレーンテキスト |
 
+<!-- 配布版の案内。**Releases に実体ができるまで伏せておく**
+     （2026-08-28。いまは作者から zip を直接渡している）。
+     公開したらこのコメントを外すだけでよい。
+
 ## 使ってみる（配布版）
 
 [Releases](https://github.com/Toshiaki0315/hitofude/releases) から zip を落として、
@@ -48,6 +52,7 @@ xattr -d com.apple.quarantine /Applications/OboeGaki.app
 
 公証には Apple Developer Program（年 99 ドル）が要るため、いまは
 未署名で配っている。取得したらこの手順は不要になる。
+-->
 
 ## セットアップ
 
