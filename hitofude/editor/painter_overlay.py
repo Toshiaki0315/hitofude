@@ -71,6 +71,13 @@ BAND_EDGE_PADDING = 14.0
 **字下げのコードには縁の行が無い**ので、そのときだけ描く側で帯を
 伸ばす（ユーザー報告 2026-08-28）。"""
 
+MIN_BAND_GAP = 12.0
+"""帯どうしのあいだに必ず残す隙間。
+
+**空行を食い尽くさない**（ユーザー指摘 2026-08-28）。字下げのコードが
+2 つ続くと、上下へ伸ばしたぶんで間が 2px になり、別々のブロックが
+**1 つの矩形に見えていた**。伸ばすのは空行の一部までにする。"""
+
 BAND_MARGIN = 12.0
 BAND_RADIUS = 6.0
 
@@ -493,23 +500,36 @@ def _table_runs(entries) -> list[list]:
     return [run for run in runs if len(run) >= 2]
 
 
-def _code_neighbour(block: QTextBlock, previous: bool) -> bool:
-    """隣の行もコードの帯か（＝縁ではない）。"""
+def _edge_padding(editor, block: QTextBlock, *, previous: bool) -> float:
+    """縁に足す余白（字下げのコード用）。
+
+    隣がコードの帯なら 0——フェンスがあるときは隠したその行が既に余白を
+    持っているので、足すと二重になる。
+
+    **伸ばせるのは空行の中だけ。** 本文の行へ食い込むと、その字が帯の
+    中に入ってしまう。空行であっても**食い尽くさない**（`MIN_BAND_GAP`）
+    ——字下げのコードが 2 つ続くと、両側から伸びて間が 2px になり、
+    別々のブロックが 1 つの矩形に見える（ユーザー指摘 2026-08-28）。
+    """
     other = block.previous() if previous else block.next()
     if not other.isValid():
-        return False
+        return 0.0
     data = other.userData()
-    return data is not None and data.info.type in _CODE_TYPES
-
-
-def _open_edge(block: QTextBlock) -> float:
-    """上に足す余白。フェンスが上にあるなら 0。"""
-    return 0.0 if _code_neighbour(block, True) else BAND_EDGE_PADDING
-
-
-def _close_edge(block: QTextBlock) -> float:
-    """下に足す余白。フェンスが下にあるなら 0。"""
-    return 0.0 if _code_neighbour(block, False) else BAND_EDGE_PADDING
+    if data is None:
+        return 0.0
+    if data.info.type in _CODE_TYPES:
+        return 0.0
+    if data.info.type is not BlockType.BLANK:
+        return 0.0
+    # **狭めるのは要るときだけ。** 空行の向こうもコードなら両側から
+    # 伸びるので半分ずつ。本文なら伸びるのはこちら側だけ
+    beyond = other.next() if not previous else other.previous()
+    shared = False
+    if beyond.isValid():
+        data = beyond.userData()
+        shared = data is not None and data.info.type in _CODE_TYPES
+    room = editor.blockBoundingGeometry(other).height() - MIN_BAND_GAP
+    return max(0.0, min(BAND_EDGE_PADDING, room / 2 if shared else room))
 
 
 def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decoration]:
@@ -521,7 +541,12 @@ def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decora
         # **縁の行が無いなら描く側で空ける**（字下げのコード。
         # ユーザー報告 2026-08-28）。フェンスがあるときは隠したその行が
         # 既に余白を持っているので、ここで足すと二重になる
-        banded.adjust(0, -_open_edge(block), 0, _close_edge(block))
+        banded.adjust(
+            0,
+            -_edge_padding(editor, block, previous=True),
+            0,
+            _edge_padding(editor, block, previous=False),
+        )
         band = (
             DecorationKind.FIGURE_BACKGROUND
             if getattr(block.userData(), "figure_band", False)

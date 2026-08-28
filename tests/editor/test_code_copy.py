@@ -92,3 +92,25 @@ class TestCopy:
         hover(editor, 3)
         editor.code_copy.button.click()
         assert editor.toPlainText() == NOTE
+
+
+class TestRawMode:
+    """Raw では出さない（ユーザー要望 2026-08-28）。
+
+    Raw は**記号を直に触るモード**で、飾りは一切描かない
+    （`painter_overlay` が丸ごと降りる）。帯が無いのに写しの印だけ
+    浮いていると、何に付いた印なのか分からない。
+    """
+
+    def test_出ない(self, editor) -> None:
+        editor.set_source_mode(True)
+        hover(editor, 3)
+        assert not editor._code_copy.button.isVisible()
+
+    def test_戻せば出る(self, editor) -> None:
+        """**Raw を抜けたら今までどおり。**"""
+        editor.set_source_mode(True)
+        hover(editor, 3)
+        editor.set_source_mode(False)
+        hover(editor, 3)
+        assert editor._code_copy.button.isVisible()

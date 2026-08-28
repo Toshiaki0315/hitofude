@@ -76,6 +76,12 @@ class CodeCopyButton(QObject):
 
     def update(self, pos: QPoint) -> None:
         """マウスの位置から、出すか隠すかを決める（mouseMoveEvent から）。"""
+        if self._editor.highlighter.source_mode:
+            # Raw では出さない（ユーザー要望 2026-08-28）。記号を直に触る
+            # モードで飾りは一切描かないので、帯が無いのに印だけ浮くと
+            # 何に付いた印なのか分からない
+            self.hide()
+            return
         block = self._block_at(pos)
         if block is None or _block_type(block) not in _FENCES:
             self.hide()

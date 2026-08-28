@@ -230,3 +230,43 @@ class TestIndentedCode:
         top = editor.blockBoundingGeometry(body).translated(editor.contentOffset()).top()
         middle = [d for d in self.bands(editor) if abs(d.rect.top() - top) < 1.0]
         assert middle, "中身の行の帯が行の高さと合っていない（広げてしまった）"
+
+
+TWO_BLOCKS = "前の本文\n\n    式 $E$ は有名。\n\n    $$\n    x = 1\n    $$\n\n後の本文\n\n末尾"
+
+
+class TestAdjacentBlocks:
+    """字下げコードが 2 つ続くとき（ユーザー指摘 2026-08-28）。
+
+    **1 つの矩形に見えてはいけない。** 上下へ余白を伸ばしたぶん、
+    間の空行が食い尽くされて隙間が 2px になっていた（実測）——別々の
+    ブロックなのに繋がって見える。伸ばすのは**空行の一部まで**にする。
+    """
+
+    @pytest.fixture
+    def shown(self, qtbot):
+        widget = MarkdownEditor()
+        qtbot.addWidget(widget)
+        widget.resize(800, 460)
+        widget.show()
+        qtbot.waitExposed(widget)
+        widget.setPlainText(TWO_BLOCKS)
+        widget.moveCursor(QTextCursor.MoveOperation.End)
+        return widget
+
+    def runs(self, editor):
+        from hitofude.editor.painter_overlay import _band_runs
+        from hitofude.theme import LIGHT
+        from tests.editor.test_painter_overlay import visible_decorations
+
+        return _band_runs(visible_decorations(editor), LIGHT)
+
+    def test_2つの矩形のまま(self, shown) -> None:
+        assert len(self.runs(shown)) == 2
+
+    def test_見て分かる隙間が残る(self, shown) -> None:
+        """**これが本題。** 2px では繋がって見える。"""
+        from hitofude.editor.painter_overlay import MIN_BAND_GAP
+
+        first, second = (rect for rect, _ in self.runs(shown))
+        assert second.top() - first.bottom() >= MIN_BAND_GAP - 1
