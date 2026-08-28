@@ -355,7 +355,7 @@
       [
         0,
         10,
-        "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
+        "hidden:0.5+mono+fg:transparent"
       ],
       [
         10,
@@ -372,7 +372,7 @@
       [
         0,
         12,
-        "bold+mono+bg:#d8d8e0+fg:#000080"
+        "bold+mono+fg:#000080"
       ]
     ]
   },
@@ -384,17 +384,17 @@
       [
         0,
         1,
-        "bold+mono+bg:#d8d8e0+fg:#007020"
+        "bold+mono+fg:#007020"
       ],
       [
         1,
         1,
-        "mono+bg:#d8d8e0+fg:#bbbbbb"
+        "mono+fg:#bbbbbb"
       ],
       [
         2,
         10,
-        "mono+bg:#d8d8e0+fg:#3a3a3c"
+        "mono+fg:#3a3a3c"
       ]
     ]
   },
@@ -406,7 +406,7 @@
       [
         0,
         13,
-        "mono+bg:#d8d8e0+fg:#3a3a3c"
+        "mono+fg:#3a3a3c"
       ]
     ]
   },
@@ -418,7 +418,7 @@
       [
         0,
         10,
-        "bold+mono+bg:#d8d8e0+fg:#d55537"
+        "bold+mono+fg:#d55537"
       ]
     ]
   },
@@ -430,7 +430,7 @@
       [
         0,
         2,
-        "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
+        "hidden:0.5+mono+fg:transparent"
       ],
       [
         2,
@@ -476,7 +476,7 @@
       [
         0,
         2,
-        "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
+        "hidden:0.5+mono+fg:transparent"
       ],
       [
         2,
@@ -493,7 +493,7 @@
       [
         0,
         9,
-        "mono+bg:#d8d8e0+fg:#3a3a3c"
+        "mono+fg:#3a3a3c"
       ]
     ]
   },
@@ -505,7 +505,7 @@
       [
         0,
         2,
-        "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
+        "hidden:0.5+mono+fg:transparent"
       ],
       [
         2,
@@ -528,7 +528,7 @@
       [
         0,
         4,
-        "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
+        "hidden:0.5+mono+fg:transparent"
       ],
       [
         4,
@@ -545,17 +545,17 @@
       [
         0,
         1,
-        "mono+bg:#d8d8e0+fg:#40a070"
+        "mono+fg:#40a070"
       ],
       [
         1,
         1,
-        "mono+bg:#d8d8e0+fg:#bbbbbb"
+        "mono+fg:#bbbbbb"
       ],
       [
         2,
         7,
-        "mono+bg:#d8d8e0+fg:#3a3a3c"
+        "mono+fg:#3a3a3c"
       ]
     ]
   },
@@ -567,7 +567,7 @@
       [
         0,
         2,
-        "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
+        "hidden:0.5+mono+fg:transparent"
       ],
       [
         2,
@@ -590,7 +590,7 @@
       [
         0,
         2,
-        "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
+        "hidden:0.5+mono+fg:transparent"
       ],
       [
         2,
@@ -607,7 +607,7 @@
       [
         0,
         8,
-        "mono+bg:#d8d8e0+fg:#3a3a3c"
+        "mono+fg:#3a3a3c"
       ]
     ]
   },
@@ -619,7 +619,7 @@
       [
         0,
         2,
-        "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
+        "hidden:0.5+mono+fg:transparent"
       ],
       [
         2,

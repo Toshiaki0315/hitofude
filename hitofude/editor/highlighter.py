@@ -1184,14 +1184,17 @@ class MarkdownHighlighter(QSyntaxHighlighter):
                 fmt.setForeground(QColor(theme.muted_foreground))
             self._heading[level] = fmt
 
+        # **下地は塗らない**（ユーザー判断 2026-08-28）。下地は
+        # `painter_overlay` が帯（CODE_BACKGROUND / FIGURE_BACKGROUND）で
+        # 描く。文字書式にも持たせると、**Raw で帯が降りたときにこれだけ
+        # 残り**、「文字の幅・行の高さいっぱい」の角ばった灰色が出ていた
+        # （ユーザー報告）。Raw は飾りを描かないモードなので、コードの
+        # 手掛かりは等幅と文字色が担う
         self._code_block = QTextCharFormat()
         self._code_block.setFontFamilies(mono_families(self._mono_family))
         self._code_block.setForeground(QColor(theme.code_foreground))
-        self._code_block.setBackground(QColor(theme.code_background))
-        # 図（数式・mermaid）の生表示。文字はコードと同じ等幅で、
-        # 背景だけ薄い図の色にする（ユーザー要望）
+        # 図（数式・mermaid）の生表示。文字はコードと同じ等幅
         self._figure_block = QTextCharFormat(self._code_block)
-        self._figure_block.setBackground(QColor(theme.figure_background))
 
         self._quote = QTextCharFormat()
         self._quote.setForeground(QColor(theme.quote_foreground))
