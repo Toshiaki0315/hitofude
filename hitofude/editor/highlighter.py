@@ -189,7 +189,10 @@ _MONO_TYPES = frozenset({BlockType.TABLE_ROW, BlockType.TABLE_DELIMITER})
 # **開き側だけ。** 行間（leading）が各行の下側に付くフォントでは、
 # 最終行が既に下の余白を持っており、閉じ側にも足すと下だけ大きく
 # 空いて見える（ユーザー指摘）
-BAND_EDGE_PADDING = 7.0
+_BAND_EDGE_TYPES = frozenset({BlockType.CODE_FENCE_OPEN, BlockType.CODE_FENCE_CLOSE})
+"""帯の上下の縁。ここに余白ぶんの高さを残す。"""
+
+BAND_EDGE_PADDING = 14.0
 
 
 def _data_type(block: QTextBlock):
@@ -715,15 +718,23 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             return numbers[-2] <= start and end <= numbers[-1]
         return False
 
-    def _pad_band_edge(self, text: str) -> None:
+    def _pad_band_edge(self, text: str, *, always: bool = False) -> None:
         """隠した縁の行（``` / $$ / :::）に帯の余白ぶんの高さを残す。
 
         文字は透明のまま少しだけ大きくする（ADR-0004 と同じレバー。
         R4/R5 に触れない）。**行末の 1 文字**に載せる: 先頭は「隠れて
         いれば 0.5pt」という既存の検査・ファイル名バッジ・図の高さ予約が
         使っているため。
+
+        `always` は**最低限の高さを保証する**（ユーザー要望 2026-08-28）。
+        既定では既に高さを持つ行を避けるが、それだとファイル名バッジ付きの
+        開き行だけバッジの高さになり、**閉じ側と揃わない**。行の高さは
+        載せた書式の最大で決まるので、先頭（バッジ）と行末（余白）は
+        並び立つ。
         """
-        if not text or self.format(0).fontPointSize() > HIDDEN_POINT_SIZE:
+        if not text:
+            return
+        if not always and self.format(0).fontPointSize() > HIDDEN_POINT_SIZE:
             return  # 既に高さを持っている（ファイル名バッジ・図の予約）
         pad = QTextCharFormat()
         pad.setFontPointSize(self._point_size_for(BAND_EDGE_PADDING))
@@ -922,6 +933,8 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             # 見えず、素の大きさだとバッククォートが出てしまう
             self._hide(0, len(text))
             self.setFormat(0, 1, self._code_name_slot())
+            # バッジの高さだけに任せない。**閉じ側と揃える**（下記と対）
+            self._pad_band_edge(text, always=True)
         elif info.type is BlockType.NOTE_DELIMITER:
             if info.note_kind != UNKNOWN_NOTE_KIND:
                 self._hide(0, len(text))
@@ -929,11 +942,14 @@ class MarkdownHighlighter(QSyntaxHighlighter):
                     self._pad_band_edge(text)  # 開き（:::note 種類）だけ
         elif info.type in _FULLY_HIDDEN_TYPES and info.type is not BlockType.TABLE_DELIMITER:
             self._hide(0, len(text))
-            if info.type is BlockType.CODE_FENCE_OPEN or (
+            if info.type in _BAND_EDGE_TYPES or (
                 info.type is BlockType.MATH_DELIMITER
                 and not _decode_in_math(self.currentBlock().previous())
             ):
-                self._pad_band_edge(text)  # 帯の開き側の余白
+                # **上下とも空ける**（ユーザー要望 2026-08-28）。閉じ側に
+                # 当てていなかったので、帯が下だけ詰まって見えていた
+                # （実測: 上 8px・下 2px）
+                self._pad_band_edge(text, always=True)
         elif info.type in _HIDDEN_MARKER_TYPES:
             self._hide(0, info.marker_len)
         elif info.type in (BlockType.TABLE_ROW, BlockType.TABLE_DELIMITER):

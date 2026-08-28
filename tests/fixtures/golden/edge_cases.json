@@ -360,7 +360,7 @@
       [
         10,
         1,
-        "size:4.34783+fg:transparent"
+        "size:8.69565+fg:transparent"
       ]
     ]
   },
@@ -429,8 +429,13 @@
     "ranges": [
       [
         0,
-        3,
+        2,
         "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
+      ],
+      [
+        2,
+        1,
+        "size:8.69565+fg:transparent"
       ]
     ]
   },
@@ -476,7 +481,7 @@
       [
         2,
         1,
-        "size:4.34783+fg:transparent"
+        "size:8.69565+fg:transparent"
       ]
     ]
   },
@@ -499,8 +504,13 @@
     "ranges": [
       [
         0,
-        3,
+        2,
         "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
+      ],
+      [
+        2,
+        1,
+        "size:8.69565+fg:transparent"
       ]
     ]
   },
@@ -523,7 +533,7 @@
       [
         4,
         1,
-        "size:4.34783+fg:transparent"
+        "size:8.69565+fg:transparent"
       ]
     ]
   },
@@ -556,8 +566,13 @@
     "ranges": [
       [
         0,
-        3,
+        2,
         "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
+      ],
+      [
+        2,
+        1,
+        "size:8.69565+fg:transparent"
       ]
     ]
   },
@@ -580,7 +595,7 @@
       [
         2,
         1,
-        "size:4.34783+fg:transparent"
+        "size:8.69565+fg:transparent"
       ]
     ]
   },
@@ -603,8 +618,13 @@
     "ranges": [
       [
         0,
-        3,
+        2,
         "hidden:0.5+mono+bg:#d8d8e0+fg:transparent"
+      ],
+      [
+        2,
+        1,
+        "size:8.69565+fg:transparent"
       ]
     ]
   },

@@ -672,11 +672,19 @@ class TestBlockBandPadding:
         away(editor, "```python\nprint(1)\n```\n\n本文\n")
         assert self.line_height(editor, 0) >= 6  # 開き
 
-    def test_閉じ側には足さない(self, editor) -> None:
-        """最終行の行間（leading）が既に下の余白になっている。閉じ側にも
-        足すと下だけ大きく空く（ユーザー指摘）。"""
+    def test_閉じ側にも足す(self, editor) -> None:
+        """**過去の判断を覆した**（ユーザー要望 2026-08-28）。
+
+        かつては「最終行の行間（leading）が既に下の余白になっている。
+        閉じ側にも足すと下だけ大きく空く」として足していなかった。
+        画素で測ると**その前提が成り立っていない**——帯の縁と文字の隙間は
+        上 10px に対し**下は 3px** で、下だけ詰まって見えていた
+        （実測。`ls` を含む 3 行のコードで計測）。
+
+        両側に足すと 16px / 15px で揃う。
+        """
         away(editor, "```python\nprint(1)\n```\n\n本文\n")
-        assert self.line_height(editor, 2) < 6  # 閉じは薄いまま
+        assert self.line_height(editor, 2) >= 6
 
     def test_数式の区切り行も余白になる(self, editor) -> None:
         away(editor, "$$\nE = mc^2\n$$\n\n本文\n")
