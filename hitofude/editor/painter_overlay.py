@@ -511,9 +511,17 @@ def _edge_padding(editor, block: QTextBlock, *, previous: bool) -> float:
     ——字下げのコードが 2 つ続くと、両側から伸びて間が 2px になり、
     別々のブロックが 1 つの矩形に見える（ユーザー指摘 2026-08-28）。
     """
+    # **縁の行は自分で余白を持っている**（`highlighter._pad_band_edge` が
+    # 隠した ``` / $$ / ::: の行に高さを載せる）。そこを更に伸ばすと
+    # 二重になる——フェンスのコードで上下が 28px になっていた
+    own = block.userData()
+    if own is None or own.info.type is not BlockType.CODE_FENCE_BODY:
+        return 0.0
     other = block.previous() if previous else block.next()
     if not other.isValid():
-        return 0.0
+        # 文書の縁。`documentMargin`（実測 40px）があるので伸ばせる——
+        # ここで 0 にすると、末尾のコードだけ下が詰まって見える
+        return BAND_EDGE_PADDING
     data = other.userData()
     if data is None:
         return 0.0
@@ -532,8 +540,25 @@ def _edge_padding(editor, block: QTextBlock, *, previous: bool) -> float:
     return max(0.0, min(BAND_EDGE_PADDING, room / 2 if shared else room))
 
 
+def _text_height(block: QTextBlock, geometry: QRectF) -> float:
+    """そのブロックが**文字で占めている**高さ。
+
+    **最後のブロックだけ幾何が高く出る。** `blockBoundingGeometry` は
+    末尾に `documentMargin` を含むので（実測: 行 24px に対し 64px）、
+    そのまま帯を塗ると本文の最後がコードのときだけ下が大きく空く
+    （ユーザー報告 2026-08-28）。
+    """
+    if block.next().isValid():
+        return geometry.height()
+    layout = block.layout()
+    return layout.boundingRect().height() if layout is not None else geometry.height()
+
+
 def _for_block(editor, block: QTextBlock, info, geometry: QRectF) -> list[Decoration]:
     result: list[Decoration] = []
+    # 末尾の余白は帯・縦線の外（上記）。**位置は動かさず高さだけ抑える**
+    geometry = QRectF(geometry)
+    geometry.setHeight(_text_height(block, geometry))
 
     # 帯は紙の端まで伸ばさない（BAND_MARGIN。ユーザー要望 2026-08-26）
     banded = QRectF(geometry).adjusted(BAND_MARGIN, 0, -BAND_MARGIN, 0)

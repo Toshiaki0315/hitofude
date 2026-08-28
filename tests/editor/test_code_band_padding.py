@@ -270,3 +270,76 @@ class TestAdjacentBlocks:
 
         first, second = (rect for rect, _ in self.runs(shown))
         assert second.top() - first.bottom() >= MIN_BAND_GAP - 1
+
+
+class TestLastBlock:
+    """本文の最後がコードのとき（ユーザー報告 2026-08-28）。
+
+    **最後のブロックだけ幾何が高く出る。** `blockBoundingGeometry` は
+    末尾に `documentMargin`（実測 40px）を含むので、そこまで帯を塗ると
+    下だけ大きく空いて見える。文字の実寸（`layout().boundingRect()`）で
+    抑える。
+
+    帯の仕組み全体の話で、字下げに限らない（フェンスでも同じ）。
+    """
+
+    @pytest.fixture
+    def shown(self, qtbot):
+        def build(text: str) -> MarkdownEditor:
+            widget = MarkdownEditor()
+            qtbot.addWidget(widget)
+            widget.resize(800, 400)
+            widget.show()
+            qtbot.waitExposed(widget)
+            widget.setPlainText(text)
+            widget.moveCursor(QTextCursor.MoveOperation.Start)
+            return widget
+
+        return build
+
+    def band(self, editor):
+        from hitofude.editor.painter_overlay import _band_runs
+        from hitofude.theme import LIGHT
+        from tests.editor.test_painter_overlay import visible_decorations
+
+        runs = _band_runs(visible_decorations(editor), LIGHT)
+        assert runs, "帯が無い"
+        return runs[-1][0]
+
+    def line_height(self, editor, number: int) -> float:
+        block = editor.document().findBlockByNumber(number)
+        return block.layout().boundingRect().height()
+
+    def test_字下げが最後でも太らない(self, shown) -> None:
+        """**これが本題。** 末尾の余白まで塗っていた。"""
+        editor = shown("本文\n\n    hhhh")
+        band = self.band(editor)
+        assert band.height() <= self.line_height(editor, 2) + BAND_EDGE_PADDING * 2 + 1
+
+    def test_フェンスが最後でも太らない(self, shown) -> None:
+        """字下げに限らない。"""
+        editor = shown("本文\n\n```python\nprint(1)\n```")
+        band = self.band(editor)
+        assert band.height() <= self.line_height(editor, 3) + BAND_EDGE_PADDING * 2 + 1
+
+    def test_途中の帯は今までどおり(self, shown) -> None:
+        """**直しすぎない。** 最後以外は幾何のままでよい。"""
+        editor = shown("本文\n\n    hhhh\n\n後の本文\n")
+        band = self.band(editor)
+        assert band.height() >= self.line_height(editor, 2)
+
+    def test_フェンスの帯が二重に太らない(self, shown) -> None:
+        """縁の行が**自分で**余白を持っているので、帯を伸ばすと二重になる。"""
+        editor = shown("本文\n\n```python\nprint(1)\n```\n\n末尾\n")
+        band = self.band(editor)
+        body = self.line_height(editor, 3)
+        assert band.height() == pytest.approx(body + BAND_EDGE_PADDING * 2, abs=1.5)
+
+    def test_文末でも上下が揃う(self, shown) -> None:
+        """隣が無いだけで余白が消えては、末尾のコードだけ詰まって見える。
+        文書の縁には `documentMargin`（実測 40px）があるので伸ばせる。
+        """
+        editor = shown("本文\n\n    hhhh")
+        band = self.band(editor)
+        body = self.line_height(editor, 2)
+        assert band.height() == pytest.approx(body + BAND_EDGE_PADDING * 2, abs=1.5)
