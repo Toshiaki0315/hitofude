@@ -159,14 +159,28 @@ def _lexer_for(lang: str):
         return None
 
 
-_MD.use(dollarmath_plugin, allow_space=False, allow_digits=False)
-_MD.use(container_plugin, name="note", validate=_validate_note, render=_render_note)
-_MD.use(footnote_plugin)
-# `renderer.rules` に直接入れると `self` が渡らない（実測）。
-# `add_render_rule` はメソッドとして束ねるので、既定の描画を呼び直せる
-_MD.add_render_rule("fence", _render_fence)
-_MD.add_render_rule("math_inline", _render_math_inline)
-_MD.add_render_rule("math_block", _render_math_block)
+def _configure(md: MarkdownIt) -> MarkdownIt:
+    """プラグインと描画規則を載せる。**2 つの解析器へ同じものを積む**
+    ため関数にしてある（ADR-0033 で字下げ無しの版が要るようになった）。
+    """
+    md.use(dollarmath_plugin, allow_space=False, allow_digits=False)
+    md.use(container_plugin, name="note", validate=_validate_note, render=_render_note)
+    md.use(footnote_plugin)
+    # `renderer.rules` に直接入れると `self` が渡らない（実測）。
+    # `add_render_rule` はメソッドとして束ねるので、既定の描画を呼び直せる
+    md.add_render_rule("fence", _render_fence)
+    md.add_render_rule("math_inline", _render_math_inline)
+    md.add_render_rule("math_block", _render_math_block)
+    return md
+
+
+_configure(_MD)
+
+_MD_NO_INDENTED = _configure(
+    MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"])
+).disable("code")
+"""4 字下げをコードにしない書き出し用（ADR-0033）。**画面と揃える**——
+片方だけ切ると、同じノートが画面と書き出しで違う形になる。"""
 
 # `- [ ] やること` の頭。`setMarkdown()` は `<li class="unchecked">` にして
 # **記号を消していた**ので、スタイルを当てない限り印が出なかった（実測）
@@ -191,7 +205,13 @@ DARK_CODE_STYLE = "github-dark"
 _CJK_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿々〆、。]")
 
 
-def render(text: str, *, math_as_source: bool = False, dark: bool = False) -> str:
+def render(
+    text: str,
+    *,
+    math_as_source: bool = False,
+    dark: bool = False,
+    indented_code: bool = True,
+) -> str:
     """Markdown の本文を HTML にする。front matter は落とす。
 
     `id` や `modified` はこのアプリの管理情報で、読む人には意味がない。
@@ -202,14 +222,19 @@ def render(text: str, *, math_as_source: bool = False, dark: bool = False) -> st
     間違った式を出すくらいなら、書いたままを見せるほうがよい（ADR-0009）。
 
     `dark` はコードの色分けを暗い配色にする（B-6）。黒地に黒い字にしない。
+
+    `indented_code` を False にすると **4 字下げをコードとして扱わない**
+    （ADR-0033）。**画面と揃える**ためのもので、片方だけ切ると同じノートが
+    画面と書き出しで違う形になる。
     """
     # **`env` を解析と描画で共有する。** 脚注はここに定義を溜めるので、
     # 空の辞書を渡し直すと注釈の本文だけ消える（実際に踏んだ）
     env: dict = {_MATH_AS_SOURCE: math_as_source, _DARK_CODE: dark}
-    tokens = _MD.parse(frontmatter.split(text).body, env)
+    parser = _MD if indented_code else _MD_NO_INDENTED
+    tokens = parser.parse(frontmatter.split(text).body, env)
     _mark_tasks(tokens)
     _break_table_cells(tokens)
-    return _MD.renderer.render(tokens, _MD.options, env)
+    return parser.renderer.render(tokens, parser.options, env)
 
 
 def _break_table_cells(tokens) -> None:

@@ -110,6 +110,7 @@ class ExportActions:
             theme=window._theme_watcher.colors,
             base_point_size=window._config.font_point_size,
             base_path=window._vault.root,
+            indented_code=window._config.indented_code,
         )
         return True
 
@@ -126,6 +127,7 @@ class ExportActions:
             window._editor.toPlainText(),
             theme=window._theme_watcher.colors,
             base_path=window._vault.root,
+            indented_code=window._config.indented_code,
         )
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
 
@@ -138,6 +140,7 @@ class ExportActions:
             window._editor.toPlainText(),
             theme=window._theme_watcher.colors,
             base_path=window._vault.root,
+            indented_code=window._config.indented_code,
         )
 
     def _export(self, caption: str, filter_: str, suffix: str, writer) -> Path | None:
@@ -177,6 +180,7 @@ class ExportActions:
             title=window._note.title if window._note else "",
             theme=window._theme_watcher.colors,
             base_path=window._vault.root,
+            indented_code=window._config.indented_code,
         )
 
     def _write_pptx(self, target: Path, text: str) -> Path:
@@ -190,6 +194,7 @@ class ExportActions:
             theme=window._theme_watcher.colors,
             base_point_size=window._config.font_point_size,
             base_path=window._vault.root,
+            indented_code=window._config.indented_code,
         )
 
     # ------------------------------------------------------------- 通知（G-4）

@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -308,6 +309,16 @@ class PreferencesDialog(QDialog):
         self._tab_width.setValue(config.tab_width)
         self._tab_width.setToolTip("タブを何文字ぶんの幅で見せるか。書いた文字は変わりません。")
         text_form.addRow(_label("タブ幅"), _with_unit(self._tab_width, "文字", self))
+
+        # 4 字下げのコード（ADR-0033 / ユーザー要望 2026-08-28）。**既定は入り**
+        self._indented_code = QCheckBox("4 文字の字下げでコードブロックとする", self)
+        self._indented_code.setChecked(config.indented_code)
+        self._indented_code.setToolTip(
+            "Markdown の決まりでは、空行のあと 4 文字下げるとコードになります。"
+            "他所から貼った文章が意図せずコードになるときは外してください。"
+            "記号で囲むコードブロックは、この設定に関わらず出ます。"
+        )
+        text_form.addRow(_label("字下げ"), self._indented_code)
 
         # -------------------------------------------------------- ウィンドウ
         window_form = _form()
@@ -687,6 +698,7 @@ class PreferencesDialog(QDialog):
         self._config.mono_family = self._mono.currentText()
         self._config.theme_mode = self.selected_theme
         self._config.tab_width = self._tab_width.value()
+        self._config.indented_code = self._indented_code.isChecked()
         self._config.line_spacing = self.line_spacing
         self._config.content_width = self.content_width
         self._config.trash_days = self._trash_days.value()

@@ -1,0 +1,69 @@
+"""4 字下げをコードとして扱うかの切り替え（ユーザー要望 2026-08-28）。
+
+**既定は今までどおり on**（CommonMark 準拠。spec §1.3 の方針）。
+貼り付けで意図せずコードに化けるのが煩わしい人のために、off にできる。
+
+`core/` は設定を知らない（R3）ので、**呼ぶ側が旗を渡す**。
+"""
+
+from hitofude.core.block_parser import BlockState, classify_line, parse
+from hitofude.core.models import BlockType
+
+INDENTED = "本文\n\n    字下げした行\n"
+
+
+def kinds(text: str, **options) -> list[BlockType]:
+    return [block.type for block in parse(text, **options)]
+
+
+class TestParse:
+    def test_既定はコード(self) -> None:
+        assert kinds(INDENTED)[2] is BlockType.CODE_FENCE_BODY
+
+    def test_offなら段落(self) -> None:
+        assert kinds(INDENTED, indented_code=False)[2] is BlockType.PARAGRAPH
+
+    def test_フェンスは止めない(self) -> None:
+        """**止めるのは字下げだけ。** ``` は関係ない。"""
+        text = "本文\n\n```python\nprint(1)\n```\n"
+        found = kinds(text, indented_code=False)
+        assert found[2] is BlockType.CODE_FENCE_OPEN
+        assert found[3] is BlockType.CODE_FENCE_BODY
+        assert found[4] is BlockType.CODE_FENCE_CLOSE
+
+    def test_リストの入れ子は元から段落(self) -> None:
+        """on でも off でも変わらない（元からコードではない）。"""
+        text = "- 項目\n\n    続き\n"
+        assert kinds(text)[2] is kinds(text, indented_code=False)[2]
+
+
+class TestClassifyLine:
+    """ハイライタは 1 行ずつ見る（`parse` とは別の口）。両方を揃える。"""
+
+    def state(self) -> BlockState:
+        return BlockState(after_blank=True)
+
+    def test_既定はコード(self) -> None:
+        block, _ = classify_line("    字下げした行", 2, self.state())
+        assert block.type is BlockType.CODE_FENCE_BODY
+
+    def test_offなら段落(self) -> None:
+        block, _ = classify_line("    字下げした行", 2, self.state(), indented_code=False)
+        assert block.type is BlockType.PARAGRAPH
+
+    def test_続きも段落のまま(self) -> None:
+        """off のとき、2 行目以降も引きずられない。"""
+        state = self.state()
+        _, state = classify_line("    1 行目", 2, state, indented_code=False)
+        second, _ = classify_line("    2 行目", 3, state, indented_code=False)
+        assert second.type is BlockType.PARAGRAPH
+
+
+class TestHtml:
+    """書き出しも同じにする。**画面と食い違わせない。**"""
+
+    def test_offなら段落として書き出す(self) -> None:
+        from hitofude.core.html import render
+
+        assert "<pre>" in render(INDENTED)
+        assert "<pre>" not in render(INDENTED, indented_code=False)

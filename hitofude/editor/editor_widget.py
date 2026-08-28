@@ -294,6 +294,13 @@ class MarkdownEditor(QPlainTextEdit):
         self.source_mode_changed.emit(enabled)
         self.modes_changed.emit()
 
+    def set_indented_code(self, enabled: bool) -> None:
+        """4 字下げをコードとして扱うか（ADR-0033）。設定から呼ぶ。"""
+        self._highlighter.set_indented_code(enabled)
+
+    def indented_code(self) -> bool:
+        return self._highlighter.indented_code
+
     def toggle_source_mode(self) -> None:
         self.set_source_mode(not self._highlighter.source_mode)
 

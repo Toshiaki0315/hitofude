@@ -25,6 +25,13 @@ from hitofude.core.models import (
 
 _MD = MarkdownIt("commonmark").enable(["table", "strikethrough"])
 
+_MD_NO_INDENTED = MarkdownIt("commonmark").enable(["table", "strikethrough"]).disable("code")
+"""4 字下げをコードにしない解析器（ユーザー要望 2026-08-28）。
+
+**作り置きする。** 打鍵のたびに組むと 1 文字ごとに構築費が乗る（§6.6）。
+`code` は markdown-it の**インデントコードの規則**の名前で、フェンス
+（` ``` `）は別の規則なので止まらない。"""
+
 _QUOTE_PREFIX_RE = re.compile(r"^(?:[ \t]*>[ \t]?)+")
 INDENTED_CODE_WIDTH = 4
 _LIST_TYPES = frozenset(
@@ -81,11 +88,15 @@ def _front_matter_line_count(normalized: str) -> int:
     return normalized[: parsed.body_offset].count("\n")
 
 
-def parse(text: str) -> list[BlockInfo]:
+def parse(text: str, *, indented_code: bool = True) -> list[BlockInfo]:
     """ソース全体を解析し、**1 行につき 1 個**の `BlockInfo` を返す。
 
     返り値の長さは常に行数と一致する。`QTextBlock` と添字で対応させるため、
     ここがずれると装飾する行が 1 行ずれる。
+
+    `indented_code` を False にすると **4 字下げをコードとして扱わない**
+    （ユーザー要望 2026-08-28 / ADR-0033）。`core/` は設定を知らない
+    （R3）ので、旗は呼ぶ側が渡す。
     """
     normalized = _normalize(text)
     lines = normalized.split("\n")
@@ -96,7 +107,7 @@ def parse(text: str) -> list[BlockInfo]:
     for line in range(offset):
         drafts[line] = BlockInfo(line=line, type=BlockType.FRONT_MATTER)
 
-    _apply_tokens(lines, offset, drafts, quote_depths)
+    _apply_tokens(lines, offset, drafts, quote_depths, indented_code=indented_code)
 
     result: list[BlockInfo] = []
     for line, draft in enumerate(drafts):
@@ -240,9 +251,12 @@ def _apply_tokens(
     offset: int,
     drafts: list[BlockInfo | None],
     quote_depths: list[int],
+    *,
+    indented_code: bool = True,
 ) -> None:
     """markdown-it の結果を行ごとの種別へ落とす（§3.4, R8）。"""
-    tokens = _MD.parse("\n".join(lines[offset:]))
+    parser = _MD if indented_code else _MD_NO_INDENTED
+    tokens = parser.parse("\n".join(lines[offset:]))
     _write(_collect(tokens, offset, quote_depths), lines, drafts)
 
 
@@ -318,7 +332,9 @@ def _apply_fence(
 # --------------------------------------------------------------------------
 
 
-def classify_line(text: str, line: int, state: BlockState) -> tuple[BlockInfo, BlockState]:
+def classify_line(
+    text: str, line: int, state: BlockState, *, indented_code: bool = True
+) -> tuple[BlockInfo, BlockState]:
     """1 行を、前の行から引き継いだ状態とあわせて分類する。
 
     戻り値は `(この行の BlockInfo, 次の行へ渡す状態)`。
@@ -366,7 +382,10 @@ def classify_line(text: str, line: int, state: BlockState) -> tuple[BlockInfo, B
             state.note_kind,
         )
 
-    return _in_note(_classify_body(text, line, state=state), state.note_kind)
+    return _in_note(
+        _classify_body(text, line, state=state, indented_code=indented_code),
+        state.note_kind,
+    )
 
 
 def _classify_note_delimiter(
@@ -426,7 +445,7 @@ def _classify_inside_fence(text: str, line: int, state: BlockState) -> tuple[Blo
 
 
 def _classify_body(
-    text: str, line: int, *, state: BlockState | None = None
+    text: str, line: int, *, state: BlockState | None = None, indented_code: bool = True
 ) -> tuple[BlockInfo, BlockState]:
     context = state or BlockState()
     quote = _QUOTE_PREFIX_RE.match(text)
@@ -435,7 +454,7 @@ def _classify_body(
     body = text[quote_len:]
     blank = not body.strip()
 
-    if _is_indented_code(body, context, blank=blank):
+    if _is_indented_code(body, context, blank=blank, indented_code=indented_code):
         block = BlockInfo(line=line, type=BlockType.CODE_FENCE_BODY)
         if quote_depth:
             block = replace(block, quote_depth=quote_depth, marker_len=quote_len)
@@ -465,7 +484,9 @@ def _classify_body(
     )
 
 
-def _is_indented_code(body: str, state: BlockState, *, blank: bool) -> bool:
+def _is_indented_code(
+    body: str, state: BlockState, *, blank: bool, indented_code: bool = True
+) -> bool:
     """その行がインデントコードか。
 
     **行だけを見て決めるには文脈が要る。** 4 スペース下がっていても、
@@ -473,6 +494,8 @@ def _is_indented_code(body: str, state: BlockState, *, blank: bool) -> bool:
     項目になる（§6.4）。`parse()` は markdown-it が文書全体を見て決めるが、
     ハイライタは 1 行ずつしか見られないので、`BlockState` に持たせている。
     """
+    if not indented_code:
+        return False  # 設定で切った（ADR-0033）
     if blank or state.in_list:
         return False
     if _indent_width(body) < INDENTED_CODE_WIDTH:

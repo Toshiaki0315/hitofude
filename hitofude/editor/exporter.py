@@ -78,6 +78,7 @@ def _rendered_body(
     *,
     math_as_source: bool = False,
     dark: bool = False,
+    indented_code: bool = True,
 ) -> str:
     """本文の HTML。画像は `data:` URI に置き換える。
 
@@ -90,12 +91,24 @@ def _rendered_body(
 
     `dark` はコードの色分けを暗い配色にする（B-6）。テーマの明暗に合わせないと、
     黒地に黒い字になる。
+
+    `indented_code` は 4 字下げをコードとして扱うか（ADR-0033）。**画面と
+    同じ旗を渡す**——片方だけ切ると、同じノートが画面と書き出しで違う形になる。
     """
-    rendered = markdown_html.render(text, math_as_source=math_as_source, dark=dark)
+    rendered = markdown_html.render(
+        text, math_as_source=math_as_source, dark=dark, indented_code=indented_code
+    )
     return _embed_images(rendered, base_path)
 
 
-def _to_document(text: str, *, theme: ThemeColors, base_point_size: float, base_path: Path | None):
+def _to_document(
+    text: str,
+    *,
+    theme: ThemeColors,
+    base_point_size: float,
+    base_path: Path | None,
+    indented_code: bool = True,
+):
     """描画済みの `QTextDocument`（PDF 用）。
 
     Qt のリッチテキストは HTML/CSS の一部しか解さない。表の罫線と余白、
@@ -105,16 +118,29 @@ def _to_document(text: str, *, theme: ThemeColors, base_point_size: float, base_
     document = QTextDocument()
     document.setDefaultStyleSheet(_stylesheet(theme))
     # 数式は LaTeX のまま。MathML は Qt が解さない（ADR-0009）
-    document.setHtml(_rendered_body(text, base_path, math_as_source=True, dark=theme.is_dark))
+    document.setHtml(
+        _rendered_body(
+            text,
+            base_path,
+            math_as_source=True,
+            dark=theme.is_dark,
+            indented_code=indented_code,
+        )
+    )
     document.setDefaultFont(_font(base_point_size))
     return document
 
 
 def to_html(
-    text: str, *, title: str = "", theme: ThemeColors = LIGHT, base_path: Path | None = None
+    text: str,
+    *,
+    title: str = "",
+    theme: ThemeColors = LIGHT,
+    base_path: Path | None = None,
+    indented_code: bool = True,
 ) -> str:
     """完結した HTML 文字列にする。外部リソースを参照しない。"""
-    body = _rendered_body(text, base_path, dark=theme.is_dark)
+    body = _rendered_body(text, base_path, dark=theme.is_dark, indented_code=indented_code)
     heading = f"<title>{_escape(title)}</title>" if title else ""
     return (
         "<!doctype html>\n"
@@ -177,16 +203,29 @@ def write_html(
     title: str = "",
     theme: ThemeColors = LIGHT,
     base_path: Path | None = None,
+    indented_code: bool = True,
 ) -> Path:
     path.write_text(
-        to_html(text, title=title, theme=theme, base_path=base_path),
+        to_html(
+            text,
+            title=title,
+            theme=theme,
+            base_path=base_path,
+            indented_code=indented_code,
+        ),
         encoding="utf-8",
         newline="\n",
     )
     return path
 
 
-def write_preview(text: str, *, theme: ThemeColors = LIGHT, base_path: Path | None = None) -> Path:
+def write_preview(
+    text: str,
+    *,
+    theme: ThemeColors = LIGHT,
+    base_path: Path | None = None,
+    indented_code: bool = True,
+) -> Path:
     """ブラウザで確認するための一時ファイルを書く（E-2）。
 
     **保管フォルダは汚さない。** 書き出したいのではなく見たいだけなので、
@@ -200,7 +239,13 @@ def write_preview(text: str, *, theme: ThemeColors = LIGHT, base_path: Path | No
     return write_html(target, text, title=PREVIEW_TITLE, theme=theme, base_path=base_path)
 
 
-def copy_html(text: str, *, theme: ThemeColors = LIGHT, base_path: Path | None = None) -> None:
+def copy_html(
+    text: str,
+    *,
+    theme: ThemeColors = LIGHT,
+    base_path: Path | None = None,
+    indented_code: bool = True,
+) -> None:
     """書式付きでクリップボードへ入れる（E-3）。
 
     メールやチャットへ貼るためのもの。**素の文字も一緒に入れる**ので、
@@ -213,7 +258,9 @@ def copy_html(text: str, *, theme: ThemeColors = LIGHT, base_path: Path | None =
     from PySide6.QtWidgets import QApplication
 
     payload = QMimeData()
-    payload.setHtml(_rendered_body(text, base_path, dark=theme.is_dark))
+    payload.setHtml(
+        _rendered_body(text, base_path, dark=theme.is_dark, indented_code=indented_code)
+    )
     payload.setText(plain_text(frontmatter.split(text).body))
     QApplication.clipboard().setMimeData(payload)
 
@@ -257,6 +304,7 @@ def print_document(
     theme: ThemeColors = LIGHT,
     base_point_size: float = 15.0,
     base_path: Path | None = None,
+    indented_code: bool = True,
 ) -> None:
     """組んだ本文をプリンタへ流す（C-9）。
 
@@ -264,7 +312,13 @@ def print_document(
     数式が違う、といった食い違いが後から生える。用紙の設定は呼ぶ側
     （`new_printer()` か印刷ダイアログ）が決める。
     """
-    document = _to_document(text, theme=theme, base_point_size=base_point_size, base_path=base_path)
+    document = _to_document(
+        text,
+        theme=theme,
+        base_point_size=base_point_size,
+        base_path=base_path,
+        indented_code=indented_code,
+    )
     document.print_(printer)
 
 
@@ -275,6 +329,7 @@ def write_pdf(
     theme: ThemeColors = LIGHT,
     base_point_size: float = 15.0,
     base_path: Path | None = None,
+    indented_code: bool = True,
 ) -> Path:
     """`QPrinter` で PDF を書き出す（spec §9 Phase 6）。"""
     printer = new_printer()

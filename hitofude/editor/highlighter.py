@@ -278,6 +278,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._table_width = 0.0
         self._selection: tuple[int, int] | None = None
         self._source_mode = False
+        self._indented_code = True
         # 巨大ファイルガード（§6.6 / R7）。True の間は何も描かない
         self._plain_mode = False
         self._cell_pad: QTextCharFormat | None = None
@@ -387,6 +388,21 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._reveal_position = position
         self._selection = selection
 
+    def set_indented_code(self, enabled: bool) -> None:
+        """4 字下げをコードとして扱うか（ADR-0033）。
+
+        **表示の決まりごとそのものが変わる**ので、全体を掛け直してよい
+        （R7 が挙げている例外と同じ性質）。
+        """
+        if enabled == self._indented_code:
+            return
+        self._indented_code = enabled
+        self.rehighlight()
+
+    @property
+    def indented_code(self) -> bool:
+        return self._indented_code
+
     def set_source_mode(self, enabled: bool) -> None:
         """`Cmd+/`。全マーカーを表示する（§6.4）。"""
         self._source_mode = enabled
@@ -426,7 +442,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self._pending_diagram = None
         self._pending_band = False
         state = BlockState.decode(self.previousBlockState())
-        info, next_state = classify_line(text, block.blockNumber(), state)
+        info, next_state = classify_line(
+            text, block.blockNumber(), state, indented_code=self._indented_code
+        )
 
         in_code = info.type in _CODE_BLOCK_TYPES
         # **長すぎる行は装飾を諦める**（レビュー指摘）。打鍵のたびにその行を

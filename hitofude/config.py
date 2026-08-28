@@ -149,6 +149,7 @@ _TOOLBAR = "layout/toolbar_visible"
 _BACKLINKS = "layout/backlinks_expanded"
 _OUTLINE = "layout/outline_visible"
 _ASSISTANT = "layout/assistant_visible"
+_INDENTED_CODE = "editor/indented_code"
 _LLM_MODEL = "llm/model"
 _LLM_PORT = "llm/port"
 _LLM_CONTEXT = "llm/context"
@@ -369,6 +370,20 @@ class Config:
     @splitter_sizes.setter
     def splitter_sizes(self, value: list[int]) -> None:
         self.settings.setValue(_SPLITTER, [int(size) for size in value])
+
+    @property
+    def indented_code(self) -> bool:
+        """4 字下げをコードブロックとして扱うか（ADR-0033）。
+
+        **既定は on**——記法は CommonMark 基準（spec §1.3）で、字下げの
+        コードはその中核にある。off にできるのは、他所から貼った文章が
+        意図せずコードに化けるのが煩わしいときのため。
+        """
+        return self.settings.value(_INDENTED_CODE, True, type=bool)
+
+    @indented_code.setter
+    def indented_code(self, value: bool) -> None:
+        self.settings.setValue(_INDENTED_CODE, bool(value))
 
     @property
     def sidebar_visible(self) -> bool:

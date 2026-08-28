@@ -401,6 +401,8 @@ class MainWindow(QMainWindow):
         self._editor.set_note_source(self._known_titles)
         self._editor.set_mono_family(self._config.mono_family)
         self._editor.set_tab_width(self._config.tab_width)
+        # 4 字下げをコードにするか（ADR-0033）。**書き出しも同じ旗を見る**
+        self._editor.set_indented_code(self._config.indented_code)
         self._apply_list_font()
         self._editor.setFocus()
 
@@ -1822,6 +1824,9 @@ class MainWindow(QMainWindow):
         self._sidebar.set_line_spacing(self._config.line_spacing)
         self._note_list.set_line_spacing(self._config.line_spacing)
         self._editor.set_content_width(CONTENT_WIDTH_PIXELS[self._config.content_width])
+        # 4 字下げの扱い（ADR-0033）。**掛け直しはエディタ側が判断する**
+        # （変わっていなければ何もしない）
+        self._editor.set_indented_code(self._config.indented_code)
         self._apply_list_font()
         self._theme_watcher.set_mode(self._config.theme_mode)
         self._vault.purge_trash(self._config.trash_days)
