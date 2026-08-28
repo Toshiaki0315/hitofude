@@ -386,6 +386,7 @@ class MainWindow(QMainWindow):
         self._sidebar.filter_changed.connect(self._on_filter_changed)
         # 一覧の行をフォルダへ落として移す（ユーザー要望）
         self._sidebar.note_dropped.connect(self._on_note_dropped)
+        self._sidebar.note_trashed.connect(self._on_note_trashed)
         self._sidebar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._sidebar.customContextMenuRequested.connect(self._show_sidebar_menu)
         self._note_list.note_activated.connect(self._on_note_activated)
@@ -922,6 +923,15 @@ class MainWindow(QMainWindow):
         メニューの「フォルダへ移動…」と揃える。
         """
         self._notes.move_note_to(self._vault.root / relative, folder)
+
+    def _on_note_trashed(self, relative: Path) -> None:
+        """ゴミ箱の行へ落とされたノートを捨てる（ユーザー要望 2026-08-28）。
+
+        **メニューの「ゴミ箱へ入れる」と同じ道を通す**（`trash_note`）。
+        お気に入りは捨てない、開いていれば閉じる、といった後始末が
+        そちらに揃っているので、ここで真似ない。
+        """
+        self._notes.trash_note(self._vault.root / relative)
 
     def move_note_to(self, path: Path, folder: str) -> Path | None:
         """ノートをフォルダへ移す（対話なし）。実体は NoteActions。"""

@@ -257,6 +257,13 @@ class Sidebar(QTreeView):
     **移すのは受け手（MainWindow）の仕事。** サイドバーは vault も索引も
     知らない（一覧が `files_dropped` で知らせるのと同じ分担）。"""
 
+    note_trashed = Signal(object)
+    """ゴミ箱の行へ落とされた（ユーザー要望 2026-08-28）。
+
+    **フォルダとは分ける。** 行き先で意味が変わるうえ、フォルダ名に
+    ゴミ箱を混ぜると `.trash` という名前のフォルダと見分けが付かない。
+    """
+
     def __init__(self, parent: QWidget | None = None, *, theme: ThemeColors = LIGHT) -> None:
         super().__init__(parent)
         self._theme = theme
@@ -470,16 +477,28 @@ class Sidebar(QTreeView):
 
     # ------------------------------------------------- ドラッグ＆ドロップ
 
-    def _drop_folder(self, position) -> str | None:
-        """その位置で受けられるフォルダ。受けられないなら None。
+    _DROP_KINDS = frozenset({FilterKind.FOLDER, FilterKind.TRASH})
+    """落とせる行。**フォルダとゴミ箱だけ。**
 
-        **フォルダの上だけ**。タグや「すべて」に落としても行き先が無い
-        （タグは本文の `#タグ` が真実で、移して付くものではない）。
-        """
+    タグや「すべて」「お気に入り」には行き先が無い（タグは本文の
+    `#タグ` が真実で、移して付くものではない）。
+    """
+
+    def drop_kind(self, target: Filter | None) -> bool:
+        """その行に落とせるか。純粋な判定なので試験から直に呼べる。"""
+        return target is not None and target.kind in self._DROP_KINDS
+
+    def _drop_target(self, position) -> Filter | None:
+        """その位置で受けられる行。受けられないなら None。"""
         index = self.indexAt(position)
         if not index.isValid():
             return None
         target = index.data(_FILTER_ROLE)
+        return target if self.drop_kind(target) else None
+
+    def _drop_folder(self, position) -> str | None:
+        """その位置で受けられるフォルダ。受けられないなら None。"""
+        target = self._drop_target(position)
         if target is None or target.kind is not FilterKind.FOLDER:
             return None
         return "" if target.folder == ROOT_FOLDER else (target.folder or "")
@@ -487,7 +506,7 @@ class Sidebar(QTreeView):
     def _acceptable(self, event) -> bool:
         if dropped_note(event.mimeData()) is None:
             return False
-        return self._drop_folder(event.position().toPoint()) is not None
+        return self._drop_target(event.position().toPoint()) is not None
 
     def drop_target(self) -> Filter | None:
         """今ドラッグが乗っているフォルダ。乗っていなければ None。"""
@@ -583,13 +602,18 @@ class Sidebar(QTreeView):
 
     def dropEvent(self, event) -> None:
         relative = dropped_note(event.mimeData())
-        folder = self._drop_folder(event.position().toPoint())
+        target = self._drop_target(event.position().toPoint())
         self._mark_drop(None)
-        if relative is None or folder is None:
+        if relative is None or target is None:
             event.ignore()
             return
         event.acceptProposedAction()
-        self.note_dropped.emit(relative, folder)
+        if target.kind is FilterKind.TRASH:
+            self.note_trashed.emit(relative)
+            return
+        self.note_dropped.emit(
+            relative, "" if target.folder == ROOT_FOLDER else (target.folder or "")
+        )
 
     def _find_label(self, label: str):
         """文言で行を探す（フィルタを持たない見出し行用）。"""
