@@ -11,6 +11,7 @@
 import functools
 import logging
 import sqlite3
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -37,7 +38,10 @@ HIGHLIGHT_END = "\x03"
 # 黙って空のままになる。**中身の作り方を変えたときも同じ**で、古い値が
 # 残り続ける。2 で `links`（E-6）を足し、3 でプレビューからマーカーを外し、
 # 4 で `links.relation`（M-3 の続柄）を足した
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
+"""5: 索引の写しを NFKC に寄せた（全角と半角を跨いで引ける）。
+**上げると作り直される。** 寄せ方を変えたら索引の中身も変わるので、
+古いままだと全角のノートが引けない。"""
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS notes (
@@ -50,7 +54,11 @@ CREATE TABLE IF NOT EXISTS notes (
     mtime_ns     INTEGER NOT NULL,
     size_bytes   INTEGER NOT NULL,
     pinned       INTEGER NOT NULL DEFAULT 0,
-    trashed      INTEGER NOT NULL DEFAULT 0
+    trashed      INTEGER NOT NULL DEFAULT 0,
+    -- 短い言葉（2 文字以下）の照合用。題名と抜粋を NFKC に寄せた写し。
+    -- **見せる字は変えない**（一覧には書いたとおりの全角で出す）ので、
+    -- 表示用とは別に持つ
+    search_key   TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_notes_modified ON notes(modified_at DESC);
 
@@ -325,11 +333,12 @@ class IndexDb:
         self._connection.execute(
             """
             INSERT INTO notes (id, path, title, preview, created_at, modified_at,
-                               mtime_ns, size_bytes, pinned, trashed)
+                               mtime_ns, size_bytes, pinned, trashed, search_key)
             VALUES (:id, :path, :title, :preview, :created, :modified,
-                    :mtime, :size, :pinned, :trashed)
+                    :mtime, :size, :pinned, :trashed, :search_key)
             ON CONFLICT(id) DO UPDATE SET
                 path = excluded.path, title = excluded.title, preview = excluded.preview,
+                search_key = excluded.search_key,
                 modified_at = excluded.modified_at, mtime_ns = excluded.mtime_ns,
                 size_bytes = excluded.size_bytes, pinned = excluded.pinned,
                 trashed = excluded.trashed
@@ -339,6 +348,8 @@ class IndexDb:
                 "path": relative,
                 "title": note.title,
                 "preview": note.preview,
+                # 照合用。**見せる字はそのまま**で、引くための写しだけ寄せる
+                "search_key": unicodedata.normalize("NFKC", f"{note.title}\n{note.preview}"),
                 "created": str(parsed.get("created", "")),
                 # modified が無い（外部エディタ製の front matter 無し）
                 # ノートはファイルの mtime で代用する。空文字のままだと
@@ -766,7 +777,9 @@ class IndexDb:
         **期間は両端を含む**（`after:2026-08-01` は 8/1 も出す）。区切りとして
         打つ日付は含むほうが素直。
         """
-        text = query.strip()
+        # **索引と同じ形に寄せる**（NFKC。`document.searchable_text` と対）。
+        # 片方だけだと「全角で書いたノートは全角でしか引けない」が残る
+        text = unicodedata.normalize("NFKC", query.strip())
         narrow = bool(tags) or after is not None or before is not None
         if not text:
             return self._search_filters(tags, after, before, limit=limit) if narrow else []
@@ -879,12 +892,12 @@ class IndexDb:
                    notes.preview AS snippet
             FROM notes
             WHERE notes.trashed = 0
-              AND (notes.title LIKE ? ESCAPE '\' OR notes.preview LIKE ? ESCAPE '\')
+              AND notes.search_key LIKE ? ESCAPE '\'
               {clause}{date_clause}
             ORDER BY notes.pinned DESC, notes.modified_at DESC
             LIMIT ?
             """,
-            [pattern, pattern, *tag_params, *date_params, limit],
+            [pattern, *tag_params, *date_params, limit],
         )
         return [_to_hit(row) for row in rows]
 

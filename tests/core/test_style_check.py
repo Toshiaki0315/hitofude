@@ -159,3 +159,19 @@ class TestNoFalsePositives:
 
     def test_それでも本当の連なりは拾う(self) -> None:
         assert Kind.PARTICLE_RUN in kinds("本文の上の表のボタンを押す。")
+
+    def test_かなで終わる語は取りこぼす(self) -> None:
+        """**承知のうえの取りこぼし**（レビュー指摘 2026-08-29）。
+
+        文字単位の否定なので、`いとこの` のように**かなで終わる語**の
+        連なりも数えない。単語として弾く形も試したが、語の長さが可変な
+        ぶん `字下げがその` を飲み込み、直した誤検出が戻った（実測）。
+        形態素解析を使わない以上どちらかを諦めることになり、
+        **外れを出さないほう**を取っている。
+        """
+        assert Kind.PARTICLE_RUN not in kinds("いとこの友人の家の庭は広い。")
+
+    def test_漢字で終わる語は今までどおり拾う(self) -> None:
+        """レビューで挙がった `過去の` `朝の` は**影響を受けない**（実測）。"""
+        assert Kind.PARTICLE_RUN in kinds("過去の友人の家の庭。")
+        assert Kind.PARTICLE_RUN in kinds("朝の友人の家の庭。")

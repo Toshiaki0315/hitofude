@@ -8,6 +8,7 @@ import hashlib
 import os
 import secrets
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -314,5 +315,11 @@ def searchable_text(text: str) -> str:
 
     ソースをそのまま索引すると `**予算**について` が 1 つの文字列として入り、
     `予算について` で引けなくなる。
+
+    **全角と半角を寄せる**（NFKC。レビュー指摘 2026-08-29）。日本語の入力では
+    全角の英字が混ざるので、`ＵＩ` と書いたノートが `UI` で引けないと
+    書いた本人にも見つけられない（実測でそうなっていた）。半角カナも
+    同じ理由で寄る。**問い合わせ側も同じ形に寄せること**——片方だけだと
+    「全角で書いたノートは全角でしか引けない」が残る。
     """
-    return plain_text(text)
+    return unicodedata.normalize("NFKC", plain_text(text))

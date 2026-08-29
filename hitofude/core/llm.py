@@ -287,19 +287,27 @@ class LocalLLM:
         if images:
             payload["images"] = [base64.b64encode(image).decode("ascii") for image in images]
         parts: list[str] = []
-        for line in self._request("/api/generate", payload):
-            if should_stop is not None and should_stop():
-                break
-            found = _parse(line)
-            if found is None:
-                continue
-            chunk = str(found.get("response", ""))
-            if chunk:
-                parts.append(chunk)
-                if on_chunk is not None:
-                    on_chunk(chunk)
-            if found.get("done"):
-                break
+        try:
+            for line in self._request("/api/generate", payload):
+                if should_stop is not None and should_stop():
+                    break
+                found = _parse(line)
+                if found is None:
+                    continue
+                chunk = str(found.get("response", ""))
+                if chunk:
+                    parts.append(chunk)
+                    if on_chunk is not None:
+                        on_chunk(chunk)
+                if found.get("done"):
+                    break
+        except (OSError, urllib.error.URLError) as error:
+            # **途中で切れても届いたぶんは捨てない**（レビュー指摘 2026-08-29）。
+            # `_request` が包んでいるのは 1 行目だけで、2 行目以降で相手が
+            # 落ちると素の `OSError` が上がっていた。断片は既に画面へ
+            # 流している（`on_chunk`）ので、ここで例外にすると
+            # **出ていた字が消えて失敗だけ残る**
+            logger.warning("受け取りの途中で切れた（届いたぶんを返す）: %s", error)
         return "".join(parts)
 
     # ------------------------------------------------------------------ 内部
