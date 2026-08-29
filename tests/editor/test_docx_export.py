@@ -117,3 +117,56 @@ class TestQuiet:
         target = tmp_path / "b.docx"
         write_docx(target, "")
         assert target.is_file()
+
+
+class TestTaskList:
+    """チェックの状態を落とさない（レビュー指摘 2026-08-30）。
+
+    `- [x] 済み` のマーカーごと削っていたので、**済んだかどうかが
+    消えて**ただの箇条書きになっていた。記号は `core/html` と揃える
+    （書き出し先が違っても同じ印）。
+    """
+
+    @pytest.fixture
+    def tasks(self, tmp_path):
+        target = tmp_path / "tasks.docx"
+        write_docx(target, "# やること\n\n- [ ] まだ\n- [x] 済み\n")
+        return Document(str(target))
+
+    def test_未了の印が出る(self, tasks) -> None:
+        assert any("☐" in text and "まだ" in text for text in texts(tasks))
+
+    def test_済みの印が出る(self, tasks) -> None:
+        assert any("☑" in text and "済み" in text for text in texts(tasks))
+
+    def test_ふつうの箇条書きには付かない(self, tmp_path) -> None:
+        target = tmp_path / "plain.docx"
+        write_docx(target, "# 一覧\n\n- ただの項目\n")
+        assert not any("☐" in text for text in texts(Document(str(target))))
+
+
+class TestInlineMarkup:
+    """記号を生のまま出さない（レビュー指摘 2026-08-30）。"""
+
+    @pytest.fixture
+    def written(self, tmp_path):
+        target = tmp_path / "inline.docx"
+        write_docx(
+            target,
+            "# 見本\n\n[Qiita](https://qiita.com) と [[会議メモ]] と ~~取り消し~~ を書く。\n",
+        )
+        return Document(str(target))
+
+    def test_リンクは題名だけ出す(self, written) -> None:
+        paragraph = next(p for p in written.paragraphs if "Qiita" in p.text)
+        assert "https://qiita.com" not in paragraph.text
+        assert "](" not in paragraph.text
+
+    def test_ノートのリンクも記号を外す(self, written) -> None:
+        paragraph = next(p for p in written.paragraphs if "会議メモ" in p.text)
+        assert "[[" not in paragraph.text
+
+    def test_打ち消し線になる(self, written) -> None:
+        paragraph = next(p for p in written.paragraphs if "取り消し" in p.text)
+        assert any(run.font.strike and run.text == "取り消し" for run in paragraph.runs)
+        assert "~~" not in paragraph.text

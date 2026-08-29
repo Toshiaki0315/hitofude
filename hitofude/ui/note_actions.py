@@ -874,7 +874,10 @@ class NoteActions:
 
         filled = expand(body, now=datetime.now(), title=window._note.title)
         cursor = window._editor.textCursor()
-        at = cursor.position()
+        # **選択の始まりを覚える**（レビュー指摘 2026-08-30）。`position()` は
+        # 選択の**終わり**を指すので、置き換えたあとのカーソルが選んだ長さ
+        # ぶん後ろへずれていた。差し込みは選択の始まりから始まる
+        at = cursor.selectionStart()
         cursor.insertText(filled.text)  # 1 回の編集 = Undo 1 段
         if filled.cursor is not None:
             cursor.setPosition(at + filled.cursor)

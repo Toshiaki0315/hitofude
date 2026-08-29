@@ -175,3 +175,43 @@ class TestNoFalsePositives:
         """レビューで挙がった `過去の` `朝の` は**影響を受けない**（実測）。"""
         assert Kind.PARTICLE_RUN in kinds("過去の友人の家の庭。")
         assert Kind.PARTICLE_RUN in kinds("朝の友人の家の庭。")
+
+
+class TestNegativeForm:
+    """否定形には否定形の言い換えを出す（レビュー指摘 2026-08-30）。
+
+    `することができない` に「できます」と提案していた。**意味が逆になる
+    言い換え**は、指摘そのものより悪い。
+    """
+
+    def test_否定には否定で答える(self) -> None:
+        found = check("これは保存することができない。")[0]
+        assert "できません" in found.message
+
+    def test_ですます調の否定も(self) -> None:
+        found = check("これは保存することができません。")[0]
+        assert "できません" in found.message
+
+    def test_肯定は今までどおり(self) -> None:
+        found = check("これは保存することができます。")[0]
+        assert found.message == "「できます」で足ります"
+
+
+class TestLineEndings:
+    """CRLF のファイルでも位置がずれない（レビュー指摘 2026-08-30）。
+
+    `frontmatter.split` は改行を LF に正規化して返すのに、こちらは
+    `len(text) - len(body)` で先頭位置を出していた。**正規化で縮んだぶん**が
+    そのままずれになる（実測: CRLF 2 行で 2 文字ずれた）。
+    """
+
+    def test_切り出しが合う(self) -> None:
+        text = "あいう\r\nこれを実行することができます。\r\n"
+        found = check(text)[0]
+        normalized = text.replace("\r\n", "\n")
+        assert normalized[found.start : found.end] == "することができます"
+
+    def test_front_matterがあっても合う(self) -> None:
+        text = "---\ncreated: 2026-08-30\n---\n\n本文。\nこれを実行することができます。\n"
+        found = check(text)[0]
+        assert text[found.start : found.end] == "することができます"

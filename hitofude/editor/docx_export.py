@@ -37,9 +37,26 @@ _LIST_STYLES = {
     BlockType.TASK_LIST_ITEM: "List Bullet",
 }
 
+CHECKED, UNCHECKED = "☑ ", "☐ "
+"""チェックの印（レビュー指摘 2026-08-30）。
+
+マーカーごと削っていたので、**済んだかどうかが消えて**ただの箇条書きに
+なっていた。記号は `core/html` と同じ——書き出し先が違っても同じ印。
+"""
+
 # 文中で「地の文と違う見せ方」をするもの。ここに無い装飾は素の字で出す
 _BOLD = {SpanType.STRONG, SpanType.STRONG_EM}
 _ITALIC = {SpanType.EM, SpanType.STRONG_EM}
+_STRIKE = {SpanType.STRIKE}
+
+# **記号を落として中身だけ出すもの**（レビュー指摘 2026-08-30）。
+# `[題](URL)` や `[[ノート]]` が生のまま出ていた。Word に持っていく人が
+# 読むのは題名で、URL は本文の邪魔になる
+_UNWRAP = {SpanType.LINK_TEXT, SpanType.WIKI_LINK}
+
+# 中身ごと落とすもの。`[題](URL)` の URL 側は題名の直後に続くので、
+# 残すと `Qiita https://…` と 2 度出る
+_DROP = {SpanType.LINK_URL}
 
 
 def _body_of(line: str, info: BlockInfo) -> str:
@@ -53,9 +70,8 @@ def _runs(text: str) -> list[tuple[str, SpanType | None]]:
     重なった装飾は外側だけを見る。Word の run は入れ子にできないので、
     どのみち 1 段しか表せない。
     """
-    spans: list[InlineSpan] = [
-        span for span in scan(text) if span.type in _BOLD | _ITALIC | {SpanType.CODE}
-    ]
+    wanted = _BOLD | _ITALIC | _STRIKE | _UNWRAP | _DROP | {SpanType.CODE}
+    spans: list[InlineSpan] = [span for span in scan(text) if span.type in wanted]
     found: list[tuple[str, SpanType | None]] = []
     at = 0
     for span in sorted(spans, key=lambda item: item.open_start):
@@ -63,7 +79,8 @@ def _runs(text: str) -> list[tuple[str, SpanType | None]]:
             continue  # 入れ子。外側だけを見る
         if span.open_start > at:
             found.append((text[at : span.open_start], None))
-        found.append((text[span.open_end : span.close_start], span.type))
+        if span.type not in _DROP:
+            found.append((text[span.open_end : span.close_start], span.type))
         at = span.close_end
     if at < len(text):
         found.append((text[at:], None))
@@ -77,6 +94,8 @@ def _write_runs(paragraph, text: str) -> None:
             run.bold = True
         if kind in _ITALIC:
             run.italic = True
+        if kind in _STRIKE:
+            run.font.strike = True
         if kind is SpanType.CODE:
             run.font.name = MONO_FAMILY
 
@@ -157,10 +176,12 @@ def write_docx(path: Path, text: str) -> Path:
             case BlockType.BLOCKQUOTE:
                 _write_runs(document.add_paragraph(style="Quote"), _body_of(line, info).strip())
             case kind if kind in _LIST_STYLES:
-                _write_runs(
-                    document.add_paragraph(style=_LIST_STYLES[kind]),
-                    _body_of(line, info).strip(),
-                )
+                body = _body_of(line, info).strip()
+                if kind is BlockType.TASK_LIST_ITEM:
+                    # **済んだかどうかを落とさない。** マーカーは削られて
+                    # いるので、印を先頭に置き直す
+                    body = (CHECKED if info.checked else UNCHECKED) + body
+                _write_runs(document.add_paragraph(style=_LIST_STYLES[kind]), body)
             case BlockType.HORIZONTAL_RULE:
                 document.add_paragraph()
             case BlockType.PARAGRAPH:

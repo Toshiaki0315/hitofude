@@ -118,3 +118,42 @@ class TestEntry:
         window.open_and_select(note.path)
         assert window.choose_template_to_insert() is None
         assert "テンプレート" in window.notice()
+
+
+class TestWithSelection:
+    """選んだ文字を置き換えて差し込む（レビュー指摘 2026-08-30）。
+
+    `cursor.position()` は選択の**終わり**を指すので、置き換えたあとの
+    カーソルが選んだ長さぶん後ろへずれていた（実測）。差し込みは選択の
+    **始まり**から始まる。
+    """
+
+    def select(self, editor, needle: str) -> None:
+        from PySide6.QtGui import QTextCursor
+
+        document = editor.document()
+        for number in range(document.blockCount()):
+            block = document.findBlockByNumber(number)
+            if needle in block.text():
+                cursor = editor.textCursor()
+                start = block.position() + block.text().index(needle)
+                cursor.setPosition(start)
+                cursor.setPosition(start + len(needle), QTextCursor.MoveMode.KeepAnchor)
+                editor.setTextCursor(cursor)
+                return
+        raise AssertionError(f"{needle} が無い")
+
+    def test_選択は置き換わる(self, ready) -> None:
+        ready.editor.setPlainText("# 下書き\n\n消される文字\n")
+        self.select(ready.editor, "消される文字")
+        ready.insert_template("あいさつ")
+        assert "消される文字" not in ready.editor.toPlainText()
+
+    def test_カーソルが印の場所に来る(self, ready) -> None:
+        """**これが本題。** 選んだ長さぶんずれていた。"""
+        ready.editor.setPlainText("# 下書き\n\n消される文字\n")
+        self.select(ready.editor, "消される文字")
+        ready.insert_template("あいさつ")
+        text = ready.editor.toPlainText()
+        position = ready.editor.textCursor().position()
+        assert text[:position].endswith("お世話になっております。\n")

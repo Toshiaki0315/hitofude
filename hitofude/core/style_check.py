@@ -64,7 +64,10 @@ PARTICLE_RUN_MIN = 3
 
 # (正規表現, 種類, 言い換え) の並び。**言い回しの辞書**で、品詞は見ない
 _RULES: list[tuple[re.Pattern[str], Kind, str]] = [
-    (re.compile(r"することができ(る|ます|ない|ません)"), Kind.REDUNDANT, "「できます」で足ります"),
+    # **否定は否定で言い換える**（レビュー指摘 2026-08-30）。まとめて
+    # 「できます」と出していたが、**意味が逆になる言い換え**は指摘より悪い
+    (re.compile(r"することができ(ない|ません)"), Kind.REDUNDANT, "「できません」で足ります"),
+    (re.compile(r"することができ(る|ます)"), Kind.REDUNDANT, "「できます」で足ります"),
     (re.compile(r"することが可能"), Kind.REDUNDANT, "「できます」で足ります"),
     (re.compile(r"という点において"), Kind.REDUNDANT, "「という点で」で足ります"),
     (re.compile(r"を行うことができ"), Kind.REDUNDANT, "動詞そのもので言えます"),
@@ -137,8 +140,13 @@ def _body_lines(text: str) -> list[tuple[int, str]]:
     """
     found: list[tuple[int, str]] = []
     gate = FenceGate()
-    offset = len(text) - len(frontmatter.split(text).body)
-    for line in frontmatter.split(text).body.split("\n"):
+    # **`body_offset` を使う**（レビュー指摘 2026-08-30）。`split` は改行を
+    # LF に正規化して返すので、`len(text) - len(body)` だと**正規化で
+    # 縮んだぶん**がそのままずれになる（実測: CRLF 2 行で 2 文字）。
+    # 呼ぶのも 1 回で済む
+    split = frontmatter.split(text)
+    offset = split.body_offset
+    for line in split.body.split("\n"):
         if not gate.crosses(line) and not gate.inside and not _NOT_PROSE.match(line):
             found.append((offset, line))
         offset += len(line) + 1
@@ -146,7 +154,12 @@ def _body_lines(text: str) -> list[tuple[int, str]]:
 
 
 def check(text: str) -> list[Finding]:
-    """本文を見て、気づいたところを返す。**直さない。**"""
+    """本文を見て、気づいたところを返す。**直さない。**
+
+    位置は**改行を LF に揃えた本文**での文字数（`frontmatter.split` が
+    正規化する）。画面から渡ってくる本文は元から LF なので、実際に
+    差が出るのは外で作った CRLF のファイルだけ。
+    """
     found: list[Finding] = []
     for offset, line in _body_lines(text):
         for pattern, kind, message in _RULES:
