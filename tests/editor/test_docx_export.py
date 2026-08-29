@@ -279,3 +279,111 @@ class TestEmbeddedImages:
         target = tmp_path / "none.docx"
         write_docx(target, "# 見本\n\n![図](attachments/zu.png)\n")
         assert any("図" in p.text for p in Document(str(target)).paragraphs)
+
+
+class TestManyImages:
+    """同じ行に絵が 2 つあるとき（レビュー指摘 2026-08-30）。
+
+    URL を**行の中から文字列で探して**いたので、同じ説明の絵が並ぶと
+    2 枚目も 1 枚目の URL を引いていた（実測: `a.png` が 2 回）。
+    走査（`scan`）が既に正しい URL を持っている。
+    """
+
+    @pytest.fixture
+    def vault(self, tmp_path):
+        from PySide6.QtGui import QImage
+
+        root = tmp_path / "v"
+        (root / "attachments").mkdir(parents=True)
+        for name, color in (("a.png", 0x882222), ("b.png", 0x228822)):
+            picture = QImage(20, 15, QImage.Format.Format_RGB32)
+            picture.fill(color)
+            assert picture.save(str(root / "attachments" / name))
+        return root
+
+    def test_それぞれの絵が入る(self, tmp_path, vault) -> None:
+        """**これが本題。** 同じ絵を 2 度入れない。"""
+        from hitofude.editor.docx_export import _runs
+
+        text = "![図](attachments/a.png) と ![図](attachments/b.png)"
+        urls = [payload for _body, kind, payload in _runs(text) if kind is not None and payload]
+        assert urls == ["attachments/a.png", "attachments/b.png"]
+
+    def test_書き出しにも2枚入る(self, tmp_path, vault) -> None:
+        target = tmp_path / "two.docx"
+        write_docx(
+            target,
+            "# 見本\n\n![図](attachments/a.png) と ![図](attachments/b.png)\n",
+            base_path=vault,
+        )
+        document = Document(str(target))
+        ns = "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}inline"
+        assert sum(len(p._p.findall(".//" + ns)) for p in document.paragraphs) == 2
+
+
+class TestImagesInTable:
+    """表のセルの絵も入れる（レビュー指摘 2026-08-30）。
+
+    `_write_table` へ置き場を渡していなかったので、セルの中だけ
+    `［画像］` のままだった。
+    """
+
+    def test_セルの絵が入る(self, tmp_path) -> None:
+        from PySide6.QtGui import QImage
+
+        root = tmp_path / "v"
+        (root / "attachments").mkdir(parents=True)
+        picture = QImage(20, 15, QImage.Format.Format_RGB32)
+        picture.fill(0x224488)
+        assert picture.save(str(root / "attachments" / "icon.png"))
+
+        target = tmp_path / "table.docx"
+        write_docx(
+            target,
+            "# 見本\n\n| 印 | 名前 |\n| --- | --- |\n| ![印](attachments/icon.png) | あ |\n",
+            base_path=root,
+        )
+        table = Document(str(target)).tables[0]
+        ns = "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}inline"
+        cell = table.cell(1, 0)
+        assert sum(len(p._p.findall(".//" + ns)) for p in cell.paragraphs) == 1
+
+
+class TestTallImage:
+    """縦に長い絵を紙からはみ出させない（レビュー指摘 2026-08-30）。
+
+    幅にしか上限が無かったので、細長い画面写真（スマホの長尺）が
+    紙の高さを超えていた。
+    """
+
+    def test_高さも収める(self, tmp_path) -> None:
+        from docx.shared import Inches
+        from PySide6.QtGui import QImage
+
+        from hitofude.editor.docx_export import MAX_IMAGE_HEIGHT_IN, _picture_size
+
+        root = tmp_path / "v"
+        root.mkdir()
+        tall = QImage(300, 3000, QImage.Format.Format_RGB32)  # 1:10 の細長い絵
+        tall.fill(0x333333)
+        path = root / "tall.png"
+        assert tall.save(str(path))
+
+        width = _picture_size(path)
+        assert width is not None
+        # 幅 : 高さ = 1 : 10 なので、高さの上限から幅が決まる
+        assert width <= Inches(MAX_IMAGE_HEIGHT_IN / 10) + Inches(0.01)
+
+    def test_ふつうの絵はそのまま(self, tmp_path) -> None:
+        from docx.shared import Inches
+        from PySide6.QtGui import QImage
+
+        from hitofude.editor.docx_export import _picture_size
+
+        root = tmp_path / "v"
+        root.mkdir()
+        normal = QImage(192, 96, QImage.Format.Format_RGB32)  # 96dpi で 2 インチ
+        normal.fill(0x777777)
+        path = root / "normal.png"
+        assert normal.save(str(path))
+        assert _picture_size(path) == Inches(2.0)

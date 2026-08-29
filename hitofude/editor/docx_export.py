@@ -38,6 +38,14 @@ _LIST_STYLES = {
     BlockType.TASK_LIST_ITEM: "List Bullet",
 }
 
+MAX_IMAGE_HEIGHT_IN = 8.0
+"""絵の最大高さ（インチ）。
+
+**縦に長い絵を紙からはみ出させない**（レビュー指摘 2026-08-30）。幅にしか
+上限が無かったので、細長い画面写真（スマホの長尺）が 1 ページの高さを
+超えていた。縦横の比は保ったまま、幅のほうを詰める。
+"""
+
 MAX_IMAGE_WIDTH_IN = 6.0
 """絵の最大幅（インチ）。
 
@@ -86,7 +94,7 @@ def _body_of(line: str, info: BlockInfo) -> str:
     return line[info.marker_len :] if info.marker_len else line
 
 
-def _runs(text: str) -> list[tuple[str, SpanType | None]]:
+def _runs(text: str) -> list[tuple[str, SpanType | None, str]]:
     """文中を `(字, 装飾)` に割る。**記号は落とす**（`**太字**` → 太字）。
 
     重なった装飾は外側だけを見る。Word の run は入れ子にできないので、
@@ -94,22 +102,25 @@ def _runs(text: str) -> list[tuple[str, SpanType | None]]:
     """
     wanted = _BOLD | _ITALIC | _STRIKE | _UNWRAP | _DROP | {SpanType.CODE}
     spans: list[InlineSpan] = [span for span in scan(text) if span.type in wanted]
-    found: list[tuple[str, SpanType | None]] = []
+    found: list[tuple[str, SpanType | None, str]] = []
     at = 0
     for span in sorted(spans, key=lambda item: item.open_start):
         if span.open_start < at:
             continue  # 入れ子。外側だけを見る
         if span.open_start > at:
-            found.append((text[at : span.open_start], None))
+            found.append((text[at : span.open_start], None, ""))
         if span.type not in _DROP:
             body = text[span.open_end : span.close_start]
             if span.type is SpanType.IMAGE and not body:
                 body = IMAGE_PLACEHOLDER
-            found.append((body, span.type))
+            # **走査が持っている URL を使う**（レビュー指摘 2026-08-30）。
+            # 行の中を文字列で探していたので、同じ説明の絵が並ぶと
+            # 2 枚目も 1 枚目の URL を引いていた（実測: `a.png` が 2 回）
+            found.append((body, span.type, span.payload or ""))
         at = span.close_end
     if at < len(text):
-        found.append((text[at:], None))
-    return [(body, kind) for body, kind in found if body]
+        found.append((text[at:], None, ""))
+    return [(body, kind, payload) for body, kind, payload in found if body]
 
 
 def _picture_size(path: Path) -> "Inches | None":
@@ -123,9 +134,11 @@ def _picture_size(path: Path) -> "Inches | None":
     size = QImageReader(str(path)).size()
     if not size.isValid() or size.width() <= 0:
         return None
-    # 96dpi と見なす（Word の既定）。それより大きければ幅を頭打ちにする
+    # 96dpi と見なす（Word の既定）。**幅と高さの両方**で頭を打たせ、
+    # 縦横の比は保つ（高さで決まるときは、そのぶん幅を詰める）
     natural = size.width() / 96
-    return Inches(min(natural, MAX_IMAGE_WIDTH_IN))
+    ratio = size.width() / size.height() if size.height() > 0 else 1.0
+    return Inches(min(natural, MAX_IMAGE_WIDTH_IN, MAX_IMAGE_HEIGHT_IN * ratio))
 
 
 def _add_picture(paragraph, url: str, base_path: Path | None) -> bool:
@@ -146,10 +159,11 @@ def _add_picture(paragraph, url: str, base_path: Path | None) -> bool:
 
 
 def _write_runs(paragraph, text: str, base_path: Path | None = None) -> None:
-    for body, kind in _runs(text):
+    for body, kind, payload in _runs(text):
         # **絵そのものを入れる**（ユーザー要望 2026-08-30）。入らなかった
-        # ときだけ、説明か在処の印を字で残す
-        if kind is SpanType.IMAGE and _add_picture(paragraph, _image_url(text, body), base_path):
+        # ときだけ、説明か在処の印を字で残す。URL は走査が持っているものを
+        # 使う——行の中を探すと、同じ説明の絵が並んだとき取り違える
+        if kind is SpanType.IMAGE and _add_picture(paragraph, payload, base_path):
             continue
         run = paragraph.add_run(body)
         if kind in _BOLD:
@@ -160,16 +174,6 @@ def _write_runs(paragraph, text: str, base_path: Path | None = None) -> None:
             run.font.strike = True
         if kind is SpanType.CODE:
             run.font.name = MONO_FAMILY
-
-
-def _image_url(text: str, alt: str) -> str:
-    """`![alt](URL)` の URL。走査は説明までしか返さないので、後ろを読む。"""
-    marker = f"![{alt}](" if alt != IMAGE_PLACEHOLDER else "![]("
-    at = text.find(marker)
-    if at < 0:
-        return ""
-    end = text.find(")", at + len(marker))
-    return text[at + len(marker) : end] if end > 0 else ""
 
 
 def _cells(line: str) -> list[str]:
@@ -187,7 +191,7 @@ def _cells(line: str) -> list[str]:
     return found
 
 
-def _write_table(document, rows: list[list[str]]) -> None:
+def _write_table(document, rows: list[list[str]], base_path: Path | None = None) -> None:
     """表を **Word の表**として出す。段落にしない。"""
     if not rows:
         return
@@ -198,7 +202,7 @@ def _write_table(document, rows: list[list[str]]) -> None:
         for x in range(width):
             cell = table.cell(y, x)
             cell.text = ""
-            _write_runs(cell.paragraphs[0], row[x] if x < len(row) else "")
+            _write_runs(cell.paragraphs[0], row[x] if x < len(row) else "", base_path)
 
 
 def _write_code(document, lines: list[str]) -> None:
@@ -231,7 +235,7 @@ def write_docx(path: Path, text: str, *, base_path: Path | None = None) -> Path:
         # **区切り行（`|---|`）で切らない。** 表の一部なので、ここで
         # 吐き出すとヘッダだけの表と本体の表に割れる
         if info.type not in _TABLE_TYPES and table:
-            _write_table(document, table)
+            _write_table(document, table, base_path)
             table = []
         if info.type not in _CODE_TYPES and code:
             _write_code(document, code)
@@ -268,7 +272,7 @@ def write_docx(path: Path, text: str, *, base_path: Path | None = None) -> Path:
             case _:
                 pass  # 空行・front matter・数式の記号など
 
-    _write_table(document, table)
+    _write_table(document, table, base_path)
     _write_code(document, code)
     document.save(str(path))
     return path
