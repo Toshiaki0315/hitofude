@@ -37,13 +37,9 @@ class TestImagesFromVault:
 
     def test_絵が入る(self, window, tmp_path, monkeypatch) -> None:
         from docx import Document
-        from PySide6.QtGui import QImage
+        from tests.editor.test_docx_export import make_png
 
-        attachments = window._vault.root / "attachments"
-        attachments.mkdir(parents=True, exist_ok=True)
-        picture = QImage(30, 20, QImage.Format.Format_RGB32)
-        picture.fill(0x224466)
-        assert picture.save(str(attachments / "zu.png"))
+        make_png(window._vault.root / "attachments" / "zu.png", width=30, height=20, color=0x224466)
 
         note = window._vault.create("絵入り", "# 絵入り\n\n![図](attachments/zu.png)\n")
         window._db.upsert_note(note, window._vault.root)

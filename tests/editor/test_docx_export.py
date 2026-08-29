@@ -11,6 +11,8 @@ Bear・Typora・iA Writer にはある。
 中身の保証にならない。
 """
 
+from pathlib import Path
+
 import pytest
 from docx import Document
 
@@ -48,6 +50,21 @@ def written(tmp_path):
     target = tmp_path / "会議メモ.docx"
     write_docx(target, NOTE)
     return Document(str(target))
+
+
+def make_png(path: Path, *, width: int = 40, height: int = 30, color: int = 0x336699) -> Path:
+    """試験用の絵を 1 枚置く。
+
+    **書き方を 1 か所にまとめる**（レビュー指摘 2026-08-30）。同じ数行が
+    6 箇所に写っていた。大きさは埋め込みの寸法を見る試験が指定する。
+    """
+    from PySide6.QtGui import QImage
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    picture = QImage(width, height, QImage.Format.Format_RGB32)
+    picture.fill(color)
+    assert picture.save(str(path)), f"絵を作れなかった: {path}"
+    return path
 
 
 def texts(document) -> list[str]:
@@ -219,13 +236,8 @@ class TestEmbeddedImages:
 
     @pytest.fixture
     def vault(self, tmp_path):
-        from PySide6.QtGui import QImage
-
         root = tmp_path / "v"
-        (root / "attachments").mkdir(parents=True)
-        image = QImage(40, 30, QImage.Format.Format_RGB32)
-        image.fill(0x336699)
-        assert image.save(str(root / "attachments" / "zu.png"))
+        make_png(root / "attachments" / "zu.png")
         return root
 
     def written(self, tmp_path, vault, text: str):
@@ -291,14 +303,9 @@ class TestManyImages:
 
     @pytest.fixture
     def vault(self, tmp_path):
-        from PySide6.QtGui import QImage
-
         root = tmp_path / "v"
-        (root / "attachments").mkdir(parents=True)
         for name, color in (("a.png", 0x882222), ("b.png", 0x228822)):
-            picture = QImage(20, 15, QImage.Format.Format_RGB32)
-            picture.fill(color)
-            assert picture.save(str(root / "attachments" / name))
+            make_png(root / "attachments" / name, width=20, height=15, color=color)
         return root
 
     def test_それぞれの絵が入る(self, tmp_path, vault) -> None:
@@ -329,13 +336,8 @@ class TestImagesInTable:
     """
 
     def test_セルの絵が入る(self, tmp_path) -> None:
-        from PySide6.QtGui import QImage
-
         root = tmp_path / "v"
-        (root / "attachments").mkdir(parents=True)
-        picture = QImage(20, 15, QImage.Format.Format_RGB32)
-        picture.fill(0x224488)
-        assert picture.save(str(root / "attachments" / "icon.png"))
+        make_png(root / "attachments" / "icon.png", width=20, height=15, color=0x224488)
 
         target = tmp_path / "table.docx"
         write_docx(
@@ -358,16 +360,11 @@ class TestTallImage:
 
     def test_高さも収める(self, tmp_path) -> None:
         from docx.shared import Inches
-        from PySide6.QtGui import QImage
 
         from hitofude.editor.docx_export import MAX_IMAGE_HEIGHT_IN, _picture_size
 
-        root = tmp_path / "v"
-        root.mkdir()
-        tall = QImage(300, 3000, QImage.Format.Format_RGB32)  # 1:10 の細長い絵
-        tall.fill(0x333333)
-        path = root / "tall.png"
-        assert tall.save(str(path))
+        # 1:10 の細長い絵
+        path = make_png(tmp_path / "v" / "tall.png", width=300, height=3000, color=0x333333)
 
         width = _picture_size(path)
         assert width is not None
@@ -376,14 +373,9 @@ class TestTallImage:
 
     def test_ふつうの絵はそのまま(self, tmp_path) -> None:
         from docx.shared import Inches
-        from PySide6.QtGui import QImage
 
         from hitofude.editor.docx_export import _picture_size
 
-        root = tmp_path / "v"
-        root.mkdir()
-        normal = QImage(192, 96, QImage.Format.Format_RGB32)  # 96dpi で 2 インチ
-        normal.fill(0x777777)
-        path = root / "normal.png"
-        assert normal.save(str(path))
+        # 96dpi で 2 インチぶん
+        path = make_png(tmp_path / "v" / "normal.png", width=192, height=96, color=0x777777)
         assert _picture_size(path) == Inches(2.0)
