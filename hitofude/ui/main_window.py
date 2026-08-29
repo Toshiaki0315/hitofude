@@ -1792,6 +1792,10 @@ class MainWindow(QMainWindow):
     def export_pdf(self) -> Path | None:
         return self._exports.export_pdf()
 
+    def export_docx(self):
+        """Word で書き出す（U-5）。実体は ExportActions。"""
+        return self._exports.export_docx()
+
     def export_pptx(self) -> Path | None:
         return self._exports.export_pptx()
 

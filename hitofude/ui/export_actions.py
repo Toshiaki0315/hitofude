@@ -19,7 +19,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtPrintSupport import QPrintDialog
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox, QToolButton
 
-from hitofude.editor import exporter, importer, pptx_export
+from hitofude.editor import docx_export, exporter, importer, pptx_export
 from hitofude.ui.index_sync import ImportReporter, ImportTask
 from hitofude.ui.status_bar import NOTICE_MS
 
@@ -82,6 +82,13 @@ class ExportActions:
         return self._export(
             "PowerPoint で書き出す", "PowerPoint (*.pptx)", ".pptx", self._write_pptx
         )
+
+    def export_docx(self) -> Path | None:
+        """Word で書き出す（U-5）。**ざっくり作って手で整える**前提。
+
+        提出物が Word 指定の場面は PDF では代替できない。
+        """
+        return self._export("Word で書き出す", "Word (*.docx)", ".docx", self._write_docx)
 
     def print_note(self) -> bool:
         """`Cmd+P`。印刷ダイアログを出す（C-9）。
@@ -185,6 +192,9 @@ class ExportActions:
 
     def _write_pptx(self, target: Path, text: str) -> Path:
         return pptx_export.write_pptx(target, text, base_path=self._window._vault.root)
+
+    def _write_docx(self, target: Path, text: str) -> Path:
+        return docx_export.write_docx(target, text)
 
     def _write_pdf(self, target: Path, text: str) -> Path:
         window = self._window

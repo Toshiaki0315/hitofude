@@ -124,6 +124,8 @@ OPTIONS = {
         # PIL の `.so` だけ拾って本体を入れず、`.app` の中で
         # `from PIL import Image` が失敗する（ビルドして確かめた）
         "pptx",
+        # **Word の書き出し（U-5）。** pptx と同じく lxml に乗っている
+        "docx",
         "PIL",
         "lxml",
     ],

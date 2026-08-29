@@ -126,6 +126,7 @@ def _file_menu(window, bar) -> None:
     # **`Cmd+P` は印刷に譲る（C-9）。** macOS では印刷が慣習で、その
     # パネルから「PDF として保存」も選べる。書き出しの入口はここに残す
     add(export_menu, "PDF…", "", window.export_pdf)
+    add(export_menu, "Word…", "", window.export_docx)
     add(export_menu, "PowerPoint…", "", window.export_pptx)
     export_menu.addSeparator()
     # **これも書き出し**（行き先がクリップボードなだけ。2026-08-25 に移した）

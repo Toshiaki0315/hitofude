@@ -487,7 +487,8 @@ class TestExportSubmenu:
     `QMenu` を消す（`Internal C++ object already deleted`）。
     """
 
-    LABELS = ("Markdown…", "HTML…", "PDF…", "PowerPoint…")
+    LABELS = ("Markdown…", "HTML…", "PDF…", "Word…", "PowerPoint…")
+    """並び順も含めて固定する。Word は PDF の隣（どちらも提出物）。"""
 
     def labels(self, window, title: str) -> list[str]:
         return [action.text() for action in window.menus[title].actions()]
@@ -495,7 +496,7 @@ class TestExportSubmenu:
     def test_書き出すサブメニューがある(self, window) -> None:
         assert "書き出す" in window.menus
 
-    def test_形式が4つ入っている(self, window) -> None:
+    def test_形式が全部入っている(self, window) -> None:
         """**先頭は 4 つの形式。** 2026-08-25 に「HTML をコピー」を足した
         （行き先がクリップボードなだけで、これも書き出し）。
         """
