@@ -13,11 +13,13 @@ from PySide6.QtWidgets import QInputDialog
 from hitofude.core import searchquery
 from hitofude.core.outline import headings
 from hitofude.core.search import matching_line
+from hitofude.ui.commands import commands
 from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
 
 # 検索欄の案内（提案 3）。**書き方をここで知らせる。** 入力欄を増やさない
 # 代わりに、絞り込みが書けることは案内で伝える
 SEARCH_PLACEHOLDER = "本文を検索…（#タグ after:2026-08-01 で絞れます）"
+COMMAND_PLACEHOLDER = "命令を探す…"
 
 # 日付として読めない `after:` / `before:` を書いたときの案内（案 1）。
 # **探すのはやめない**が、書き方が違うことは伝える
@@ -89,6 +91,38 @@ class SearchActions:
         palette.chosen.connect(self._on_search_chosen)
         palette.finished.connect(palette.deleteLater)
         palette.open_with()
+
+    def command_palette(self):
+        """`Cmd+Shift+P`。命令を名前で探して動かす（U-3）。
+
+        **ノートを開く道具と同じ `Palette`** を使う。入口が増えても操作を
+        覚え直さずに済む（アウトラインのパレットと同じ考え方）。
+
+        並べるのは**メニューバーから集めたもの**（`ui/commands`）。別に
+        一覧を持つと、メニューに足したのにここへ出ないが起きる。
+        """
+        palette = self._make_palette(COMMAND_PLACEHOLDER)
+        palette.set_provider(self._command_items)
+        palette.chosen.connect(self._on_command_chosen)
+        palette.open_with()
+        return palette
+
+    def _command_items(self, query: str) -> list[PaletteItem]:
+        found = [
+            PaletteItem(
+                title=command.label,
+                subtitle=f"{command.path}　{command.shortcut}".strip(),
+                path=Path(),
+                payload=command.action,
+            )
+            for command in commands(self._window.menuBar())
+        ]
+        return fuzzy_filter(query, found)
+
+    def _on_command_chosen(self, item: PaletteItem) -> None:
+        action = item.payload
+        if action is not None:
+            action.trigger()
 
     def open_outline(self) -> None:
         """`Cmd+R`。このノートの見出しへ飛ぶ（C-2）。

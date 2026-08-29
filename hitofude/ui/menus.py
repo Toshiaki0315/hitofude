@@ -165,6 +165,8 @@ def _search_menu(window, bar) -> None:
 
     search_menu = _add_menu(window, bar, "検索")
     add(search_menu, "クイックオープン", "Ctrl+O", window.quick_open)
+    # 命令を名前で探す（U-3）。**ノートを開くのとは別の口**
+    add(search_menu, "命令を探す…", "Ctrl+Shift+O", window.command_palette)
     add(search_menu, "全文検索", "Ctrl+Shift+F", window.full_text_search)
     add(search_menu, "見出しへ飛ぶ", "Ctrl+R", window.open_outline)
     # 保存した検索（K-4）。**キーは付けない。** 名前を打つ操作で急がない

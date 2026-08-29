@@ -1413,6 +1413,10 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ 検索
 
+    def command_palette(self):
+        """`Cmd+Shift+P`。命令を名前で探して動かす（U-3）。"""
+        return self._search.command_palette()
+
     def quick_open(self) -> None:
         """`Cmd+O`（spec §5.4）。"""
         self._search.quick_open()

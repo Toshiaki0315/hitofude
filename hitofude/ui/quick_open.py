@@ -85,6 +85,11 @@ class PaletteItem:
     line: int | None = None
     """同じノートの中の飛び先（アウトライン。C-2）。ノートを開く用途では None。"""
 
+    payload: object | None = None
+    """選ばれたときに使う中身（コマンドパレットは `QAction` を載せる。U-3）。
+
+    **ノートを開く用途では使わない。** パスと行だけで足りる。"""
+
 
 def fuzzy_score(query: str, text: str) -> int | None:
     """`query` が `text` の部分列として現れるならスコア、無ければ None。
