@@ -519,6 +519,8 @@ MENU_ICONS = {
     "複製": "edit-copy",
     "テンプレートに登録…": "document-new",
     "フォルダへ移動…": "go-next",
+    # 横の参照ペインへ（U-1）。**本文を入れ替える「開く」とは別の絵**にする
+    "横に開く": "view-dual",
     "リンクをコピー": "insert-link",
     "Finder で表示": "system-file-manager",
     "Finder で開く": "system-file-manager",

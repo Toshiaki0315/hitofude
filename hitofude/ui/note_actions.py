@@ -622,6 +622,8 @@ class NoteActions:
         )
         add_item(menu, "フォルダへ移動…").triggered.connect(lambda: self.move_note_to_folder(path))
         menu.addSeparator()
+        # 横の参照ペインへ（U-1）。**本文は入れ替えない**ので「開く」とは分ける
+        add_item(menu, "横に開く").triggered.connect(lambda: window.open_beside(path))
         add_item(menu, "リンクをコピー").triggered.connect(lambda: self.copy_note_link(path))
         add_item(menu, "Finder で表示").triggered.connect(lambda: self.reveal_note(path))
         menu.addSeparator()

@@ -31,7 +31,8 @@ class TestLayout:
         spec §5.1 の 3 ペインのまま。"""
         splitter = window.centralWidget()
         assert isinstance(splitter, QSplitter)
-        assert splitter.count() == 5
+        # サイドバー・一覧・本文・アウトライン・アシスタント・参照（U-1）
+        assert splitter.count() == 6
         assert splitter.widget(3).isHidden() is True
         assert splitter.widget(4).isHidden() is True
         assert sum(not splitter.widget(i).isHidden() for i in range(5)) == 3

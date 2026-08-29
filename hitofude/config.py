@@ -149,6 +149,7 @@ _TOOLBAR = "layout/toolbar_visible"
 _BACKLINKS = "layout/backlinks_expanded"
 _OUTLINE = "layout/outline_visible"
 _ASSISTANT = "layout/assistant_visible"
+_REFERENCE = "layout/reference_visible"
 _INDENTED_CODE = "editor/indented_code"
 _LLM_MODEL = "llm/model"
 _LLM_PORT = "llm/port"
@@ -370,6 +371,18 @@ class Config:
     @splitter_sizes.setter
     def splitter_sizes(self, value: list[int]) -> None:
         self.settings.setValue(_SPLITTER, [int(size) for size in value])
+
+    @property
+    def reference_visible(self) -> bool:
+        """横に置く参照ペインを出すか（U-1）。**既定は出さない。**
+
+        画面を勝手に狭くしない（`outline_visible` と同じ考え方）。
+        """
+        return self.settings.value(_REFERENCE, False, type=bool)
+
+    @reference_visible.setter
+    def reference_visible(self, value: bool) -> None:
+        self.settings.setValue(_REFERENCE, bool(value))
 
     @property
     def indented_code(self) -> bool:

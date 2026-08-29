@@ -87,6 +87,7 @@ from hitofude.ui.panes import (
     PaneSplitter,
 )
 from hitofude.ui.preferences import PreferencesDialog
+from hitofude.ui.reference_pane import ReferencePane
 from hitofude.ui.save_controller import SaveController
 from hitofude.ui.search_actions import SearchActions
 from hitofude.ui.shortcut_sheet import ShortcutSheet
@@ -308,6 +309,8 @@ class MainWindow(QMainWindow):
         # ローカルLLM の答え（L-1 / ADR-0025）。**本文の右**。アウトラインと
         # 同じ理由で、左に寄せると本文が押し出される
         self._assistant = AssistantPane(theme=theme)
+        # 横に置くもう 1 枚（U-1）。**読むだけ**——保存の道には触れない
+        self._reference = ReferencePane(theme=theme)
         self._assistant.hide()
         self._assistant.requested.connect(self.ask_assistant)
         self._assistant.stopped.connect(self.stop_assistant)
@@ -330,6 +333,9 @@ class MainWindow(QMainWindow):
         self._splitter.addWidget(self._pane)
         self._splitter.addWidget(self._outline)
         self._splitter.addWidget(self._assistant)
+        # **最後に足す。** ペインの表示は添字で切り替えるので、
+        # 途中に入れるとアウトラインとローカルLLM の添字がずれる
+        self._splitter.addWidget(self._reference)
         self._splitter.setStretchFactor(2, 1)
         self._splitter.setChildrenCollapsible(False)
 
@@ -522,6 +528,7 @@ class MainWindow(QMainWindow):
             self._assistant.set_available(self._llm.available())
         self._pane.toolbar.set_outline_checked(self._config.outline_visible)
         self._list_pane.setVisible(self._config.note_list_visible)
+        self._reference.setVisible(self._config.reference_visible)
         self._pane.set_toolbar_visible(self._config.toolbar_visible)
         self._splitter.restore_sizes(self._config.splitter_sizes)
 
@@ -534,6 +541,10 @@ class MainWindow(QMainWindow):
     @property
     def editor_pane(self) -> EditorPane:
         return self._pane
+
+    @property
+    def reference(self) -> ReferencePane:
+        return self._reference
 
     @property
     def note_list(self) -> NoteListView:
@@ -1844,6 +1855,12 @@ class MainWindow(QMainWindow):
             return False
         self._config.font_point_size = clamped
         self._editor.set_base_point_size(clamped)
+        # 横に置くほうも一緒に（U-1）。片方だけ古い大きさで残さない
+        self._reference.set_text_style(
+            family=self._config.font_family,
+            point_size=clamped,
+            mono=self._config.mono_family,
+        )
         # 1pt の差は見て取りにくい。**変えたことが分かるように**数字を出す
         self.notify(f"文字サイズ {clamped:g}pt")
         return True
@@ -1852,6 +1869,11 @@ class MainWindow(QMainWindow):
         """設定を今の画面へ反映する。保管フォルダだけは再起動が要る。"""
         self._editor.set_font_family(self._config.font_family)
         self._editor.set_base_point_size(self._config.font_point_size)
+        self._reference.set_text_style(
+            family=self._config.font_family,
+            point_size=self._config.font_point_size,
+            mono=self._config.mono_family,
+        )
         self._editor.set_attachment_handler(self.save_attachment)
         self._editor.set_image_base(self._vault.root)
         self._editor.set_mono_family(self._config.mono_family)
@@ -1869,6 +1891,30 @@ class MainWindow(QMainWindow):
         self._versions.prune()
 
     # ------------------------------------------------------------------ 表示
+
+    def open_beside(self, path: Path) -> bool:
+        """ノートを横の参照ペインに出す（U-1）。出せたら True。
+
+        **本文は入れ替えない。** 書いているノートを奪わずに、もう 1 枚を
+        並べるための道。読むだけなので保存も監視も繋がない。
+        """
+        try:
+            note = self._vault.read(path)
+        except OSError as error:
+            logger.warning("横に開けなかった: %s", error)
+            self.notify("そのノートを開けませんでした")
+            return False
+        self._reference.show_note(note.title, note.text)
+        self._splitter.set_pane_visible(self._reference_index(), True)
+        return True
+
+    def toggle_reference(self) -> None:
+        """横の参照ペインを出し入れする。"""
+        self._splitter.toggle_pane(self._reference_index())
+
+    def _reference_index(self) -> int:
+        """参照ペインの添字。**末尾に置いてある**ので数え直す。"""
+        return self._splitter.indexOf(self._reference)
 
     def toggle_sidebar(self) -> None:
         self._splitter.toggle_pane(0)
@@ -1924,6 +1970,8 @@ class MainWindow(QMainWindow):
         self._apply_palette(colors)
         self._menu_button.setIcon(glyph_icon(Glyph.GEAR, colors.muted_foreground))
         self._pane.set_theme(colors)
+        # 横に置くほうも同じ配色にする（U-1）。片方だけ古い色で描かない
+        self._reference.set_theme(colors)
         self._list_pane.set_theme(colors)
         self._sidebar.set_theme(colors)
         # 右の 2 ペインが追従していなかった（ダークで白いままだった）
@@ -1950,6 +1998,7 @@ class MainWindow(QMainWindow):
         self._config.splitter_sizes = self._splitter.sizes_to_keep()
         self._config.sidebar_visible = not self._sidebar.isHidden()
         self._config.note_list_visible = not self._list_pane.isHidden()
+        self._config.reference_visible = not self._reference.isHidden()
         self._config.toolbar_visible = self._pane.toolbar_visible()
         self._config.window_geometry = self.saveGeometry()
         self._config.sync()
