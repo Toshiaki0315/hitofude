@@ -17,7 +17,14 @@ pytestmark = pytest.mark.gui
 
 
 @pytest.fixture
-def listed(window):
+def listed(window, qtbot):
+    """**窓を出してから測る。** `window` は既定で表示しないので、
+    配置が決まる前だと `visualRect` がぶれ、合成したクリックが別の行へ
+    落ちる（全件実行で 1 度だけ落ちた）。
+    """
+    window.resize(900, 600)
+    window.show()
+    qtbot.waitExposed(window)
     for name in ("一枚目", "二枚目"):
         note = window._vault.create(name, f"# {name}\n\n本文\n")
         window._db.upsert_note(note, window._vault.root)

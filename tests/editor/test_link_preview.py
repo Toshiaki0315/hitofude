@@ -174,3 +174,77 @@ class TestWiredToEditor:
         self.move(editor, link_point(editor), held=False)
         editor._link_preview.show_now()
         assert not tooltip.is_showing()
+
+
+class TestModifierAfterHover:
+    """**リンクに触れてから `Cmd` を押す**（ユーザー報告 2026-08-30）。
+
+    形（指差し）は変わるのに泡が出なかった。キーの押下は
+    `_update_hover`（カーソルの形）だけを呼んでいて、覗き見の用意は
+    マウスの移動からしか呼ばれていなかった。
+
+    **押せると見せたなら、見せられるべき。** 形と泡は同じ合図から動かす。
+    """
+
+    def press(self, editor, *, held: bool) -> None:
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QKeyEvent
+        from PySide6.QtWidgets import QApplication
+
+        kind = QKeyEvent.Type.KeyPress if held else QKeyEvent.Type.KeyRelease
+        QApplication.sendEvent(
+            editor,
+            QKeyEvent(kind, Qt.Key.Key_Control, Qt.KeyboardModifier.NoModifier),
+        )
+
+    def move(self, editor, point) -> None:
+        from PySide6.QtCore import QEvent, QPointF, Qt
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtWidgets import QApplication
+
+        QApplication.sendEvent(
+            editor.viewport(),
+            QMouseEvent(
+                QEvent.Type.MouseMove,
+                QPointF(point),
+                QPointF(point),
+                Qt.MouseButton.NoButton,
+                Qt.MouseButton.NoButton,
+                Qt.KeyboardModifier.NoModifier,
+            ),
+        )
+
+    def test_触れてからCmdで出る(self, editor) -> None:
+        """**これが本題。** 先に触れて、あとから押す順。"""
+        from hitofude.ui import tooltip
+
+        tooltip.hide()
+        editor.set_note_preview(lambda title: TARGET if title == "会議メモ" else None)
+        self.move(editor, link_point(editor))  # Cmd なしで触れる
+        self.press(editor, held=True)
+        editor._link_preview.show_now()
+        assert "決めたこと" in tooltip.shown_text()
+        tooltip.hide()
+
+    def test_離したら消える(self, editor) -> None:
+        from hitofude.ui import tooltip
+
+        editor.set_note_preview(lambda title: TARGET)
+        self.move(editor, link_point(editor))
+        self.press(editor, held=True)
+        editor._link_preview.show_now()
+        self.press(editor, held=False)
+        assert not tooltip.is_showing()
+
+    def test_リンクの外で押しても出ない(self, editor) -> None:
+        from hitofude.ui import tooltip
+
+        tooltip.hide()
+        editor.set_note_preview(lambda title: TARGET)
+        block = editor.document().findBlockByNumber(0)
+        cursor = editor.textCursor()
+        cursor.setPosition(block.position() + 1)
+        self.move(editor, editor.cursorRect(cursor).center())
+        self.press(editor, held=True)
+        editor._link_preview.show_now()
+        assert not tooltip.is_showing()

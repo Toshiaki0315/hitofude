@@ -1623,12 +1623,20 @@ class MarkdownEditor(QPlainTextEdit):
         super().mouseMoveEvent(event)
         self._hover_point = event.position().toPoint()
         self._code_copy.update(self._hover_point)  # コードのコピーの印（2026-08-27）
-        held = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
-        self._link_preview.update(self._hover_point, held=held)
-        self._update_hover(held=held)
+        self._update_hover(held=bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier))
 
     def _update_hover(self, *, held: bool) -> None:
-        """今の位置と `Cmd` の状態から、カーソルの形を決める。"""
+        """今の位置と `Cmd` の状態から、カーソルの形と覗き見を決める。
+
+        **形と泡を同じ合図から動かす**（ユーザー報告 2026-08-30）。覗き見を
+        マウスの移動からしか呼んでいなかったので、**リンクに触れてから
+        `Cmd` を押す**と形だけ変わって泡が出なかった——押せると見せたなら、
+        見せられるべき。
+        """
+        if self._hover_point is not None:
+            self._link_preview.update(self._hover_point, held=held)
+        else:
+            self._link_preview.hide()
         clickable = (
             held and self._hover_point is not None and self._activation_at(self._hover_point)
         )
