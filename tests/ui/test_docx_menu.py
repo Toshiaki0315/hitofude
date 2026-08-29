@@ -27,3 +27,42 @@ class TestEntry:
         )
         assert window.export_docx() == target
         assert any("決めたこと" in p.text for p in Document(str(target)).paragraphs)
+
+
+class TestImagesFromVault:
+    """書き出しの入口から保管フォルダを渡す（ユーザー要望 2026-08-30）。
+
+    渡さないと絵が入らない。**画面と同じ起点**（`_vault.root`）で探す。
+    """
+
+    def test_絵が入る(self, window, tmp_path, monkeypatch) -> None:
+        from docx import Document
+        from PySide6.QtGui import QImage
+
+        attachments = window._vault.root / "attachments"
+        attachments.mkdir(parents=True, exist_ok=True)
+        picture = QImage(30, 20, QImage.Format.Format_RGB32)
+        picture.fill(0x224466)
+        assert picture.save(str(attachments / "zu.png"))
+
+        note = window._vault.create("絵入り", "# 絵入り\n\n![図](attachments/zu.png)\n")
+        window._db.upsert_note(note, window._vault.root)
+        window.refresh()
+        window.open_and_select(note.path)
+
+        target = tmp_path / "絵入り.docx"
+        monkeypatch.setattr(
+            "hitofude.ui.export_actions.QFileDialog.getSaveFileName",
+            lambda *a, **k: (str(target), ""),
+        )
+        assert window.export_docx() == target
+        document = Document(str(target))
+        drawings = sum(
+            len(
+                p._p.findall(
+                    ".//{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}inline"
+                )
+            )
+            for p in document.paragraphs
+        )
+        assert drawings == 1, "絵が入っていない"

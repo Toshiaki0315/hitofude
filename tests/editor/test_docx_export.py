@@ -207,3 +207,75 @@ class TestImageAndAutolink:
         assert "<" not in paragraph.text
         assert ">" not in paragraph.text
         assert "https://example.com" in paragraph.text
+
+
+class TestEmbeddedImages:
+    """絵そのものを Word へ入れる（ユーザー要望 2026-08-30）。
+
+    提出物として使うなら、絵が抜けていては用をなさない。PowerPoint への
+    書き出しは既に入れているので、**同じ作法**（`resolve_reference` で
+    保管フォルダの中だけを解決し、読めなければ飛ばす）に揃える。
+    """
+
+    @pytest.fixture
+    def vault(self, tmp_path):
+        from PySide6.QtGui import QImage
+
+        root = tmp_path / "v"
+        (root / "attachments").mkdir(parents=True)
+        image = QImage(40, 30, QImage.Format.Format_RGB32)
+        image.fill(0x336699)
+        assert image.save(str(root / "attachments" / "zu.png"))
+        return root
+
+    def written(self, tmp_path, vault, text: str):
+        target = tmp_path / "out.docx"
+        write_docx(target, text, base_path=vault)
+        return Document(str(target))
+
+    def pictures(self, document) -> int:
+        """入っている絵の数。段落の中の `<w:drawing>` を数える。"""
+        return sum(
+            len(
+                paragraph._p.findall(
+                    ".//" + "{http://schemas.openxmlformats.org/"
+                    "drawingml/2006/wordprocessingDrawing}anchor"
+                )
+            )
+            + len(
+                paragraph._p.findall(
+                    ".//" + "{http://schemas.openxmlformats.org/"
+                    "drawingml/2006/wordprocessingDrawing}inline"
+                )
+            )
+            for paragraph in document.paragraphs
+        )
+
+    def test_絵が入る(self, tmp_path, vault) -> None:
+        """**これが本題。**"""
+        document = self.written(tmp_path, vault, "# 見本\n\n![図](attachments/zu.png)\n")
+        assert self.pictures(document) == 1
+
+    def test_文の途中の絵も入る(self, tmp_path, vault) -> None:
+        document = self.written(tmp_path, vault, "# 見本\n\n前 ![図](attachments/zu.png) 後\n")
+        assert self.pictures(document) == 1
+        assert any("前" in p.text and "後" in p.text for p in document.paragraphs)
+
+    def test_無い絵は在処を示すだけ(self, tmp_path, vault) -> None:
+        """**書き出しを止めない**（PowerPoint と同じ方針）。"""
+        from hitofude.editor.docx_export import IMAGE_PLACEHOLDER
+
+        document = self.written(tmp_path, vault, "# 見本\n\n![](attachments/無い.png)\n")
+        assert self.pictures(document) == 0
+        assert any(IMAGE_PLACEHOLDER in p.text for p in document.paragraphs)
+
+    def test_保管フォルダの外は入れない(self, tmp_path, vault) -> None:
+        """**外は読まない**（`resolve_reference` の約束）。"""
+        document = self.written(tmp_path, vault, "# 見本\n\n![外](../外.png)\n")
+        assert self.pictures(document) == 0
+
+    def test_置き場を渡さなければ今までどおり(self, tmp_path, vault) -> None:
+        """`base_path` 無しでも落ちない（説明だけ残る）。"""
+        target = tmp_path / "none.docx"
+        write_docx(target, "# 見本\n\n![図](attachments/zu.png)\n")
+        assert any("図" in p.text for p in Document(str(target)).paragraphs)

@@ -16,12 +16,13 @@ import logging
 from pathlib import Path
 
 from docx import Document
-from docx.shared import Pt
+from docx.shared import Inches, Pt
 
 from hitofude.core import frontmatter
 from hitofude.core.block_parser import parse
 from hitofude.core.inline_scanner import scan
 from hitofude.core.models import BlockInfo, BlockType, InlineSpan, SpanType
+from hitofude.core.paths import resolve_reference
 from hitofude.core.table import split_cells
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,14 @@ _LIST_STYLES = {
     BlockType.ORDERED_LIST_ITEM: "List Number",
     BlockType.TASK_LIST_ITEM: "List Bullet",
 }
+
+MAX_IMAGE_WIDTH_IN = 6.0
+"""絵の最大幅（インチ）。
+
+A4 / Letter の既定の余白（左右 1 インチ）で本文に収まる幅。**大きい絵を
+そのまま入れると紙からはみ出す**ので、ここで頭を打たせる。小さい絵は
+そのままの大きさで入る。
+"""
 
 IMAGE_PLACEHOLDER = "［画像］"
 """説明（alt）の無い絵の代わり。
@@ -103,8 +112,45 @@ def _runs(text: str) -> list[tuple[str, SpanType | None]]:
     return [(body, kind) for body, kind in found if body]
 
 
-def _write_runs(paragraph, text: str) -> None:
+def _picture_size(path: Path) -> "Inches | None":
+    """入れる幅。紙からはみ出さないところで頭を打たせる。
+
+    元の大きさが分からない（読めない）ときは `None` を返し、
+    python-docx に元の大きさで置いてもらう。
+    """
+    from PySide6.QtGui import QImageReader
+
+    size = QImageReader(str(path)).size()
+    if not size.isValid() or size.width() <= 0:
+        return None
+    # 96dpi と見なす（Word の既定）。それより大きければ幅を頭打ちにする
+    natural = size.width() / 96
+    return Inches(min(natural, MAX_IMAGE_WIDTH_IN))
+
+
+def _add_picture(paragraph, url: str, base_path: Path | None) -> bool:
+    """絵を段落へ入れる。入れられたら True。
+
+    **書き出しを止めない**（PowerPoint への書き出しと同じ方針）。
+    保管フォルダの外・見つからない・読めない、のどれでも飛ばすだけ。
+    """
+    resolved = resolve_reference(base_path, url)
+    if resolved is None or not resolved.is_file():
+        return False
+    try:
+        paragraph.add_run().add_picture(str(resolved), width=_picture_size(resolved))
+    except Exception as error:  # python-docx は形式ごとに別の例外を投げる
+        logger.warning("画像を入れられなかった: %s (%s)", resolved, error)
+        return False
+    return True
+
+
+def _write_runs(paragraph, text: str, base_path: Path | None = None) -> None:
     for body, kind in _runs(text):
+        # **絵そのものを入れる**（ユーザー要望 2026-08-30）。入らなかった
+        # ときだけ、説明か在処の印を字で残す
+        if kind is SpanType.IMAGE and _add_picture(paragraph, _image_url(text, body), base_path):
+            continue
         run = paragraph.add_run(body)
         if kind in _BOLD:
             run.bold = True
@@ -114,6 +160,16 @@ def _write_runs(paragraph, text: str) -> None:
             run.font.strike = True
         if kind is SpanType.CODE:
             run.font.name = MONO_FAMILY
+
+
+def _image_url(text: str, alt: str) -> str:
+    """`![alt](URL)` の URL。走査は説明までしか返さないので、後ろを読む。"""
+    marker = f"![{alt}](" if alt != IMAGE_PLACEHOLDER else "![]("
+    at = text.find(marker)
+    if at < 0:
+        return ""
+    end = text.find(")", at + len(marker))
+    return text[at + len(marker) : end] if end > 0 else ""
 
 
 def _cells(line: str) -> list[str]:
@@ -155,10 +211,13 @@ def _write_code(document, lines: list[str]) -> None:
     run.font.size = CODE_POINT_SIZE
 
 
-def write_docx(path: Path, text: str) -> Path:
+def write_docx(path: Path, text: str, *, base_path: Path | None = None) -> Path:
     """本文を `.docx` として書く。書いた先を返す。
 
     **front matter は出さない**（作成日時と id は読む人に要らない）。
+
+    `base_path` は絵を探す起点（保管フォルダ）。渡さなければ絵は入らず、
+    説明だけが字で残る。**外は読まない**（`resolve_reference` の約束）。
     """
     document = Document()
     body = frontmatter.split(text).body
@@ -190,18 +249,22 @@ def write_docx(path: Path, text: str) -> Path:
             case BlockType.TABLE_DELIMITER:
                 pass  # `|---|` は罫線の指定。中身ではない
             case BlockType.BLOCKQUOTE:
-                _write_runs(document.add_paragraph(style="Quote"), _body_of(line, info).strip())
+                _write_runs(
+                    document.add_paragraph(style="Quote"),
+                    _body_of(line, info).strip(),
+                    base_path,
+                )
             case kind if kind in _LIST_STYLES:
                 body = _body_of(line, info).strip()
                 if kind is BlockType.TASK_LIST_ITEM:
                     # **済んだかどうかを落とさない。** マーカーは削られて
                     # いるので、印を先頭に置き直す
                     body = (CHECKED if info.checked else UNCHECKED) + body
-                _write_runs(document.add_paragraph(style=_LIST_STYLES[kind]), body)
+                _write_runs(document.add_paragraph(style=_LIST_STYLES[kind]), body, base_path)
             case BlockType.HORIZONTAL_RULE:
                 document.add_paragraph()
             case BlockType.PARAGRAPH:
-                _write_runs(document.add_paragraph(), line.strip())
+                _write_runs(document.add_paragraph(), line.strip(), base_path)
             case _:
                 pass  # 空行・front matter・数式の記号など
 

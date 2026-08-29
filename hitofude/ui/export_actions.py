@@ -194,7 +194,8 @@ class ExportActions:
         return pptx_export.write_pptx(target, text, base_path=self._window._vault.root)
 
     def _write_docx(self, target: Path, text: str) -> Path:
-        return docx_export.write_docx(target, text)
+        # **絵を入れる**（ユーザー要望 2026-08-30）。画面と同じ起点で探す
+        return docx_export.write_docx(target, text, base_path=self._window._vault.root)
 
     def _write_pdf(self, target: Path, text: str) -> Path:
         window = self._window
