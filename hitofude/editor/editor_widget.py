@@ -201,8 +201,12 @@ class MarkdownEditor(QPlainTextEdit):
         self.setFrameShape(QPlainTextEdit.Shape.NoFrame)
         self.setTabChangesFocus(False)
         from hitofude.editor.code_copy import CodeCopyButton
+        from hitofude.editor.link_preview import LinkPreview
 
         self._code_copy = CodeCopyButton(self)
+        # リンク先の覗き見（U-2）。**vault は知らない**——中身は
+        # `set_note_preview` で挿してもらう
+        self._link_preview = LinkPreview(self)
         # ボタンを押していない移動も受け取る。**これが無いと `mouseMoveEvent`
         # そのものが来ない**ので、ホバーの判定に一切入らない（G-2）
         self.viewport().setMouseTracking(True)
@@ -1002,6 +1006,10 @@ class MarkdownEditor(QPlainTextEdit):
         """
         self._tag_source = source
 
+    def set_note_preview(self, source: Callable[[str], str | None] | None) -> None:
+        """リンク先を覗くときに中身を引く係を挿す（U-2）。"""
+        self._link_preview.set_source(source)
+
     def set_note_source(self, source: Callable[[], list[str]] | None) -> None:
         """既存ノート名の取り出し口（`[[` の補完）。
 
@@ -1615,7 +1623,9 @@ class MarkdownEditor(QPlainTextEdit):
         super().mouseMoveEvent(event)
         self._hover_point = event.position().toPoint()
         self._code_copy.update(self._hover_point)  # コードのコピーの印（2026-08-27）
-        self._update_hover(held=bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier))
+        held = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+        self._link_preview.update(self._hover_point, held=held)
+        self._update_hover(held=held)
 
     def _update_hover(self, *, held: bool) -> None:
         """今の位置と `Cmd` の状態から、カーソルの形を決める。"""

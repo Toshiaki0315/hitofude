@@ -406,6 +406,8 @@ class MainWindow(QMainWindow):
         self._editor.set_image_base(self._vault.root)
         self._editor.set_tag_source(self._known_tags)
         self._editor.set_note_source(self._known_titles)
+        # リンク先の覗き見（U-2）。中身を引く係を挿す
+        self._editor.set_note_preview(self._note_preview)
         self._editor.set_mono_family(self._config.mono_family)
         self._editor.set_tab_width(self._config.tab_width)
         # 4 字下げをコードにするか（ADR-0033）。**書き出しも同じ旗を見る**
@@ -1433,6 +1435,28 @@ class MainWindow(QMainWindow):
             logger.warning("開かないスキーム: %s", url)
             return
         QDesktopServices.openUrl(QUrl(url))
+
+    def _note_preview(self, name: str) -> str | None:
+        """`[[ノート名]]` の中身を返す（U-2）。無ければ `None`。
+
+        **照合は `activate_note` と同じ道**（`resolve`）。別に書くと、
+        開けるのに覗けない／覗けるのに開けないがずれて出る。
+
+        **無いノートは作らない。** 覗くのは読む操作で、`Cmd+クリック` の
+        「無ければ作る」（ADR-0011）とは別の意味。
+        """
+        target = normalize(name)
+        if not target:
+            return None
+        rows = self._db.notes()
+        found = resolve(target, [row.title for row in rows])
+        if found is None:
+            return None
+        row = next(row for row in rows if row.title == found)
+        try:
+            return self._vault.read(self._vault.root / row.path).text
+        except OSError:
+            return None  # 消えた・読めない。覗けないだけ
 
     def activate_note(self, name: str) -> Path | None:
         """`Cmd+クリック` された `[[ノート名]]` を開く（E-6）。
