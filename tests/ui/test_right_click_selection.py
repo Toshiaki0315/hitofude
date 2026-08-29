@@ -55,10 +55,24 @@ class TestRightClick:
         right_press(listed.note_list, 1)
         assert got == []
 
-    def test_指した行に印が付く(self, listed) -> None:
-        """**どのノートのメニューか**が分からないと選べない（Finder と同じ）。"""
+    def test_選択は動かない(self, listed) -> None:
+        """**Finder と同じ**（ユーザー指摘 2026-08-29）。水色の選択は元の行に
+        残る——右クリックは「これを選ぶ」ではなく「これに用がある」。
+        """
+        before = listed.note_list.currentIndex().row()
         right_press(listed.note_list, 1)
-        assert listed.note_list.currentIndex().row() == 1
+        assert listed.note_list.currentIndex().row() == before
+
+    def test_指した行に枠が付く(self, listed) -> None:
+        """**どのノートのメニューか**が分からないと選べない。塗らずに囲む。"""
+        right_press(listed.note_list, 1)
+        assert listed.note_list.marked_row() == 1
+
+    def test_枠は消せる(self, listed) -> None:
+        """メニューを閉じたら残さない。"""
+        right_press(listed.note_list, 1)
+        listed.note_list.clear_mark()
+        assert listed.note_list.marked_row() is None
 
 
 class TestLeftClickUnchanged:
@@ -106,3 +120,49 @@ class TestMenuStillOpens:
             assert "横に開く" in [action.text() for action in menu.actions()]
         finally:
             menu.deleteLater()
+
+
+class TestMarkClears:
+    """**枠を残さない。** メニューを閉じたら消える。"""
+
+    def test_メニューを閉じたら消える(self, listed, monkeypatch) -> None:
+        """**本物の `QMenu` は使わない。** PySide6 の型はメソッドを差し替え
+        られず、`exec()` が実際に開いて**テストが止まる**（実際に踏んだ。
+        Q-4 と同じ罠）。開いて閉じる振りをする相手を渡して、閉じたあとに
+        枠が消えることだけを見る。
+        """
+
+        class FakeMenu:
+            def exec(self, *args, **kwargs):
+                return None
+
+            def deleteLater(self):
+                return None
+
+        right_press(listed.note_list, 1)
+        monkeypatch.setattr(listed._notes, "context_menu_for", lambda relative: FakeMenu())
+        listed._notes.show_context_menu(
+            listed.note_list.visualRect(listed.note_list.model().index(1, 0)).center()
+        )
+        assert listed.note_list.marked_row() is None
+
+    def test_左クリックでも消える(self, listed) -> None:
+        from PySide6.QtCore import QEvent, QPointF, Qt
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtWidgets import QApplication
+
+        right_press(listed.note_list, 1)
+        view = listed.note_list
+        point = view.visualRect(view.model().index(0, 0)).center()
+        QApplication.sendEvent(
+            view.viewport(),
+            QMouseEvent(
+                QEvent.Type.MouseButtonPress,
+                QPointF(point),
+                QPointF(point),
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            ),
+        )
+        assert view.marked_row() is None

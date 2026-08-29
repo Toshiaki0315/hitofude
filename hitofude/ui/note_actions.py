@@ -596,7 +596,12 @@ class NoteActions:
         if relative is None:
             return
         menu = self.context_menu_for(Path(relative))
-        menu.exec(window._note_list.viewport().mapToGlobal(point))
+        try:
+            menu.exec(window._note_list.viewport().mapToGlobal(point))
+        finally:
+            # **枠を残さない**（ユーザー指摘 2026-08-29）。閉じたのに囲みが
+            # 残ると、まだ何かの対象に見える
+            window._note_list.clear_mark()
         menu.deleteLater()
 
     def context_menu_for(self, relative: Path) -> QMenu:

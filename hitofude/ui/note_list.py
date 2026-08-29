@@ -12,8 +12,17 @@ from datetime import datetime
 from enum import IntEnum
 from pathlib import Path
 
-from PySide6.QtCore import QAbstractListModel, QMimeData, QModelIndex, QRect, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
+from PySide6.QtCore import (
+    QAbstractListModel,
+    QMimeData,
+    QModelIndex,
+    QPersistentModelIndex,
+    QRect,
+    QSize,
+    Qt,
+    Signal,
+)
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QListView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QWidget
 
 from hitofude.config import LineSpacing
@@ -250,6 +259,16 @@ def preview_height(font: QFont, text: str, width: int) -> int:
     return spacing * lines
 
 
+MARK_WIDTH = 2
+"""右クリックした行の枠の太さ。**塗らずに囲む**（Finder と同じ）。"""
+
+MARK_SHIFT = 160
+"""枠の色をどれだけずらすか（`QColor.darker` / `lighter` の百分率）。
+
+**選択の色から作る。** 別の色を足すと配色が 1 つ増えるうえ、
+選択との関係が読み取れない。"""
+
+
 class NoteItemDelegate(QStyledItemDelegate):
     """1 行に「タイトル / 日付 / プレビュー 2 行」を描く（spec §5.1）。"""
 
@@ -321,12 +340,42 @@ class NoteItemDelegate(QStyledItemDelegate):
         height = self._metrics.padding * 2 + metrics.height() + self._metrics.spacing + preview
         return QSize(option.rect.width(), height)
 
+    def _mark_color(self) -> QColor:
+        """枠の色。**選択の色を濃くしたもの**（暗いテーマでは明るく）。
+
+        朱（`accent`）は削除の合図に見える。選択と同じ色みにすると
+        「いま用があるのはこれ」が読み取れて、選択そのものとも混ざらない。
+        """
+        base = QColor(self._theme.selection_background)
+        return base.lighter(MARK_SHIFT) if self._theme.is_dark else base.darker(MARK_SHIFT)
+
+    def _draw_mark(
+        self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex
+    ) -> None:
+        """右クリックした行を**枠で囲む**（塗らない。Finder と同じ）。
+
+        塗ると選択と見分けが付かず、「選び直された」と読めてしまう。
+        """
+        view = self.parent()
+        marked = view.marked_row() if hasattr(view, "marked_row") else None
+        if marked is None or marked != index.row():
+            return
+        pen = QPen(self._mark_color())
+        pen.setWidth(MARK_WIDTH)
+        painter.save()
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        inset = MARK_WIDTH / 2
+        painter.drawRect(option.rect.adjusted(inset, inset, -inset, -inset))
+        painter.restore()
+
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
         painter.save()
         self._draw_separator(painter, option, index)
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
         if selected:
             painter.fillRect(option.rect, QColor(self._theme.selection_background))
+        self._draw_mark(painter, option, index)
 
         pad = self._metrics.padding
         body = option.rect.adjusted(pad, pad, -pad, -pad)
@@ -415,6 +464,8 @@ class NoteListView(QListView):
         # setModel() の途中で currentChanged が呼ばれるので、
         # ガードは何よりも先に用意しておく
         self._suppress_activation = False
+        self._marked: QPersistentModelIndex | None = None
+        """右クリックで枠を付けた行。**選択とは別**（Finder と同じ）。"""
         self._model = NoteListModel(self)
         self._delegate = NoteItemDelegate(theme, self)
         self.setModel(self._model)
@@ -524,6 +575,23 @@ class NoteListView(QListView):
         finally:
             self._suppress_activation = False
 
+    def marked_row(self) -> int | None:
+        """枠を付けている行。付いていなければ `None`。"""
+        if self._marked is None or not self._marked.isValid():
+            return None
+        return self._marked.row()
+
+    def clear_mark(self) -> None:
+        """枠を消す。**メニューを閉じたら残さない。**"""
+        if self._marked is None:
+            return
+        self._marked = None
+        self.viewport().update()
+
+    def _mark(self, index: QModelIndex) -> None:
+        self._marked = QPersistentModelIndex(index) if index.isValid() else None
+        self.viewport().update()
+
     def mousePressEvent(self, event) -> None:
         """**右クリックでは開かない**（ユーザー報告 2026-08-29）。
 
@@ -531,18 +599,17 @@ class NoteListView(QListView):
         `note_activated` が飛び、**本文まで入れ替わって**いた——「横に開く」を
         選ぼうとしただけで、開きたいノートがメインにも出る。
 
-        **印は付ける。** どのノートのメニューか分からないと選べない
-        （Finder も右クリックした項目を光らせる）。開く合図だけ止める。
+        **選択は動かさない**（ユーザー指摘 2026-08-29）。最初は選択を移して
+        いたが、Finder は水色の選択を元の行に残したまま、右クリックした
+        項目を**枠で囲む**。右クリックは「これを選ぶ」ではなく「これに
+        用がある」なので、そちらが合っている。
+
+        どのノートのメニューかは**枠**で示す（塗らない）。
         """
         if event.button() is Qt.MouseButton.RightButton:
-            index = self.indexAt(event.position().toPoint())
-            if index.isValid():
-                self._suppress_activation = True
-                try:
-                    self.setCurrentIndex(index)
-                finally:
-                    self._suppress_activation = False
+            self._mark(self.indexAt(event.position().toPoint()))
             return
+        self.clear_mark()
         super().mousePressEvent(event)
 
     def currentChanged(self, current: QModelIndex, previous: QModelIndex) -> None:
