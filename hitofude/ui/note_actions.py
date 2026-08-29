@@ -17,7 +17,7 @@ from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QMessageBox
 from hitofude.app import style_menu
 from hitofude.core import extract, template
 from hitofude.core.document import Note, with_title
-from hitofude.core.template import daily_title
+from hitofude.core.template import daily_title, expand
 from hitofude.storage.index_db import ROOT_FOLDER, NoteRow
 from hitofude.storage.vault import MARKDOWN_SUFFIXES, sanitize_filename, unique_path
 from hitofude.ui.icons import menu_icon
@@ -29,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 # 片づけの確認に並べる名前の数（E-5）。全部並べるとダイアログが画面を溢れる
 CLEANUP_PREVIEW = 10
+
+NO_TEMPLATE_NOTICE = "差し込めるテンプレートがまだありません"
 
 # 「フォルダへ移動…」の先頭の選択肢。直下（フォルダから出す）を表す
 ROOT_FOLDER_CHOICE = "（保管フォルダ直下）"
@@ -807,6 +809,71 @@ class NoteActions:
             logger.warning("テンプレートを削除できなかった: %s", error)
             return False
         window.notify(f"テンプレート「{path.stem}」を削除しました")
+        return True
+
+    def choose_template_to_insert(self):
+        """差し込む雛形を選ぶ（U-6）。選べる雛形が無ければ None。
+
+        **空のパレットを出さない**（文体チェックと同じ作法）。何も無い
+        ことが分かればよい。
+        """
+        window = self._window
+        if window._note is None:
+            return None
+        if not window._vault.templates():
+            window.notify(NO_TEMPLATE_NOTICE)
+            return None
+
+        palette = Palette(
+            window,
+            placeholder="差し込むテンプレートを選ぶ…",
+            theme=window._theme_watcher.colors,
+            compact=True,
+        )
+        palette.set_provider(self._template_items)
+        palette.chosen.connect(lambda item: self.insert_template(item.path.stem))
+        palette.finished.connect(palette.deleteLater)
+        palette.open_with()
+        return palette
+
+    def insert_template(self, name: str) -> bool:
+        """雛形を**いま書いている場所へ差し込む**（U-6）。差し込めたら True。
+
+        **新しい概念を増やさない。** 短い定型（日付・署名・表の骨）は
+        `templates/` の `.md` で足りる——「新しいノートを作る」だけでなく
+        「ここへ差し込む」にも使えればよい。
+
+        印（`{date}` `{cursor}`）は**新規作成と同じ `template.expand`** が
+        埋める。別に書くと「新規では埋まるのに差し込みでは埋まらない」が
+        起きる。
+
+        **1 回の編集にする**（R5 と同じ約束）。2 段に割れると `Cmd+Z` が
+        1 回で戻らない。
+        """
+        window = self._window
+        if window._note is None:
+            return False
+        found = next(
+            (path for path in window._vault.templates() if path.stem == name),
+            None,
+        )
+        if found is None:
+            logger.warning("テンプレートが無い: %s", name)
+            return False
+        try:
+            body = found.read_text(encoding="utf-8")
+        except OSError as error:
+            logger.warning("テンプレートを読めない: %s", error)
+            window.notify("テンプレートを読めませんでした")
+            return False
+
+        filled = expand(body, now=datetime.now(), title=window._note.title)
+        cursor = window._editor.textCursor()
+        at = cursor.position()
+        cursor.insertText(filled.text)  # 1 回の編集 = Undo 1 段
+        if filled.cursor is not None:
+            cursor.setPosition(at + filled.cursor)
+            window._editor.setTextCursor(cursor)
         return True
 
     def create_from_template(self, path: Path) -> Note | None:

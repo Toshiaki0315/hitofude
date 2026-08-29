@@ -221,6 +221,8 @@ def _edit_menu(window, bar) -> None:
     # 発火せず、選択中だと選択範囲がその 1 文字に置き換わって消える
     # **作るほうを先に。** 整形は作った表に対して使う（順番が手順どおり）。
     # キーは付けない——窓が開くので急ぐ操作ではない
+    # 雛形を本文の途中へ（U-6）。**新規作成と同じ雛形を使う**
+    add(edit_menu, "テンプレートを差し込む…", "", window.choose_template_to_insert)
     add(edit_menu, "表を作る…", "", window.insert_table)
     add(edit_menu, "表を整形", "Ctrl+Shift+L", window._editor.format_table)
 
