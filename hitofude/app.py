@@ -549,17 +549,6 @@ def create_application(argv: list[str] | None = None) -> QApplication:
 MENU_FONT_STEP = 2
 
 
-def apply_menu_font(menu: QWidget) -> None:
-    """ポップアップメニューの文字を `MENU_FONT_STEP` だけ大きくする。
-
-    **親の大きさから決める。** 数字を直に置くと、本文フォントの設定を
-    変えたときに置いていかれる。
-    """
-    font = QFont(menu.font())
-    font.setPointSizeF(font.pointSizeF() + MENU_FONT_STEP)
-    menu.setFont(font)
-
-
 TOOLTIP_BACKGROUND = "#1F1F22"
 """ツールチップの地の色（ユーザー要望 2026-08-24）。
 

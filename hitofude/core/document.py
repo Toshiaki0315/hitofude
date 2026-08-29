@@ -243,13 +243,6 @@ class Note:
         """内容のハッシュ。保存直前の競合検知に使う（spec §7.5）。"""
         return hashlib.blake2b(self.text.encode("utf-8"), digest_size=16).hexdigest()
 
-    def is_stale(self) -> bool:
-        """読み込んだ後にディスク側が変わったか（spec §7.5）。"""
-        try:
-            return self.path.stat().st_mtime_ns != self.mtime_ns
-        except OSError:
-            return True
-
     def relative_to(self, root: Path) -> str:
         return os.fspath(self.path.relative_to(root))
 

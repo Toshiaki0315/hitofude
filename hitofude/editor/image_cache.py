@@ -33,8 +33,16 @@ class ImageCache:
         return len(self._entries)
 
     def set_base_path(self, base_path: Path | None) -> None:
-        """保管フォルダが変わったら、抱えていたものは意味を失う。"""
-        self._base = Path(base_path) if base_path is not None else None
+        """保管フォルダが変わったら、抱えていたものは意味を失う。
+
+        **同じ場所なら捨てない**（レビュー 2026-08-29）。描き方の設定を
+        1 か所から流すようにしたぶんここを通る回数が増え、**文字を
+        大きくするたびに**絵を捨てていた（実測: `Cmd +` 1 回で 1 回）。
+        """
+        wanted = Path(base_path) if base_path is not None else None
+        if wanted == self._base:
+            return
+        self._base = wanted
         self.clear()
 
     def clear(self) -> None:

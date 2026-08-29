@@ -85,9 +85,3 @@ class ReferencePane(QWidget):
 
     def set_theme(self, theme: ThemeColors) -> None:
         self._editor.set_theme(theme)
-
-    def set_text_style(self, *, family: str, point_size: float, mono: str) -> None:
-        """本文と同じ字にする（U-1）。**片方だけ古い設定で描かない。**"""
-        self._editor.set_font_family(family)
-        self._editor.set_base_point_size(point_size)
-        self._editor.set_mono_family(mono)

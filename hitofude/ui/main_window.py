@@ -311,6 +311,7 @@ class MainWindow(QMainWindow):
         self._assistant = AssistantPane(theme=theme)
         # 横に置くもう 1 枚（U-1）。**読むだけ**——保存の道には触れない
         self._reference = ReferencePane(theme=theme)
+        self._reference_path: Path | None = None
         self._assistant.hide()
         self._assistant.requested.connect(self.ask_assistant)
         self._assistant.stopped.connect(self.stop_assistant)
@@ -408,12 +409,29 @@ class MainWindow(QMainWindow):
         self._editor.set_note_source(self._known_titles)
         # リンク先の覗き見（U-2）。中身を引く係を挿す
         self._editor.set_note_preview(self._note_preview)
-        self._editor.set_mono_family(self._config.mono_family)
-        self._editor.set_tab_width(self._config.tab_width)
-        # 4 字下げをコードにするか（ADR-0033）。**書き出しも同じ旗を見る**
-        self._editor.set_indented_code(self._config.indented_code)
+        self._apply_view_settings()
         self._apply_list_font()
         self._editor.setFocus()
+
+    def _apply_view_settings(self) -> None:
+        """**描き方の設定を 1 か所から流す**（レビュー 2026-08-29）。
+
+        本文と参照ペインは同じ `MarkdownEditor` で、**同じノートは同じに
+        描かれなければならない**。別々に流していたら 4 字下げの扱い
+        （ADR-0033）が抜けていて、設定を切ると本文は段落・参照ペインは
+        コードのままになった（実測）。画像の土台も渡っていなかった。
+
+        ここに無いもの（貼り付けの受け口・入力補助）は**本文だけの話**で、
+        読むだけのペインには要らない。
+        """
+        for editor in (self._editor, self._reference.editor):
+            editor.set_font_family(self._config.font_family)
+            editor.set_base_point_size(self._config.font_point_size)
+            editor.set_mono_family(self._config.mono_family)
+            editor.set_tab_width(self._config.tab_width)
+            editor.set_image_base(self._vault.root)
+            editor.set_content_width(CONTENT_WIDTH_PIXELS[self._config.content_width])
+            editor.set_indented_code(self._config.indented_code)
 
     def _apply_list_font(self) -> None:
         """一覧の文字も本文フォントに合わせる。"""
@@ -795,6 +813,7 @@ class MainWindow(QMainWindow):
 
     def refresh(self) -> None:
         """索引から一覧・フォルダ・タグツリーを引き直す。"""
+        self._forget_gone_reference()
         self._note_list.set_rows(self._rows_for(self._filter), showing=self._shown_path())
         # 件数は索引、存在はディスク（空フォルダも見せる。ユーザー要望）
         self._sidebar.set_folders(merge_folders(self._db.folder_tree(), self._vault.folders()))
@@ -1608,10 +1627,6 @@ class MainWindow(QMainWindow):
         """待つのをやめる。実体は AssistantActions。"""
         self._assistant_actions.stop_assistant()
 
-    def history_root(self) -> Path:
-        """版の置き場。実体は HistoryActions。"""
-        return self._versions.root()
-
     def keep_version(self, text: str, *, force: bool = False) -> Path | None:
         """今の内容を 1 版として残す（ADR-0023）。実体は HistoryActions。"""
         return self._versions.keep_version(text, force=force)
@@ -1898,36 +1913,17 @@ class MainWindow(QMainWindow):
         if clamped == self._config.font_point_size:
             return False
         self._config.font_point_size = clamped
-        self._editor.set_base_point_size(clamped)
-        # 横に置くほうも一緒に（U-1）。片方だけ古い大きさで残さない
-        self._reference.set_text_style(
-            family=self._config.font_family,
-            point_size=clamped,
-            mono=self._config.mono_family,
-        )
+        self._apply_view_settings()
         # 1pt の差は見て取りにくい。**変えたことが分かるように**数字を出す
         self.notify(f"文字サイズ {clamped:g}pt")
         return True
 
     def _apply_preferences(self) -> None:
         """設定を今の画面へ反映する。保管フォルダだけは再起動が要る。"""
-        self._editor.set_font_family(self._config.font_family)
-        self._editor.set_base_point_size(self._config.font_point_size)
-        self._reference.set_text_style(
-            family=self._config.font_family,
-            point_size=self._config.font_point_size,
-            mono=self._config.mono_family,
-        )
         self._editor.set_attachment_handler(self.save_attachment)
-        self._editor.set_image_base(self._vault.root)
-        self._editor.set_mono_family(self._config.mono_family)
-        self._editor.set_tab_width(self._config.tab_width)
         self._sidebar.set_line_spacing(self._config.line_spacing)
         self._note_list.set_line_spacing(self._config.line_spacing)
-        self._editor.set_content_width(CONTENT_WIDTH_PIXELS[self._config.content_width])
-        # 4 字下げの扱い（ADR-0033）。**掛け直しはエディタ側が判断する**
-        # （変わっていなければ何もしない）
-        self._editor.set_indented_code(self._config.indented_code)
+        self._apply_view_settings()
         self._apply_list_font()
         self._theme_watcher.set_mode(self._config.theme_mode)
         self._vault.purge_trash(self._config.trash_days)
@@ -1949,8 +1945,26 @@ class MainWindow(QMainWindow):
             self.notify("そのノートを開けませんでした")
             return False
         self._reference.show_note(note.title, note.text)
+        self._reference_path = path
         self._splitter.set_pane_visible(self._reference_index(), True)
         return True
+
+    def _forget_gone_reference(self) -> None:
+        """横に出したノートが消えていたら、ペインを空にする（レビュー 2026-08-29）。
+
+        **もう無いものを読ませ続けない。** 直したつもりの内容を読み違える。
+        読むだけのペインなので、消すだけでよい（聞く必要は無い）。
+        """
+        path = getattr(self, "_reference_path", None)
+        if path is None or self._reference.is_empty():
+            return
+        try:
+            if path.is_file():
+                return
+        except OSError:
+            return  # 読めないだけかもしれない。消さない側へ倒す
+        self._reference.clear()
+        self._reference_path = None
 
     def toggle_reference(self) -> None:
         """横の参照ペインを出し入れする。"""

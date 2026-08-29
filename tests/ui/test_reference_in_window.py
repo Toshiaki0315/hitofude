@@ -134,3 +134,80 @@ class TestFollowsSettings:
         before = window.reference.editor.font().pointSizeF()
         window.zoom_in()
         assert window.reference.editor.font().pointSizeF() != before
+
+
+class TestSameRendering:
+    """**同じノートが 2 通りに描かれない**（レビュー 2026-08-29）。
+
+    参照ペインへ流していたのは配色と字だけで、**描き方を決める設定**が
+    抜けていた——4 字下げの扱い（ADR-0033）を切ると、本文は段落なのに
+    参照ペインではコードのまま（実測）。画像の土台も渡していないので
+    絵が出ない。
+
+    「見た目は本文と同じ」と使い方ノートに書いた以上、揃っている必要がある。
+    """
+
+    @pytest.fixture
+    def both(self, window, qtbot):
+        text = "# 見本\n\n    字下げのコード\n\n本文\n"
+        note = window._vault.create("見本", text)
+        window._db.upsert_note(note, window._vault.root)
+        window.refresh()
+        window.open_and_select(note.path)
+        window.open_beside(note.path)
+        qtbot.wait(20)
+        return window
+
+    def kind_of(self, editor, needle: str):
+        document = editor.document()
+        for number in range(document.blockCount()):
+            block = document.findBlockByNumber(number)
+            if needle in block.text():
+                data = block.userData()
+                return data.info.type if data is not None else None
+        return None
+
+    def test_字下げの扱いが揃う(self, both, qtbot) -> None:
+        """**これが本題。** 設定を切ったら両方とも段落になる。"""
+        both._config.indented_code = False
+        both._apply_preferences()
+        qtbot.wait(20)
+        assert self.kind_of(both.editor, "字下げのコード") == self.kind_of(
+            both.reference.editor, "字下げのコード"
+        )
+
+    def test_画像の土台が渡っている(self, both) -> None:
+        """渡していないと絵が出ない（保管フォルダを起点に探すため）。"""
+        assert both.reference.editor._images._base == both._vault.root
+
+    def test_タブ幅も揃う(self, both) -> None:
+        assert both.reference.editor.tabStopDistance() == both.editor.tabStopDistance()
+
+
+class TestGoneNote:
+    """**消えたノートを出しっぱなしにしない**（レビュー 2026-08-29）。
+
+    横に出したノートをゴミ箱へ入れても、参照ペインには中身が残っていた
+    （実測: 消したあとも 123 字）。もう無いものを読ませ続けると、
+    直したつもりの内容を読み違える。
+    """
+
+    @pytest.fixture
+    def beside(self, window):
+        note = window._vault.create("消えるノート", "# 消えるノート\n\n本文\n")
+        window._db.upsert_note(note, window._vault.root)
+        window.refresh()
+        window.open_beside(note.path)
+        return window, note.path
+
+    def test_消えたら空になる(self, beside) -> None:
+        window, path = beside
+        path.unlink()
+        window.refresh()
+        assert window.reference.is_empty()
+
+    def test_残っていれば出したまま(self, beside) -> None:
+        """**直しすぎない。** 在るうちは消さない。"""
+        window, _ = beside
+        window.refresh()
+        assert window.reference.title() == "消えるノート"
