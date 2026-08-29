@@ -101,7 +101,8 @@ class SearchActions:
         並べるのは**メニューバーから集めたもの**（`ui/commands`）。別に
         一覧を持つと、メニューに足したのにここへ出ないが起きる。
         """
-        palette = self._make_palette(COMMAND_PLACEHOLDER)
+        # **1 行ずつ**（U-3）。ノートを探すパレットと見分けが付くように
+        palette = self._make_palette(COMMAND_PLACEHOLDER, compact=True)
         palette.set_provider(self._command_items)
         palette.chosen.connect(self._on_command_chosen)
         palette.open_with()
@@ -148,9 +149,14 @@ class SearchActions:
 
     # ------------------------------------------------------------- パレット
 
-    def _make_palette(self, placeholder: str) -> Palette:
+    def _make_palette(self, placeholder: str, *, compact: bool = False) -> Palette:
         window = self._window
-        palette = Palette(window, placeholder=placeholder, theme=window._theme_watcher.colors)
+        palette = Palette(
+            window,
+            placeholder=placeholder,
+            theme=window._theme_watcher.colors,
+            compact=compact,
+        )
         palette.chosen.connect(self._on_palette_chosen)
         # 開くたびに作り直す。前回の入力と結果が残っていると誤操作の元になる
         palette.finished.connect(palette.deleteLater)

@@ -152,12 +152,17 @@ class Palette(QDialog):
         *,
         placeholder: str = "",
         theme: ThemeColors = LIGHT,
+        compact: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
         self.setModal(True)
         self.resize(560, 380)
 
+        self._compact = compact
+        # **1 行のときは横へ流さない**（U-3）。長い項目があると
+        # 折り返さないぶん横に溢れ、選ぶだけの窓に横スクロールバーが
+        # 出る（実測: 溢れ 18px。2 行のときは 0）。溢れたぶんは切る
         self._provider: Callable[[str], list[PaletteItem]] = lambda _query: []
         self._items: list[PaletteItem] = []
 
@@ -172,7 +177,9 @@ class Palette(QDialog):
         self._close.clicked.connect(self.reject)
 
         self._results = QListWidget(self)
-        self._results.setItemDelegate(_ResultDelegate(theme, self._results))
+        if compact:
+            self._results.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._results.setItemDelegate(_ResultDelegate(theme, compact=compact, parent=self._results))
         self._results.setFrameShape(QListWidget.Shape.NoFrame)
 
         # 書き方の案内（案 1）。**要らないときは場所を取らない**（一覧が狭くなる）
@@ -230,6 +237,30 @@ class Palette(QDialog):
         self._refresh(query)
         self._input.setFocus()
         self._input.selectAll()
+
+    @property
+    def compact(self) -> bool:
+        """1 行ずつ描くか（U-3）。命令のパレットだけ True。"""
+        return self._compact
+
+    def row_height(self, row: int) -> int:
+        """その行の高さ。**見た目の違いを測るための口。**"""
+        view = self._results
+        index = view.model().index(row, 0)
+        return view.itemDelegate().sizeHint(self._option_for_test(row), index).height()
+
+    def row_text(self, row: int) -> str:
+        """その行に描かれる文字（飾りを外したもの）。"""
+        view = self._results
+        index = view.model().index(row, 0)
+        return view.itemDelegate().rendered_text(index)
+
+    def _option_for_test(self, row: int):
+        from PySide6.QtWidgets import QStyleOptionViewItem
+
+        option = QStyleOptionViewItem()
+        option.rect = self._results.visualItemRect(self._results.item(row))
+        return option
 
     @property
     def items(self) -> list[PaletteItem]:
@@ -307,18 +338,37 @@ class _ResultDelegate(QStyledItemDelegate):
 
     SUBTITLE_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 
-    def __init__(self, theme: ThemeColors, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        theme: ThemeColors,
+        parent: QWidget | None = None,
+        *,
+        compact: bool = False,
+    ) -> None:
         super().__init__(parent)
         self._theme = theme
+        self._compact = compact
 
     def _document(self, index: QModelIndex) -> QTextDocument:
         title = escape(index.data(Qt.ItemDataRole.DisplayRole) or "")
         subtitle = _to_html(index.data(self.SUBTITLE_ROLE) or "")
         document = QTextDocument()
-        document.setHtml(
-            f"<div>{title}</div><div style='color:{self._theme.muted_foreground}'>{subtitle}</div>"
-        )
+        dim = self._theme.muted_foreground
+        if self._compact:
+            # **1 行ずつ**（ユーザー指摘 2026-08-29）。ノートを探すパレットと
+            # 同じ 2 行だと、開いた瞬間にどちらのダイアログか分からない。
+            # 命令は題名が短いので 1 行で足りる
+            document.setHtml(
+                f"<div style='white-space:nowrap'>{title}"
+                f"<span style='color:{dim}'>　{subtitle}</span></div>"
+            )
+        else:
+            document.setHtml(f"<div>{title}</div><div style='color:{dim}'>{subtitle}</div>")
         return document
+
+    def rendered_text(self, index: QModelIndex) -> str:
+        """描かれる文字（飾りを外したもの）。試験から中身を確かめる口。"""
+        return self._document(index).toPlainText()
 
     def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
         """**描くときと同じ幅で測る**（ユーザー報告）。
