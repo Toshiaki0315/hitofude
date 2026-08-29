@@ -69,3 +69,38 @@ class TestEmpty:
         pane.clear()
         assert pane.is_empty()
         assert pane.editor.toPlainText() == ""
+
+
+class TestCloseButton:
+    """右上の「閉じる」（ユーザー要望 2026-08-29）。
+
+    横に開いたノートを**その場で閉じられる**ようにする。表示メニューへ
+    戻るのは遠い（見えているものを消すのに、見えていない場所を探させない）。
+
+    ボタンの形は `quick_open.close_button`——**押せるものだと分かる形を
+    アプリの中で 1 つに揃える**（パレットとリンクの図が既に使っている）。
+    """
+
+    def test_ボタンがある(self, pane) -> None:
+        assert pane.close_button is not None
+
+    def test_右上にある(self, pane) -> None:
+        """題名の右。**本文の上ではなく、ペインの頭**に置く。"""
+        pane.resize(320, 400)
+        pane.show()
+        button = pane.close_button
+        assert button.x() > pane.width() / 2
+        assert button.y() < pane.height() / 4
+
+    def test_押すと知らせる(self, pane, qtbot) -> None:
+        """**閉じるのは呼び出し側**（ペインは窓の都合を知らない）。"""
+        got: list[int] = []
+        pane.close_requested.connect(lambda: got.append(1))
+        pane.close_button.click()
+        assert got == [1]
+
+    def test_中身も空になる(self, pane) -> None:
+        """閉じたのに次に開いたとき前のノートが出ていては驚く。"""
+        pane.show_note("会議メモ", "# 会議メモ\n\n本文\n")
+        pane.close_button.click()
+        assert pane.is_empty()

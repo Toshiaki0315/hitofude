@@ -13,22 +13,30 @@
 出す中身は呼び出し側が渡す。
 """
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.theme import LIGHT, ThemeColors
+from hitofude.ui.quick_open import close_button
 
 REFERENCE_MIN_WIDTH = 240
 """これより狭いと本文が読めない（`OutlinePane` と同じ考え方）。"""
 
 EMPTY_NOTICE = "ここに別のノートを置けます。\n一覧を右クリックして「横に開く」。"
 
+HEAD_MARGIN = 6
+"""題名と「閉じる」の左右の余白。帯と文字が接しないぶん。"""
+
 TITLE_HEIGHT = 24
 """題名の帯。**どのノートを見ているか**が分からないと参照にならない。"""
 
 
 class ReferencePane(QWidget):
+    close_requested = Signal()
+    """右上の「閉じる」が押された。**閉じるのは呼び出し側**——ペインは
+    窓の都合（どのペインを隠すか）を知らない。"""
+
     def __init__(self, parent: QWidget | None = None, *, theme: ThemeColors = LIGHT) -> None:
         super().__init__(parent)
         self.setMinimumWidth(REFERENCE_MIN_WIDTH)
@@ -48,13 +56,30 @@ class ReferencePane(QWidget):
             | Qt.TextInteractionFlag.TextSelectableByKeyboard
         )
 
+        # 右上に「閉じる」（ユーザー要望 2026-08-29）。見えているものを
+        # 消すのに、見えていない場所（表示メニュー）を探させない。
+        # 形は `quick_open.close_button`——**押せるものだと分かる形を
+        # アプリの中で 1 つに揃える**（パレットとリンクの図が既に使う）
+        self._close = close_button(self, theme)
+        self._close.clicked.connect(self._on_close)
+
+        head = QHBoxLayout()
+        head.setContentsMargins(HEAD_MARGIN, 0, HEAD_MARGIN, 0)
+        head.addWidget(self._label, 1)
+        head.addWidget(self._close)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self._label)
+        layout.addLayout(head)
         layout.addWidget(self._editor, 1)
 
     # ------------------------------------------------------------------ 参照
+
+    @property
+    def close_button(self):
+        """右上の「閉じる」。試験と結線から触る。"""
+        return self._close
 
     @property
     def editor(self) -> MarkdownEditor:
@@ -77,6 +102,11 @@ class ReferencePane(QWidget):
         # **先頭から見せる。** 前に出していたノートの位置が残ると、
         # 開いた瞬間に途中から始まって面食らう
         self._editor.moveCursor(self._editor.textCursor().MoveOperation.Start)
+
+    def _on_close(self) -> None:
+        """**中身も空にする。** 次に開いたとき前のノートが出ていては驚く。"""
+        self.clear()
+        self.close_requested.emit()
 
     def clear(self) -> None:
         self._title = ""

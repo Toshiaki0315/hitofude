@@ -211,3 +211,31 @@ class TestGoneNote:
         window, _ = beside
         window.refresh()
         assert window.reference.title() == "消えるノート"
+
+
+class TestCloseFromPane:
+    """ペインの「閉じる」で横のノートが消える（ユーザー要望 2026-08-29）。"""
+
+    @pytest.fixture
+    def beside(self, window):
+        note = window._vault.create("横のノート", "# 横のノート\n\n本文\n")
+        window._db.upsert_note(note, window._vault.root)
+        window.refresh()
+        window.open_beside(note.path)
+        return window
+
+    def test_ペインが隠れる(self, beside) -> None:
+        beside.reference.close_button.click()
+        assert beside.reference.isHidden()
+
+    def test_本文は残る(self, beside) -> None:
+        """**閉じるのは横のノートだけ。** 書いているほうは触らない。"""
+        before = beside.editor.toPlainText()
+        beside.reference.close_button.click()
+        assert beside.editor.toPlainText() == before
+
+    def test_また開ける(self, beside) -> None:
+        beside.reference.close_button.click()
+        note = beside._vault.root / "横のノート.md"
+        assert beside.open_beside(note) is True
+        assert not beside.reference.isHidden()

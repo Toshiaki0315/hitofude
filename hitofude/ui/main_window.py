@@ -394,6 +394,8 @@ class MainWindow(QMainWindow):
         # 一覧の行をフォルダへ落として移す（ユーザー要望）
         self._sidebar.note_dropped.connect(self._on_note_dropped)
         self._sidebar.note_trashed.connect(self._on_note_trashed)
+        # 横のペインの「閉じる」（U-1）。**隠すのは窓の仕事**
+        self._reference.close_requested.connect(self._on_reference_closed)
         self._sidebar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._sidebar.customContextMenuRequested.connect(self._show_sidebar_menu)
         self._note_list.note_activated.connect(self._on_note_activated)
@@ -1965,6 +1967,11 @@ class MainWindow(QMainWindow):
             return  # 読めないだけかもしれない。消さない側へ倒す
         self._reference.clear()
         self._reference_path = None
+
+    def _on_reference_closed(self) -> None:
+        """横のペインを閉じる。**本文は触らない。**"""
+        self._reference_path = None
+        self._splitter.set_pane_visible(self._reference_index(), False)
 
     def toggle_reference(self) -> None:
         """横の参照ペインを出し入れする。"""
