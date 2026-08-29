@@ -37,6 +37,15 @@ _LIST_STYLES = {
     BlockType.TASK_LIST_ITEM: "List Bullet",
 }
 
+IMAGE_PLACEHOLDER = "［画像］"
+"""説明（alt）の無い絵の代わり。
+
+**黙って消さない。** 貼り付けた絵は `![](attachments/…)` の形で説明が
+無いので、記号を外すと**何も残らない**——絵があったことすら伝わらない。
+書き出しは絵を埋め込まない（PowerPoint と違い「手で整える前提」）ので、
+置き場所だけ示す。
+"""
+
 CHECKED, UNCHECKED = "☑ ", "☐ "
 """チェックの印（レビュー指摘 2026-08-30）。
 
@@ -51,8 +60,12 @@ _STRIKE = {SpanType.STRIKE}
 
 # **記号を落として中身だけ出すもの**（レビュー指摘 2026-08-30）。
 # `[題](URL)` や `[[ノート]]` が生のまま出ていた。Word に持っていく人が
-# 読むのは題名で、URL は本文の邪魔になる
-_UNWRAP = {SpanType.LINK_TEXT, SpanType.WIKI_LINK}
+# 読むのは題名で、URL は本文の邪魔になる。
+#
+# **画像も同じ扱い**（レビュー指摘 2026-08-30 その 2）。入れていなかった
+# ので、URL 側だけ落ちて `![図の名前]` という**壊れた断片**が出ていた。
+# オートリンク（`<URL>`）も山括弧を外す
+_UNWRAP = {SpanType.LINK_TEXT, SpanType.WIKI_LINK, SpanType.IMAGE, SpanType.AUTOLINK}
 
 # 中身ごと落とすもの。`[題](URL)` の URL 側は題名の直後に続くので、
 # 残すと `Qiita https://…` と 2 度出る
@@ -80,7 +93,10 @@ def _runs(text: str) -> list[tuple[str, SpanType | None]]:
         if span.open_start > at:
             found.append((text[at : span.open_start], None))
         if span.type not in _DROP:
-            found.append((text[span.open_end : span.close_start], span.type))
+            body = text[span.open_end : span.close_start]
+            if span.type is SpanType.IMAGE and not body:
+                body = IMAGE_PLACEHOLDER
+            found.append((body, span.type))
         at = span.close_end
     if at < len(text):
         found.append((text[at:], None))

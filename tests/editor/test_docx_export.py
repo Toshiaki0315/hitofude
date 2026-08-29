@@ -170,3 +170,40 @@ class TestInlineMarkup:
         paragraph = next(p for p in written.paragraphs if "取り消し" in p.text)
         assert any(run.font.strike and run.text == "取り消し" for run in paragraph.runs)
         assert "~~" not in paragraph.text
+
+
+class TestImageAndAutolink:
+    """画像とオートリンクの記号（レビュー指摘 2026-08-30）。"""
+
+    @pytest.fixture
+    def written(self, tmp_path):
+        target = tmp_path / "media.docx"
+        write_docx(
+            target,
+            "# 見本\n\n"
+            "図は ![図の名前](zu.png) です。\n\n"
+            "貼った絵は ![](attachments/a.png) です。\n\n"
+            "参照は <https://example.com> です。\n",
+        )
+        return Document(str(target))
+
+    def test_画像は説明だけ残る(self, written) -> None:
+        """**壊れた断片を出さない。** `![図の名前]` のまま出ていた（実測）。"""
+        paragraph = next(p for p in written.paragraphs if "図の名前" in p.text)
+        assert "![" not in paragraph.text
+        assert "]" not in paragraph.text
+        assert "zu.png" not in paragraph.text
+
+    def test_説明の無い絵は在処を示す(self, written) -> None:
+        """**黙って消さない。** 貼った絵は `![](…)` で説明が無い。
+        何も出さないと、絵があったことすら伝わらない。
+        """
+        from hitofude.editor.docx_export import IMAGE_PLACEHOLDER
+
+        assert any(IMAGE_PLACEHOLDER in p.text for p in written.paragraphs)
+
+    def test_オートリンクは山括弧を外す(self, written) -> None:
+        paragraph = next(p for p in written.paragraphs if "example.com" in p.text)
+        assert "<" not in paragraph.text
+        assert ">" not in paragraph.text
+        assert "https://example.com" in paragraph.text
