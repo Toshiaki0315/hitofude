@@ -524,6 +524,27 @@ class NoteListView(QListView):
         finally:
             self._suppress_activation = False
 
+    def mousePressEvent(self, event) -> None:
+        """**右クリックでは開かない**（ユーザー報告 2026-08-29）。
+
+        Qt は右押しでも現在の行を動かすので、`currentChanged` から
+        `note_activated` が飛び、**本文まで入れ替わって**いた——「横に開く」を
+        選ぼうとしただけで、開きたいノートがメインにも出る。
+
+        **印は付ける。** どのノートのメニューか分からないと選べない
+        （Finder も右クリックした項目を光らせる）。開く合図だけ止める。
+        """
+        if event.button() is Qt.MouseButton.RightButton:
+            index = self.indexAt(event.position().toPoint())
+            if index.isValid():
+                self._suppress_activation = True
+                try:
+                    self.setCurrentIndex(index)
+                finally:
+                    self._suppress_activation = False
+            return
+        super().mousePressEvent(event)
+
     def currentChanged(self, current: QModelIndex, previous: QModelIndex) -> None:
         super().currentChanged(current, previous)
         if self._suppress_activation:
