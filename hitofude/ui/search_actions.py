@@ -10,9 +10,10 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QInputDialog
 
-from hitofude.core import searchquery
+from hitofude.core import searchquery, style_check
 from hitofude.core.outline import headings
 from hitofude.core.search import matching_line
+from hitofude.core.textpos import py_to_utf16
 from hitofude.ui.commands import commands
 from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
 
@@ -20,6 +21,8 @@ from hitofude.ui.quick_open import Palette, PaletteItem, fuzzy_filter
 # 代わりに、絞り込みが書けることは案内で伝える
 SEARCH_PLACEHOLDER = "本文を検索…（#タグ after:2026-08-01 で絞れます）"
 COMMAND_PLACEHOLDER = "命令を探す…"
+STYLE_PLACEHOLDER = "文体の指摘…（選ぶとその場所へ飛びます）"
+STYLE_CLEAN_NOTICE = "気になる言い回しは見つかりませんでした"
 
 # 日付として読めない `after:` / `before:` を書いたときの案内（案 1）。
 # **探すのはやめない**が、書き方が違うことは伝える
@@ -134,6 +137,39 @@ class SearchActions:
         palette = self._make_palette("見出しへ飛ぶ…")
         palette.set_provider(self._outline_items)
         palette.open_with()
+
+    def check_style(self):
+        """`文体を見る`。日本語の言い回しを指摘する（U-4）。
+
+        **まずパレットで出す。** 本文に波線を引くのは打鍵ごとの経路に
+        入る（§6.6 の 16ms）ので、「見たいときに見る」形から始める。
+        出す道具はアウトラインへ飛ぶのと同じ `Palette`。
+
+        **空のパレットは出さない。** 何も無いことが分かればよい。
+        """
+        window = self._window
+        if window._note is None:
+            return None
+        text = window._editor.toPlainText()
+        found = style_check.check(text)
+        if not found:
+            window.notify(STYLE_CLEAN_NOTICE)
+            return None
+
+        document = window._editor.document()
+        items = [
+            PaletteItem(
+                title=text[item.start : item.end].strip() or "（空白）",
+                subtitle=item.message,
+                path=window._note.path,
+                line=document.findBlock(py_to_utf16(text, item.start)).blockNumber(),
+            )
+            for item in found
+        ]
+        palette = self._make_palette(STYLE_PLACEHOLDER, compact=True)
+        palette.set_provider(lambda query: fuzzy_filter(query, items))
+        palette.open_with()
+        return palette
 
     def jump_to_line(self, line: int) -> None:
         """その行の先頭へカーソルを移す（C-2）。無い行番号なら何もしない。"""

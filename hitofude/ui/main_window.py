@@ -1413,6 +1413,10 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ 検索
 
+    def check_style(self):
+        """`文体を見る`。日本語の言い回しを指摘する（U-4）。指摘が無ければ None。"""
+        return self._search.check_style()
+
     def command_palette(self):
         """`Cmd+Shift+P`。命令を名前で探して動かす（U-3）。"""
         return self._search.command_palette()
