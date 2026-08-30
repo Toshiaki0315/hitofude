@@ -1032,6 +1032,32 @@ class TestTrashBoundary:
         assert not back.is_relative_to(vault.trash_dir)
 
 
+class TestTrashAlreadyTrashed:
+    """**ゴミ箱の中のものは捨て直さない**（コードレビュー指摘 2026-08-31）。
+
+    ゴミ箱表示中も一覧の行はドラッグできるので、ゴミ箱の行へ落とすと
+    `.trash/x.md` がもう一度 `trash()` へ渡る。素通しにすると
+    `.trash/.trash/x.md` へ入れ子になり、`restore()` は trash_dir 相対の
+    `.trash/x.md` を root へ結合するため**二度と保管領域へ戻せない**。
+    """
+
+    def test_ゴミ箱の中のものは動かさない(self, vault) -> None:
+        note = vault.create("捨て済み")
+        moved = vault.trash(note.path)
+        again = vault.trash(moved)
+        assert again == moved
+        assert moved.is_file()
+        assert not (vault.trash_dir / TRASH_DIR).exists(), ".trash が入れ子になった"
+
+    def test_捨て直しても戻せる(self, vault) -> None:
+        note = vault.create("捨て済み")
+        moved = vault.trash(note.path)
+        vault.trash(moved)
+        restored = vault.restore(moved)
+        assert restored.parent == vault.root
+        assert restored.is_file()
+
+
 class TestScanSurvivesUnreadable:
     """読めないフォルダが 1 つあっても走査を止めない（コードレビュー指摘 / 中）。
 

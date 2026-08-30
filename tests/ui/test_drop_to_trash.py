@@ -167,3 +167,26 @@ class TestSameAsFolderMove:
         opened._notes.toggle_pin(opened._vault.root / "捨てるノート.md")
         opened._on_note_trashed(Path("捨てるノート.md"))
         assert opened.filter.kind is not FilterKind.TRASH
+
+
+class TestDropAlreadyTrashed:
+    """**ゴミ箱の中の行をゴミ箱へ落としても入れ子にしない**（レビュー指摘 2026-08-31）。
+
+    ゴミ箱で絞っている間も行はドラッグできる。相対パスは `.trash/x.md` の
+    ままゴミ箱の行へ届くので、素通しだと `.trash/.trash/x.md` へ移って
+    「元に戻す」が効かなくなる。
+    """
+
+    def test_再ドロップで入れ子にしない(self, opened) -> None:
+        opened._on_note_trashed(Path("捨てるノート.md"))
+        opened._on_note_trashed(Path(".trash/捨てるノート.md"))
+        assert (opened._vault.trash_dir / "捨てるノート.md").exists()
+        assert not (opened._vault.trash_dir / ".trash").exists(), ".trash が入れ子になった"
+
+    def test_再ドロップのあとも元に戻せる(self, opened) -> None:
+        opened._on_note_trashed(Path("捨てるノート.md"))
+        opened._on_note_trashed(Path(".trash/捨てるノート.md"))
+        restored = opened._notes.restore_note(opened._vault.trash_dir / "捨てるノート.md")
+        assert restored is not None
+        assert restored == opened._vault.root / "捨てるノート.md"
+        assert restored.is_file()

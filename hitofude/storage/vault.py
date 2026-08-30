@@ -682,6 +682,12 @@ class Vault:
         （真実をファイル側に置く。R1 の精神）。
         """
         relative = self._relative_to(path, self.root, "保管フォルダの外は捨てられない")
+        if relative.parts and relative.parts[0] == TRASH_DIR:
+            # 既にゴミ箱の中。動かすと .trash/.trash/ へ入れ子になり、
+            # restore() が trash_dir 相対の .trash/x.md を root へ結合する
+            # ため二度と戻せなくなる（ゴミ箱表示中のドラッグで踏む。
+            # コードレビュー指摘 2026-08-31）。望みの状態は既に満ちている
+            return path
         target = self.trash_dir / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
