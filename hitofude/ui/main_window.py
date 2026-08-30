@@ -87,6 +87,7 @@ from hitofude.ui.panes import (
     PaneSplitter,
 )
 from hitofude.ui.preferences import PreferencesDialog
+from hitofude.ui.quick_open import Palette
 from hitofude.ui.reference_pane import ReferencePane
 from hitofude.ui.save_controller import SaveController
 from hitofude.ui.search_actions import SearchActions
@@ -1442,11 +1443,11 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ 検索
 
-    def check_style(self):
+    def check_style(self) -> Palette | None:
         """`文体を見る`。日本語の言い回しを指摘する（U-4）。指摘が無ければ None。"""
         return self._search.check_style()
 
-    def command_palette(self):
+    def command_palette(self) -> Palette:
         """`Cmd+Shift+P`。命令を名前で探して動かす（U-3）。"""
         return self._search.command_palette()
 
@@ -1817,7 +1818,7 @@ class MainWindow(QMainWindow):
     def export_pdf(self) -> Path | None:
         return self._exports.export_pdf()
 
-    def export_docx(self):
+    def export_docx(self) -> Path | None:
         """Word で書き出す（U-5）。実体は ExportActions。"""
         return self._exports.export_docx()
 

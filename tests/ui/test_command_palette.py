@@ -58,6 +58,26 @@ class TestRun:
         finally:
             palette.close()
 
+    def test_選んでも絞り込みを動かさない(self, window, qtbot) -> None:
+        """**命令を選ぶたびに一覧がルートへ戻っていた**（レビュー指摘 2026-08-31）。
+
+        `_make_palette` が繋ぐノートを開く受け手にも `chosen` が届き、
+        `path=Path()` を vault ルートとして開こうとして絞り込みが
+        リセットされていた。タグで絞ったまま命令だけ走ること。
+        """
+        from hitofude.ui.sidebar import Filter, FilterKind
+
+        window._editor.setPlainText("# 仕事メモ\n\n#仕事\n")
+        window.set_filter(Filter(FilterKind.TAG, tag="仕事"))
+        palette = window.command_palette()
+        try:
+            palette.open_with("横に開く")
+            found = next(item for item in palette.items if item.title == "横に開く欄")
+            palette.chosen.emit(found)
+            assert window.filter == Filter(FilterKind.TAG, tag="仕事")
+        finally:
+            palette.close()
+
 
 class TestCompact:
     """命令のほうは **1 行ずつ**にする（ユーザー指摘 2026-08-29）。

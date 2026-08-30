@@ -6,6 +6,7 @@
 `self._window` 経由で触る（`export_actions` と同じ「友達」の作り）。
 """
 
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtWidgets import QInputDialog
@@ -95,7 +96,7 @@ class SearchActions:
         palette.finished.connect(palette.deleteLater)
         palette.open_with()
 
-    def command_palette(self):
+    def command_palette(self) -> Palette:
         """`Cmd+Shift+P`。命令を名前で探して動かす（U-3）。
 
         **ノートを開く道具と同じ `Palette`** を使う。入口が増えても操作を
@@ -104,10 +105,13 @@ class SearchActions:
         並べるのは**メニューバーから集めたもの**（`ui/commands`）。別に
         一覧を持つと、メニューに足したのにここへ出ないが起きる。
         """
-        # **1 行ずつ**（U-3）。ノートを探すパレットと見分けが付くように
-        palette = self._make_palette(COMMAND_PLACEHOLDER, compact=True)
+        # **1 行ずつ**（U-3）。ノートを探すパレットと見分けが付くように。
+        # 受け手は命令の実行だけ。既定のノートを開く受け手が混ざると、
+        # 選ぶたびに絞り込みがルートへ戻る（レビュー指摘 2026-08-31）
+        palette = self._make_palette(
+            COMMAND_PLACEHOLDER, compact=True, chosen=self._on_command_chosen
+        )
         palette.set_provider(self._command_items)
-        palette.chosen.connect(self._on_command_chosen)
         palette.open_with()
         return palette
 
@@ -138,7 +142,7 @@ class SearchActions:
         palette.set_provider(self._outline_items)
         palette.open_with()
 
-    def check_style(self):
+    def check_style(self) -> Palette | None:
         """`文体を見る`。日本語の言い回しを指摘する（U-4）。
 
         **まずパレットで出す。** 本文に波線を引くのは打鍵ごとの経路に
@@ -185,7 +189,19 @@ class SearchActions:
 
     # ------------------------------------------------------------- パレット
 
-    def _make_palette(self, placeholder: str, *, compact: bool = False) -> Palette:
+    def _make_palette(
+        self,
+        placeholder: str,
+        *,
+        compact: bool = False,
+        chosen: Callable[[PaletteItem], None] | None = None,
+    ) -> Palette:
+        """共通の組み立て。`chosen` 省略時は**ノートを開く**受け手を繋ぐ。
+
+        受け手は 1 つだけ。ここで繋いだ上に呼び出し側でも `chosen` を
+        繋ぐと両方が走る（コマンドパレットで絞り込みが飛んだ）。
+        ノート以外を並べるパレットは自分の受け手をここへ渡すこと。
+        """
         window = self._window
         palette = Palette(
             window,
@@ -193,7 +209,7 @@ class SearchActions:
             theme=window._theme_watcher.colors,
             compact=compact,
         )
-        palette.chosen.connect(self._on_palette_chosen)
+        palette.chosen.connect(chosen if chosen is not None else self._on_palette_chosen)
         # 開くたびに作り直す。前回の入力と結果が残っていると誤操作の元になる
         palette.finished.connect(palette.deleteLater)
         return palette
