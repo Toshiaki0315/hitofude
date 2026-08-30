@@ -984,7 +984,7 @@ class MainWindow(QMainWindow):
         """ノートをフォルダへ移す（対話なし）。実体は NoteActions。"""
         return self._notes.move_note_to(path, folder)
 
-    def choose_template_to_insert(self):
+    def choose_template_to_insert(self) -> Palette | None:
         """差し込む雛形を選ぶ（U-6）。実体は NoteActions。"""
         return self._notes.choose_template_to_insert()
 

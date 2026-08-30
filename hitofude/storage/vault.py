@@ -858,16 +858,33 @@ class Vault:
         題名を省いたときは雛形の名前を使う。「議事録」から作ったノートが
         「無題」になるより、あとで直すぶんだけ手が少ない。
         """
+        name = title or path.stem
+        filled = self.expand_template(path, title=name, now=now)
+        note = self.create(name, filled.text, folder=folder)
+        return NewNote(note, self._cursor_in(note, filled))
+
+    def expand_template(
+        self,
+        path: Path,
+        *,
+        title: str,
+        now: datetime | None = None,
+    ) -> Expanded:
+        """雛形を読んで印を埋め、本文として使える形にする。
+
+        **新規作成と差し込み（U-6）で同じ支度を通す**（レビュー指摘
+        2026-08-31）。片方だけ `expand` を直に呼ぶと、front matter が
+        本文へ紛れ込み、表の桁も揃わないまま入る。
+
+        - front matter は外す（写すと `id` が重なる）
+        - 表の桁を揃える（雛形が揃っていなくても、入る本文は揃える）
+        """
         if not self._inside_templates(path):
             # パスは手で編集できる。外のファイルをノートに変えさせない
             raise ValueError(f"テンプレートではないパス: {path}")
-
-        name = title or path.stem
         body = frontmatter.split(path.read_text(encoding="utf-8")).body
-        filled = expand(body, now=now or datetime.now(), title=name)
-        filled = _with_aligned_tables(filled)
-        note = self.create(name, filled.text, folder=folder)
-        return NewNote(note, self._cursor_in(note, filled))
+        filled = expand(body, now=now or datetime.now(), title=title)
+        return _with_aligned_tables(filled)
 
     def daily_note(self, day: datetime | None = None, *, template: str = DAILY_TEMPLATE) -> NewNote:
         """今日のノートを開く。無ければ作る（E-4）。

@@ -67,6 +67,59 @@ class TestInsert:
         assert ready.editor.toPlainText() == before
 
 
+class TestSameAsCreate:
+    """**新規作成と同じ支度をする**（レビュー指摘 2026-08-31）。
+
+    `create_from_template` は front matter を外し、表の桁を揃えてから
+    本文にする。差し込みが `expand` しか通らないと、生の YAML が本文の
+    途中に入り、表はずれたまま出る。
+    """
+
+    def test_front_matterを持ち込まない(self, ready) -> None:
+        (ready._vault.templates_dir / "台帳.md").write_text(
+            "---\nid: ABC\n---\n台帳の本文\n", encoding="utf-8"
+        )
+        ready.insert_template("台帳")
+        text = ready.editor.toPlainText()
+        assert "台帳の本文" in text
+        assert "id: ABC" not in text
+
+    def test_表の桁を揃える(self, ready) -> None:
+        """**新規作成と同じ形で入る。** 整形の中身はそちらのテストが見ている。"""
+        source = ready._vault.templates_dir / "表.md"
+        source.write_text("| 項目 | 値 |\n|---|---|\n| 長い項目名 | 1 |\n", encoding="utf-8")
+        created = ready._vault.create_from_template(source).note
+
+        ready.insert_template("表")
+        inserted = [line for line in ready.editor.toPlainText().split("\n") if "|" in line]
+        expected = [line for line in created.text.split("\n") if "|" in line]
+        assert inserted == expected
+
+    def test_絵文字があってもカーソルは印の場所へ(self, ready) -> None:
+        """位置の単位を跨ぐ（レビュー指摘 2026-08-31）。
+
+        `expand` が数えるのは Python の文字数、`setPosition` は UTF-16。
+        絵文字（非 BMP）が `{{cursor}}` より前にあると 1 文字ぶんずれる。
+        """
+        (ready._vault.templates_dir / "祝.md").write_text(
+            "🎉 おめでとう\n{{cursor}}あと\n", encoding="utf-8"
+        )
+        cursor = ready.editor.textCursor()
+        cursor.setPosition(0)
+        ready.editor.setTextCursor(cursor)
+        ready.insert_template("祝")
+        cursor = ready.editor.textCursor()
+        document = ready.editor.document()
+        cursor.setPosition(cursor.position(), QTextCursor.MoveMode.MoveAnchor)
+        cursor.movePosition(
+            QTextCursor.MoveOperation.NextCharacter,
+            QTextCursor.MoveMode.KeepAnchor,
+            2,
+        )
+        assert cursor.selectedText() == "あと"
+        assert document is ready.editor.document()
+
+
 class TestQuiet:
     def test_無い雛形なら何もしない(self, ready) -> None:
         before = ready.editor.toPlainText()

@@ -15,9 +15,9 @@ from PySide6.QtGui import QAction, QTextCursor
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QMessageBox
 
 from hitofude.app import style_menu
-from hitofude.core import extract, template
+from hitofude.core import extract, template, textpos
 from hitofude.core.document import Note, with_title
-from hitofude.core.template import daily_title, expand
+from hitofude.core.template import daily_title
 from hitofude.storage.index_db import ROOT_FOLDER, NoteRow
 from hitofude.storage.vault import MARKDOWN_SUFFIXES, sanitize_filename, unique_path
 from hitofude.ui.icons import menu_icon
@@ -816,7 +816,7 @@ class NoteActions:
         window.notify(f"テンプレート「{path.stem}」を削除しました")
         return True
 
-    def choose_template_to_insert(self):
+    def choose_template_to_insert(self) -> Palette | None:
         """差し込む雛形を選ぶ（U-6）。選べる雛形が無ければ None。
 
         **空のパレットを出さない**（文体チェックと同じ作法）。何も無い
@@ -848,9 +848,10 @@ class NoteActions:
         `templates/` の `.md` で足りる——「新しいノートを作る」だけでなく
         「ここへ差し込む」にも使えればよい。
 
-        印（`{date}` `{cursor}`）は**新規作成と同じ `template.expand`** が
-        埋める。別に書くと「新規では埋まるのに差し込みでは埋まらない」が
-        起きる。
+        支度（front matter 外し・表の桁揃え・印の展開）は**新規作成と
+        同じ `Vault.expand_template`** が行う。別に書くと「新規では
+        埋まるのに差し込みでは埋まらない」が起きる（レビュー指摘
+        2026-08-31）。
 
         **1 回の編集にする**（R5 と同じ約束）。2 段に割れると `Cmd+Z` が
         1 回で戻らない。
@@ -866,13 +867,12 @@ class NoteActions:
             logger.warning("テンプレートが無い: %s", name)
             return False
         try:
-            body = found.read_text(encoding="utf-8")
-        except OSError as error:
+            filled = window._vault.expand_template(found, title=window._note.title)
+        except (ValueError, OSError) as error:
             logger.warning("テンプレートを読めない: %s", error)
             window.notify("テンプレートを読めませんでした")
             return False
 
-        filled = expand(body, now=datetime.now(), title=window._note.title)
         cursor = window._editor.textCursor()
         # **選択の始まりを覚える**（レビュー指摘 2026-08-30）。`position()` は
         # 選択の**終わり**を指すので、置き換えたあとのカーソルが選んだ長さ
@@ -880,7 +880,9 @@ class NoteActions:
         at = cursor.selectionStart()
         cursor.insertText(filled.text)  # 1 回の編集 = Undo 1 段
         if filled.cursor is not None:
-            cursor.setPosition(at + filled.cursor)
+            # `expand` が数えるのは Python の文字数、`setPosition` は UTF-16
+            # （絵文字を挟むとずれる。新規作成の `_open_created` と同じ換算）
+            cursor.setPosition(at + textpos.py_to_utf16(filled.text, filled.cursor))
             window._editor.setTextCursor(cursor)
         return True
 
