@@ -179,3 +179,16 @@ class TestMatchingLine:
         text = "**予算**\n"
         matching_line(text, "予算")
         assert text == "**予算**\n"
+
+    def test_全角の本文を半角で見つける(self) -> None:
+        """索引は NFKC で寄せている（`searchable_text`）ので、半角 `UI` で
+        全角 `ＵＩ` のノートが検索に出る。飛び先も同じ形で見ないと、
+        **一覧には出るのに選んでも先頭のまま**になる（レビュー指摘 2026-08-31）。
+        """
+        assert matching_line("# 題\n\n本文のＵＩについて\n", "UI") == 2
+
+    def test_半角の本文を全角で見つける(self) -> None:
+        assert matching_line("# 題\n\nUI の見直し\n", "ＵＩ") == 2
+
+    def test_半角カナの本文を全角カナで見つける(self) -> None:
+        assert matching_line("ﾒﾓの整理\n", "メモ") == 0

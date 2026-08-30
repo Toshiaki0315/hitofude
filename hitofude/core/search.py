@@ -127,18 +127,30 @@ def matching_line(text: str, query: str) -> int | None:
 
     **索引に行番号は持たせない。** 持たせると索引の作りが変わって作り直しが
     要る。ノートを開けば数え直せて、開く数は 1 つだけ。
+
+    **全角と半角も寄せて見る**（NFKC。レビュー指摘 2026-08-31）。索引は
+    NFKC で寄せた写しを持つ（`searchable_text` / `search_key`）ので、
+    半角 `UI` で全角 `ＵＩ` のノートが一覧に出る。ここが素の本文で探すと
+    選んでも先頭のまま動かない。返すのは行番号だけなので、行ごとに
+    寄せて比べれば位置の対応表は要らない（`Cmd+F` の置換系は 1:1 の
+    オフセットが要るため寄せない。ここだけの扱い）。
     """
     if not query.strip():
         return None
+
+    import unicodedata
 
     from hitofude.core.block_parser import classify_line
     from hitofude.core.document import strip_markers
     from hitofude.core.models import BlockState
 
-    needle = query.casefold()
+    def fold(fragment: str) -> str:
+        return unicodedata.normalize("NFKC", fragment).casefold()
+
+    needle = fold(query)
     state = BlockState()
     for number, line in enumerate(text.split("\n")):
         info, state = classify_line(line, number, state)
-        if needle in strip_markers(line, info).casefold() or needle in line.casefold():
+        if needle in fold(strip_markers(line, info)) or needle in fold(line):
             return number
     return None
