@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 
 from hitofude.core import frontmatter
-from hitofude.core.block_parser import classify_line
+from hitofude.core.block_parser import INDENTED_CODE_WIDTH, classify_line
 from hitofude.core.document import strip_markers
 from hitofude.core.inline_scanner import image_only_line
 from hitofude.core.models import BlockInfo, BlockState, BlockType
@@ -83,6 +83,16 @@ class Deck:
     slides: list[Slide] = field(default_factory=list)
 
 
+def _dedent_code(line: str) -> str:
+    """字下げコードの行から、コードの一部ではない先頭 4 桁ぶんを外す（CommonMark）。"""
+    width = 0
+    for index, char in enumerate(line):
+        if width >= INDENTED_CODE_WIDTH or char not in " \t":
+            return line[index:]
+        width += 1 if char == " " else INDENTED_CODE_WIDTH
+    return ""
+
+
 def _bullet_level(level: int) -> int:
     """行頭マーカーの位置を、0 から始まる階層に直す。
 
@@ -117,22 +127,35 @@ class _Builder:
         self._paragraph: list[str] = []
         self._code: list[str] = []
         self._language = ""
+        self._in_fence = False
+        self._indented: list[str] = []
+        self._indented_blanks = 0
         self._table: list[str] = []
         self._notes: list[str] = []
 
     # ------------------------------------------------------------------ 受信
 
     def feed(self, line: str, info: BlockInfo) -> None:
+        if info.type not in (BlockType.CODE_FENCE_BODY, BlockType.BLANK):
+            # 字下げコードには閉じ行が来ない。**別の何かが来たら終わり**が唯一の合図
+            self._flush_indented()
         match info.type:
             case BlockType.CODE_FENCE_OPEN:
                 self._flush_text()
+                self._in_fence = True
                 self._language = info.lang or ""
                 self._code = []
-            case BlockType.CODE_FENCE_BODY:
+            case BlockType.CODE_FENCE_BODY if self._in_fence:
                 self._code.append(line)
+            case BlockType.CODE_FENCE_BODY:
+                # フェンス無しの字下げコード（block_parser は同じ種別に割り当てる）
+                self._indented.extend([""] * self._indented_blanks)
+                self._indented_blanks = 0
+                self._indented.append(_dedent_code(line))
             case BlockType.CODE_FENCE_CLOSE:
                 self._add(Block(BlockKind.CODE, "\n".join(self._code), language=self._language))
                 self._code = []
+                self._in_fence = False
             case BlockType.HEADING:
                 self._heading(line, info)
             case BlockType.BLOCKQUOTE:
@@ -143,6 +166,9 @@ class _Builder:
                 self._table.append(line.strip())
             case BlockType.TABLE_DELIMITER:
                 pass  # 区切り行は形式の飾り。中身を持たない
+            case BlockType.BLANK if self._indented:
+                # 空行は字下げコードを終わらせない（CommonMark）。続きが来たら中身になる
+                self._indented_blanks += 1
             case BlockType.BLANK:
                 self._flush_text()
             case (
@@ -192,7 +218,15 @@ class _Builder:
             self._add(Block(BlockKind.PARAGRAPH, " ".join(self._paragraph)))
             self._paragraph = []
 
+    def _flush_indented(self) -> None:
+        if self._indented:
+            # 末尾に溜まった空行はコードの中身ではないので捨てる
+            self._add(Block(BlockKind.CODE, "\n".join(self._indented)))
+            self._indented = []
+        self._indented_blanks = 0
+
     def _flush_text(self) -> None:
+        self._flush_indented()
         self._flush_paragraph()
         if self._table:
             self._add(Block(BlockKind.TABLE, lines=self._table))
