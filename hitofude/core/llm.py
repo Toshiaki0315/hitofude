@@ -9,6 +9,7 @@ Ollama（別プロセス）へ HTTP で頼む。**ここは Qt を知らない**
 """
 
 import base64
+import http.client
 import json
 import logging
 import urllib.error
@@ -301,12 +302,15 @@ class LocalLLM:
                         on_chunk(chunk)
                 if found.get("done"):
                     break
-        except (OSError, urllib.error.URLError) as error:
+        except (OSError, http.client.HTTPException) as error:
             # **途中で切れても届いたぶんは捨てない**（レビュー指摘 2026-08-29）。
             # `_request` が包んでいるのは 1 行目だけで、2 行目以降で相手が
             # 落ちると素の `OSError` が上がっていた。断片は既に画面へ
             # 流している（`on_chunk`）ので、ここで例外にすると
-            # **出ていた字が消えて失敗だけ残る**
+            # **出ていた字が消えて失敗だけ残る**。
+            # チャンク転送の途中切れは `IncompleteRead`（`HTTPException`
+            # 派生で OSError ではない）で来る（レビュー指摘 2026-08-31）。
+            # `URLError` は OSError の派生なので書かなくても入る
             logger.warning("受け取りの途中で切れた（届いたぶんを返す）: %s", error)
         return "".join(parts)
 

@@ -45,6 +45,22 @@ class TestBrokenStream:
         llm.generate("問い", on_chunk=got.append)
         assert got == ["あ"]
 
+    def test_HTTPレベルの途中切れも同じ扱い(self) -> None:
+        """チャンク転送が途中で切れると `http.client.IncompleteRead` が上がる。
+
+        `HTTPException` の派生で **OSError ではない**ため、素通しだと
+        出ていた字が消えて失敗だけ残る（レビュー指摘 2026-08-31）。
+        """
+        import http.client
+
+        llm = LocalLLM(
+            transport=stream(
+                '{"response":"こんに"}'.encode(),
+                error=http.client.IncompleteRead(b""),
+            )
+        )
+        assert llm.generate("問い") == "こんに"
+
     def test_最初から繋がらないのは今までどおり(self) -> None:
         """**直しすぎない。** 1 行目で落ちるのは「動いていない」。"""
         from hitofude.core.llm import NotRunning
