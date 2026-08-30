@@ -78,6 +78,30 @@ class TestExcerpt:
 
         assert excerpt("# 題だけ\n") == ""
 
+    def test_落とすのは題名の行だけ(self) -> None:
+        """**節見出しは中身。**（レビュー指摘 2026-08-31）
+
+        先頭に見出しが続くと `not lines` の門が開いたままになり、
+        `## 決定事項` まで捨てて構造が消えていた。
+        """
+        from hitofude.editor.link_preview import excerpt
+
+        found = excerpt("# 会議メモ\n\n## 決定事項\n\n- A を採用\n")
+        assert "決定事項" in found
+        assert "A を採用" in found
+
+    def test_見出しだけのノートも中身が出る(self) -> None:
+        """骨組みだけのノート（アウトライン）が「無いノート」に見えない。
+
+        取扱説明は「何も出ない＝まだ無いノート」と案内している。実在する
+        ノートが同じ見えになると区別が付かない。
+        """
+        from hitofude.editor.link_preview import excerpt
+
+        found = excerpt("# 設計\n\n## 目的\n\n## 方針\n\n## 課題\n")
+        assert found != ""
+        assert "目的" in found
+
 
 class TestHover:
     @pytest.fixture
@@ -245,6 +269,26 @@ class TestModifierAfterHover:
         cursor = editor.textCursor()
         cursor.setPosition(block.position() + 1)
         self.move(editor, editor.cursorRect(cursor).center())
+        self.press(editor, held=True)
+        editor._link_preview.show_now()
+        assert not tooltip.is_showing()
+
+    def test_離れてから押しても出ない(self, editor) -> None:
+        """**古い位置に泡を出さない**（レビュー指摘 2026-08-31）。
+
+        マウスが編集領域を出ても位置が残っていたので、`Cmd+Tab` で
+        戻った直後などに `Cmd` を押すと、もう指していないリンクの泡が
+        古い座標に浮いていた。
+        """
+        from PySide6.QtCore import QEvent
+        from PySide6.QtWidgets import QApplication
+
+        from hitofude.ui import tooltip
+
+        tooltip.hide()
+        editor.set_note_preview(lambda title: TARGET)
+        self.move(editor, link_point(editor))  # リンクに触れてから
+        QApplication.sendEvent(editor.viewport(), QEvent(QEvent.Type.Leave))  # 外へ
         self.press(editor, held=True)
         editor._link_preview.show_now()
         assert not tooltip.is_showing()

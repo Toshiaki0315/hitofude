@@ -47,12 +47,21 @@ def excerpt(text: str) -> str:
     body = frontmatter.split(text).body
     title = title_of(text, "")
     lines: list[str] = []
+    # 落とすのは**最初の 1 行だけ**（レビュー指摘 2026-08-31）。`not lines`
+    # で門を開けたままにすると、先頭に見出しが続くノートで `## 節` まで
+    # 捨ててしまい、骨組みだけのノートは空＝「まだ無いノート」に見えていた
+    skipped_title = False
     for line in body.split("\n"):
         stripped = line.strip()
         if not stripped:
             continue
-        if not lines and (stripped.lstrip("#").strip() == title or stripped.startswith("#")):
-            continue  # 題名の行
+        if (
+            not lines
+            and not skipped_title
+            and (stripped.lstrip("#").strip() == title or stripped.startswith("#"))
+        ):
+            skipped_title = True
+            continue  # 題名の行（泡の見出しと重なる）
         lines.append(line.rstrip())
         if len(lines) >= EXCERPT_LINES:
             break

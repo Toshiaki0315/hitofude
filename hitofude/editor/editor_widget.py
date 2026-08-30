@@ -9,7 +9,7 @@ import logging
 import re
 from collections.abc import Callable
 
-from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -1624,6 +1624,18 @@ class MarkdownEditor(QPlainTextEdit):
         self._hover_point = event.position().toPoint()
         self._code_copy.update(self._hover_point)  # コードのコピーの印（2026-08-27）
         self._update_hover(held=bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier))
+
+    def viewportEvent(self, event) -> bool:
+        """マウスが編集領域を出たら、覚えていた位置を忘れる。
+
+        位置は `mouseMoveEvent` でしか更新されないので、忘れないと
+        `Cmd+Tab` で戻った直後などの `Cmd` 押下が**もう指していない
+        リンクの泡を古い座標に**出す（レビュー指摘 2026-08-31）。
+        """
+        if event.type() is QEvent.Type.Leave:
+            self._hover_point = None
+            self._link_preview.hide()
+        return super().viewportEvent(event)
 
     def _update_hover(self, *, held: bool) -> None:
         """今の位置と `Cmd` の状態から、カーソルの形と覗き見を決める。
