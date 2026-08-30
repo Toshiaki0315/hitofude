@@ -67,3 +67,36 @@ class TestHtml:
 
         assert "<pre>" in render(INDENTED)
         assert "<pre>" not in render(INDENTED, indented_code=False)
+
+
+class TestSlides:
+    """スライドの分解も同じ旗に従う（レビュー指摘 2026-08-31）。
+
+    既定（on）ではフェンスの無いコード本文をスライドに載せない
+    （`_Builder` は ``` で開いたときだけコードを溜める）ので、
+    off にしたときに**段落として現れる**ことを見る。
+    """
+
+    TEXT = "# 題\n\n## 頁\n\n    字下げした行\n"
+
+    def blocks(self, **options) -> list:
+        from hitofude.core.slides import split
+
+        deck = split(self.TEXT, **options)
+        return deck.slides[0].blocks
+
+    def test_既定では段落にならない(self) -> None:
+        from hitofude.core.slides import BlockKind
+
+        assert not any(
+            block.kind is BlockKind.PARAGRAPH and "字下げした行" in block.text
+            for block in self.blocks()
+        )
+
+    def test_offなら段落として載る(self) -> None:
+        from hitofude.core.slides import BlockKind
+
+        assert any(
+            block.kind is BlockKind.PARAGRAPH and "字下げした行" in block.text
+            for block in self.blocks(indented_code=False)
+        )

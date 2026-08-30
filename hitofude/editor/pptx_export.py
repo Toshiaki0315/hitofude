@@ -51,10 +51,18 @@ LAYOUT_TITLE = 0
 LAYOUT_CONTENT = 1
 
 
-def write_pptx(path: Path, text: str, *, base_path: Path | None = None) -> Path:
+def write_pptx(
+    path: Path,
+    text: str,
+    *,
+    base_path: Path | None = None,
+    indented_code: bool = True,
+) -> Path:
     """本文を `.pptx` にする。書いた先を返す。
 
     `base_path` は画像を探す起点（保管フォルダ）。渡さなければ画像は入らない。
+    `indented_code` は 4 字下げをコードと見るか（ADR-0033）。**画面と
+    同じ旗を渡すこと**。
     """
     from pptx import Presentation
     from pptx.util import Inches
@@ -63,7 +71,7 @@ def write_pptx(path: Path, text: str, *, base_path: Path | None = None) -> Path:
     presentation.slide_width = Inches(SLIDE_WIDTH_IN)
     presentation.slide_height = Inches(SLIDE_HEIGHT_IN)
 
-    deck = split(text)
+    deck = split(text, indented_code=indented_code)
     if deck.title:
         _add_title_slide(presentation, deck)
     for slide in deck.slides:

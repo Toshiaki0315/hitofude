@@ -236,7 +236,14 @@ def write_preview(
     コードの色が、ここで確かめられる**。
     """
     target = Path(tempfile.gettempdir()) / PREVIEW_NAME
-    return write_html(target, text, title=PREVIEW_TITLE, theme=theme, base_path=base_path)
+    return write_html(
+        target,
+        text,
+        title=PREVIEW_TITLE,
+        theme=theme,
+        base_path=base_path,
+        indented_code=indented_code,
+    )
 
 
 def copy_html(
@@ -335,7 +342,14 @@ def write_pdf(
     printer = new_printer()
     printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
     printer.setOutputFileName(str(path))
-    print_document(printer, text, theme=theme, base_point_size=base_point_size, base_path=base_path)
+    print_document(
+        printer,
+        text,
+        theme=theme,
+        base_point_size=base_point_size,
+        base_path=base_path,
+        indented_code=indented_code,
+    )
     return path
 
 

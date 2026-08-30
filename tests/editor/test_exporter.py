@@ -530,6 +530,40 @@ class TestPreviewFile:
         assert "mermaid.initialize" in target.read_text(encoding="utf-8")
 
 
+class TestIndentedCodeForwarding:
+    """**受け取った旗を下流へ渡す**（レビュー指摘 2026-08-31 / ADR-0033）。
+
+    引数に足しただけで転送を忘れると、設定を切っても既定の True へ
+    黙って戻り、画面と書き出しが食い違う——ADR が防ぐと言った形そのもの。
+    """
+
+    TEXT = "本文\n\n    字下げした行\n"
+
+    def test_プレビューも旗に従う(self, qapp) -> None:
+        from hitofude.editor.exporter import write_preview
+
+        with_flag = write_preview(self.TEXT, indented_code=False)
+        assert "<pre>" not in with_flag.read_text(encoding="utf-8")
+
+    def test_プレビューの既定は今までどおり(self, qapp) -> None:
+        from hitofude.editor.exporter import write_preview
+
+        assert "<pre>" in write_preview(self.TEXT).read_text(encoding="utf-8")
+
+    def test_PDFも旗に従う(self, qapp, monkeypatch, tmp_path: Path) -> None:
+        """PDF の中身から字下げの扱いは読み取れないので、渡す旗を見る。"""
+        import hitofude.editor.exporter as exporter_module
+
+        captured: dict = {}
+
+        def spy(printer, text, **kwargs) -> None:
+            captured.update(kwargs)
+
+        monkeypatch.setattr(exporter_module, "print_document", spy)
+        write_pdf(tmp_path / "out.pdf", self.TEXT, indented_code=False)
+        assert captured.get("indented_code") is False
+
+
 class TestClipboardHtml:
     """HTML をクリップボードへ（E-3）。"""
 

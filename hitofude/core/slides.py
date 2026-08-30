@@ -92,16 +92,19 @@ def _bullet_level(level: int) -> int:
     return max(0, (level - 1) // _LEVELS_PER_INDENT)
 
 
-def split(text: str) -> Deck:
+def split(text: str, *, indented_code: bool = True) -> Deck:
     """本文をスライドの並びにする。
 
     `#` より前や、最初の `##` より前に書かれた段落は**副題**として扱う。
     表紙に載る文章はふつうそこにあるため。
+
+    `indented_code` は 4 字下げをコードと見るか（ADR-0033）。呼ぶ側が
+    画面と同じ旗を渡す（`core/` は設定を知らない。R3）。
     """
     builder = _Builder()
     state = BlockState()
     for number, line in enumerate(frontmatter.split(text).body.split("\n")):
-        info, state = classify_line(line, number, state)
+        info, state = classify_line(line, number, state, indented_code=indented_code)
         builder.feed(line, info)
     return builder.finish()
 

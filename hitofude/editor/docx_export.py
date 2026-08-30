@@ -215,18 +215,27 @@ def _write_code(document, lines: list[str]) -> None:
     run.font.size = CODE_POINT_SIZE
 
 
-def write_docx(path: Path, text: str, *, base_path: Path | None = None) -> Path:
+def write_docx(
+    path: Path,
+    text: str,
+    *,
+    base_path: Path | None = None,
+    indented_code: bool = True,
+) -> Path:
     """本文を `.docx` として書く。書いた先を返す。
 
     **front matter は出さない**（作成日時と id は読む人に要らない）。
 
     `base_path` は絵を探す起点（保管フォルダ）。渡さなければ絵は入らず、
     説明だけが字で残る。**外は読まない**（`resolve_reference` の約束）。
+
+    `indented_code` は 4 字下げをコードと見るか（ADR-0033）。**画面と
+    同じ旗を渡すこと**。落とすと Word だけコード段落になって食い違う。
     """
     document = Document()
     body = frontmatter.split(text).body
     lines = body.split("\n")
-    blocks = parse(body)
+    blocks = parse(body, indented_code=indented_code)
 
     code: list[str] = []
     table: list[list[str]] = []

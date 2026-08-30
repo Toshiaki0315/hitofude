@@ -379,3 +379,26 @@ class TestTallImage:
         # 96dpi で 2 インチぶん
         path = make_png(tmp_path / "v" / "normal.png", width=192, height=96, color=0x777777)
         assert _picture_size(path) == Inches(2.0)
+
+
+class TestIndentedCodeOption:
+    """ADR-0033: 4 字下げの扱いは設定で切れる。**画面と食い違わせない。**
+
+    他の書き出し（HTML・PDF・印刷・クリップボード）は旗を見るのに、
+    Word だけ既定の True に固定されていた（レビュー指摘 2026-08-31）。
+    """
+
+    TEXT = "本文\n\n    字下げした行\n"
+
+    def paragraph(self, path):
+        return next(p for p in Document(str(path)).paragraphs if "字下げした行" in p.text)
+
+    def test_既定はコード(self, tmp_path) -> None:
+        target = tmp_path / "on.docx"
+        write_docx(target, self.TEXT)
+        assert self.paragraph(target).runs[0].font.name
+
+    def test_offなら段落(self, tmp_path) -> None:
+        target = tmp_path / "off.docx"
+        write_docx(target, self.TEXT, indented_code=False)
+        assert self.paragraph(target).runs[0].font.name is None

@@ -191,11 +191,21 @@ class ExportActions:
         )
 
     def _write_pptx(self, target: Path, text: str) -> Path:
-        return pptx_export.write_pptx(target, text, base_path=self._window._vault.root)
+        return pptx_export.write_pptx(
+            target,
+            text,
+            base_path=self._window._vault.root,
+            indented_code=self._window._config.indented_code,
+        )
 
     def _write_docx(self, target: Path, text: str) -> Path:
         # **絵を入れる**（ユーザー要望 2026-08-30）。画面と同じ起点で探す
-        return docx_export.write_docx(target, text, base_path=self._window._vault.root)
+        return docx_export.write_docx(
+            target,
+            text,
+            base_path=self._window._vault.root,
+            indented_code=self._window._config.indented_code,
+        )
 
     def _write_pdf(self, target: Path, text: str) -> Path:
         window = self._window
