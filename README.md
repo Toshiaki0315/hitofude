@@ -62,6 +62,17 @@ xattr -d com.apple.quarantine /Applications/OboeGaki.app
 make setup
 ```
 
+### 依存の取得元について
+
+依存パッケージは [pypi.flatt.tech](https://pypi.flatt.tech/)（Flatt Security の
+マルウェア検査付き PyPI プロキシ）から取得する設定にしている
+（`pyproject.toml` の `[[tool.uv.index]]`）。配布物とハッシュは pypi.org と
+同一で、`uv.lock` がハッシュを固定しているため中身がすり替わることはない。
+
+pypi.org から直接取得したい場合は、`pyproject.toml` の
+`[[tool.uv.index]]` の `url` を `https://pypi.org/simple` に書き換えて
+`uv lock` を実行すれば、同じハッシュのまま取得元だけ切り替わる。
+
 ## 起動
 
 ```bash
