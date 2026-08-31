@@ -61,10 +61,14 @@ class TestClassifyLine:
 
 
 class TestSlides:
-    """スライド分割（F-4）でも同じにする。フェンスが無いコードを黙って落とさない。"""
+    """スライド分割（F-4）も同じ旗に従う。
 
-    def blocks(self, body: str) -> list[Block]:
-        return split(f"# 題\n\n## 頁\n\n{body}").slides[0].blocks
+    既定（on）ではフェンスが無いコードも `BlockKind.CODE` として載せ、
+    黙って落とさない。off なら段落として載る（レビュー指摘 2026-08-31）。
+    """
+
+    def blocks(self, body: str, **options) -> list[Block]:
+        return split(f"# 題\n\n## 頁\n\n{body}", **options).slides[0].blocks
 
     def test_字下げコードがスライドに載る(self) -> None:
         """回帰: CLOSE 行が来ないため溜めたまま捨てられ、blocks が空になっていた。"""
@@ -97,6 +101,11 @@ class TestSlides:
         found = self.blocks("    コード\n\n普通の文\n")
         assert [b.kind for b in found] == [BlockKind.CODE, BlockKind.PARAGRAPH]
 
+    def test_offなら段落として載る(self) -> None:
+        found = self.blocks("    字下げした行\n", indented_code=False)
+        assert [b.kind for b in found] == [BlockKind.PARAGRAPH]
+        assert found[0].text == "字下げした行"
+
 
 class TestHtml:
     """書き出しも同じにする。**画面と食い違わせない。**"""
@@ -106,36 +115,3 @@ class TestHtml:
 
         assert "<pre>" in render(INDENTED)
         assert "<pre>" not in render(INDENTED, indented_code=False)
-
-
-class TestSlides:
-    """スライドの分解も同じ旗に従う（レビュー指摘 2026-08-31）。
-
-    既定（on）ではフェンスの無いコード本文をスライドに載せない
-    （`_Builder` は ``` で開いたときだけコードを溜める）ので、
-    off にしたときに**段落として現れる**ことを見る。
-    """
-
-    TEXT = "# 題\n\n## 頁\n\n    字下げした行\n"
-
-    def blocks(self, **options) -> list:
-        from hitofude.core.slides import split
-
-        deck = split(self.TEXT, **options)
-        return deck.slides[0].blocks
-
-    def test_既定では段落にならない(self) -> None:
-        from hitofude.core.slides import BlockKind
-
-        assert not any(
-            block.kind is BlockKind.PARAGRAPH and "字下げした行" in block.text
-            for block in self.blocks()
-        )
-
-    def test_offなら段落として載る(self) -> None:
-        from hitofude.core.slides import BlockKind
-
-        assert any(
-            block.kind is BlockKind.PARAGRAPH and "字下げした行" in block.text
-            for block in self.blocks(indented_code=False)
-        )
