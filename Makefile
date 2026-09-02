@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 .PHONY: help setup run test test-fast cov bench fmt lint check clean ocr-tool \
-	app app-lite all dist _bundle icon run-lite
+	app app-lite all dist dmg _bundle icon run-lite
 
 UV := uv
 
@@ -93,6 +93,20 @@ dist: all ## 配る形（zip）まで作る（版は pyproject.toml から取る
 	ditto -c -k --keepParent dist/OboeGakiLite.app dist/OboeGakiLite-$(VERSION).zip
 	@ls -lh dist/*.zip | awk '{print $$5, $$9}'
 	@echo "※ 未署名。受け取った人は初回だけ右クリック →「開く」が要る"
+
+dmg: app ## インストール用 DMG（dist/OboeGaki-版.dmg）を新規ビルドから作る
+	@command -v create-dmg >/dev/null 2>&1 || \
+		{ echo "create-dmg が無い。brew install create-dmg で入れてください"; exit 1; }
+	@# **DMG に入れるものを隔離する。** dist/ を直接渡すと zip などの
+	@# 同居物まで巻き込む。ditto なのは zip と同じ理由（シンボリックリンク保全）
+	rm -rf build/dmg
+	mkdir -p build/dmg
+	ditto dist/OboeGaki.app build/dmg/OboeGaki.app
+	create-dmg --volname "覚書" --window-size 600 400 \
+		--icon "OboeGaki.app" 150 180 --app-drop-link 450 180 \
+		dist/OboeGaki-$(VERSION).dmg build/dmg
+	@ls -lh dist/OboeGaki-$(VERSION).dmg | awk '{print $$5, $$9}'
+	@echo "※ 未署名。受け取った人は初回だけ右クリック →「開く」が要る（§8.2 は Developer ID 待ち）"
 
 all: ## 通常版と軽量版を一度に作る（dist に 2 つ並ぶ）
 	rm -rf build dist
