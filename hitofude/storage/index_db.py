@@ -220,8 +220,6 @@ class IndexDb:
         # 背景スレッドが書いている最中に UI 側が読むことがある。WAL なので
         # 読み手はブロックされないが、書き込みの競合に備えて待つ余地を持たせる
         self._connection.execute("PRAGMA busy_timeout = 5000")
-        self._connection.executescript(SCHEMA)
-        self._connection.commit()
         self._migrate()
 
     def _migrate(self) -> None:
@@ -235,6 +233,17 @@ class IndexDb:
 
         **版だけでは足りない。** 版 4 を古い形のまま出してしまったので、
         使っている人の索引は「版は 4、形は 3」になっている。形も見る。
+
+        **`SCHEMA` を流す前にここを通す**（利用者報告 2026-09-05）。以前は
+        `__init__` が先に流していたので、**知らない形**の索引があると
+        `CREATE TABLE IF NOT EXISTS` が素通りし、続く
+        `CREATE INDEX ... ON notes(modified_at DESC)` が無い列を指して
+        `sqlite3.OperationalError` で**起動ごと落ちた**。実機では、同じ
+        保管フォルダを共有する作り直し版（Tauri/Rust）が置いた索引で踏んだ。
+
+        古い形だけを相手にしていたのが誤りで、**こちらが知らない形もある**。
+        版の大小も当てにしない——別のアプリの版はこちらと無関係に進む。
+        「今の形と一致するか」だけを見て、違えば作り直す。
 
         次の `sync()` が全ファイルを読み直して埋める（R9）。真実はファイル側に
         あるので、ここで失うものは無い。

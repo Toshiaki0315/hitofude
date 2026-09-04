@@ -1216,6 +1216,71 @@ class TestUpgradeFromOldShape:
         assert len(db.notes()) == 1
 
 
+# **別のアプリが書いた索引**（利用者報告 2026-09-05）。同じ保管フォルダを
+# 共有する作り直し版（Tauri/Rust）が `.OboeGaki/index.sqlite` に置いた実物の
+# 形。`notes` の主キーが `path` で、`id` も `modified_at` も無い。
+FOREIGN_SCHEMA = """
+CREATE TABLE notes (
+    path TEXT PRIMARY KEY, title TEXT NOT NULL, preview TEXT NOT NULL,
+    mtime_ns INTEGER NOT NULL, size_bytes INTEGER NOT NULL,
+    pinned INTEGER NOT NULL DEFAULT 0, title_key TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX idx_notes_title_key ON notes(title_key);
+CREATE TABLE tags (path TEXT NOT NULL, tag TEXT NOT NULL, PRIMARY KEY (path, tag));
+CREATE INDEX idx_tags_tag ON tags(tag);
+CREATE TABLE links (
+    path TEXT NOT NULL, target TEXT NOT NULL, context TEXT NOT NULL,
+    relation TEXT NOT NULL DEFAULT '', PRIMARY KEY (path, target, relation)
+);
+CREATE INDEX idx_links_target ON links(target COLLATE NOCASE);
+CREATE VIRTUAL TABLE notes_fts USING fts5(title, path, body, tokenize = 'trigram');
+"""
+
+
+class TestForeignShape:
+    """**知らない形の索引でも起動できる**（利用者報告 2026-09-05）。
+
+    同じ保管フォルダを別のアプリ（作り直し版）と共有していると、
+    `.OboeGaki/index.sqlite` に**このアプリが知らない形**が置かれる。
+    実機では起動できず、次の traceback で終わっていた:
+
+        sqlite3.OperationalError: no such column: modified_at
+
+    `__init__` が形を見る前に `SCHEMA` を流していたため。`notes` が既に
+    あると `CREATE TABLE IF NOT EXISTS` は素通りし、続く
+    `CREATE INDEX ... ON notes(modified_at DESC)` が無い列を指して転ぶ。
+
+    **索引は捨ててよいキャッシュ（R9）。** 読めない索引は作り直せばよく、
+    起動を止める理由にならない。真実は `.md` の側にある。
+    """
+
+    def _place(self, vault, *, version: int) -> Path:
+        path = vault.managed_dir / "index.sqlite"
+        con = sqlite3.connect(path)
+        con.executescript(FOREIGN_SCHEMA)
+        con.execute(f"PRAGMA user_version = {version}")
+        con.commit()
+        con.close()
+        return path
+
+    def test_知らない形でも開ける(self, vault) -> None:
+        path = self._place(vault, version=SCHEMA_VERSION + 1)
+        with IndexDb(path) as db:  # ここで OperationalError になっていた
+            assert db.schema_version() == SCHEMA_VERSION
+
+    def test_知らない形でも走査できる(self, vault) -> None:
+        vault.create("会議メモ", "# 会議メモ\n\n- 参考文献: [[本]]\n")
+        with IndexDb(self._place(vault, version=SCHEMA_VERSION + 1)) as db:
+            assert len(db.sync(vault).added) == 1
+            assert db.link_map()["会議メモ"] == ["本"]
+
+    def test_版が同じでも知らない形なら作り直す(self, vault) -> None:
+        """**版で見分けられない。** 別のアプリの版はこちらと無関係に進む。"""
+        vault.create("会議メモ", "# 会議メモ\n\n本文\n")
+        with IndexDb(self._place(vault, version=SCHEMA_VERSION)) as db:
+            assert len(db.sync(vault).added) == 1
+
+
 class TestRebuildInPlace:
     """**開いたままの接続からも見える**ように作り直す（ユーザー要望の同期）。
 
