@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 from hitofude.core.document import new_id
-from hitofude.storage.index_db import IndexDb
+from hitofude.storage.index_db import INDEX_FILE, IndexDb
 from hitofude.storage.vault import Vault
 
 SEED = 20260808
@@ -55,7 +55,7 @@ def build(root: Path, count: int) -> None:
 
 def measure(root: Path) -> None:
     vault = Vault(root)
-    db = IndexDb(vault.managed_dir / "index.sqlite")
+    db = IndexDb(vault.managed_dir / INDEX_FILE)
     try:
         started = time.perf_counter()
         result = db.sync(vault)

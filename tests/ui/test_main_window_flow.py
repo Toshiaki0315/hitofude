@@ -70,7 +70,11 @@ class TestVaultSetup:
         assert (config.vault_path / ".OboeGaki").is_dir()
 
     def test_索引ファイルが作られる(self, window, config) -> None:
-        assert (config.vault_path / ".OboeGaki" / "index.sqlite").is_file()
+        from hitofude.storage.index_db import INDEX_FILE
+
+        assert (config.vault_path / ".OboeGaki" / INDEX_FILE).is_file()
+        # **別のアプリのものを作らない**（ADR-0034）。作り直し版が使う名前
+        assert not (config.vault_path / ".OboeGaki" / "index.sqlite").exists()
 
     def test_既存のノートを読み込む(self, qtbot, config, tmp_path) -> None:
         vault_root = config.vault_path

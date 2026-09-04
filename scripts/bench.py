@@ -123,7 +123,7 @@ def bench_search(*, rebuild: bool) -> float:
     """5,000 ノートの全文検索の中央値（ms）。vault は決定的なので使い回す。"""
     from gen_dummy_vault import DEFAULT_NOTES, build
 
-    from hitofude.storage.index_db import IndexDb
+    from hitofude.storage.index_db import INDEX_FILE, IndexDb
     from hitofude.storage.vault import Vault
 
     if rebuild or not BENCH_VAULT.is_dir():
@@ -131,7 +131,7 @@ def bench_search(*, rebuild: bool) -> float:
         build(BENCH_VAULT, DEFAULT_NOTES)
 
     vault = Vault(BENCH_VAULT)
-    db = IndexDb(vault.managed_dir / "index.sqlite")
+    db = IndexDb(vault.managed_dir / INDEX_FILE)
     try:
         db.sync(vault)
         samples: list[float] = []

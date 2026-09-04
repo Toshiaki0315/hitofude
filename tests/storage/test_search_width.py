@@ -9,7 +9,7 @@
 
 import pytest
 
-from hitofude.storage.index_db import IndexDb
+from hitofude.storage.index_db import INDEX_FILE, IndexDb
 from hitofude.storage.vault import Vault
 
 
@@ -20,7 +20,7 @@ def db(tmp_path):
     vault.ensure_layout()
     vault.create("全角の見出し", "# 全角の見出し\n\nＵＩ と ＤＢ の設計。\n")
     vault.create("半角の見出し", "# 半角の見出し\n\nUI と DB の設計。\n")
-    found = IndexDb(root / ".OboeGaki" / "index.sqlite")
+    found = IndexDb(root / ".OboeGaki" / INDEX_FILE)
     found.sync(vault)
     yield found
     found.close()

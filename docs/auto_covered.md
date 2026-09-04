@@ -131,7 +131,7 @@
 | 題名の出ていない点にカーソルを乗せる | その点の題名だけが出る（自動: tests/ui/test_graph_window.py::TestHover） |
 | 窓を大きくする | 出る題名が増える（自動: tests/ui/test_graph_window.py::test_広いほど多く出せる） |
 | 版を上げた後に初めて起動する（M-5） | **ノートが一覧に出る**（索引は作り直され、少し待つ）（自動: tests/storage/test_index_db.py::TestUpgradeFromOldShape） |
-| `.hitofude/index.sqlite` を消してから起動 | 一覧が戻る（捨ててよいキャッシュ。R9）（自動: tests/storage/test_index_db.py::TestRebuildInPlace） |
+| `.OboeGaki` の索引ファイルを消してから起動 | 一覧が戻る（捨ててよいキャッシュ。R9）（自動: tests/storage/test_index_db.py::TestRebuildInPlace） |
 | アプリを閉じている間に Finder で `.md` を足し、開いてから「ファイル」→「メンテナンス」→「最新の情報に同期」（M-6） | 足したノートが一覧に出る。「1 件増えました」と出る（自動: tests/ui/test_resync.py::test_外で足したファイルが出る） |
 | 同じく Finder で 1 つ消してから「最新の情報に同期」 | 一覧から消える。「1 件消えました」と出る（自動: tests/ui/test_resync.py::test_外で消したファイルが消える） |
 | 何も変えずに「最新の情報に同期」 | **「変わりはありません」**と出る（無反応に見えない）（自動: tests/ui/test_resync.py::test_変わっていなければそう言う） |

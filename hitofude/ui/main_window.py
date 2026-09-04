@@ -49,6 +49,7 @@ from hitofude.core.wikilink import context_line, normalize, resolve
 from hitofude.editor.editor_widget import MarkdownEditor
 from hitofude.storage import autosave, history
 from hitofude.storage.index_db import (
+    INDEX_FILE,
     ROOT_FOLDER,
     IndexDb,
     NoteRow,
@@ -196,9 +197,7 @@ class MainWindow(QMainWindow):
         # **開けない保管フォルダでも窓は出す**（ADR-0030 / ユーザー報告）。
         # 索引は管理フォルダの中なので、開けないときは覚えないだけにする。
         # 一覧は空になるが、設定から別の場所を選び直せる
-        self._db = IndexDb(
-            self._vault.managed_dir / "index.sqlite" if self._vault_ready else MEMORY_DB
-        )
+        self._db = IndexDb(self._vault.managed_dir / INDEX_FILE if self._vault_ready else MEMORY_DB)
         self._note: Note | None = None
         self._deferred_reload: Note | None = None
         self._loading = False

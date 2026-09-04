@@ -11,7 +11,13 @@ from pathlib import Path
 import pytest
 
 from hitofude.core.document import Note, note_key
-from hitofude.storage.index_db import SCHEMA_VERSION, IndexDb, SortOrder, rebuild
+from hitofude.storage.index_db import (
+    INDEX_FILE,
+    SCHEMA_VERSION,
+    IndexDb,
+    SortOrder,
+    rebuild,
+)
 from hitofude.storage.vault import Vault
 
 
@@ -24,7 +30,7 @@ def vault(tmp_path: Path) -> Vault:
 
 @pytest.fixture
 def db(vault: Vault) -> IndexDb:
-    with IndexDb(vault.managed_dir / "index.sqlite") as database:
+    with IndexDb(vault.managed_dir / INDEX_FILE) as database:
         yield database
 
 
@@ -36,7 +42,7 @@ def add(vault: Vault, db: IndexDb, title: str, body: str = "") -> Note:
 
 class TestSchema:
     def test_ファイルが作られる(self, db, vault) -> None:
-        assert (vault.managed_dir / "index.sqlite").is_file()
+        assert (vault.managed_dir / INDEX_FILE).is_file()
 
     def test_WALモードになっている(self, db) -> None:
         """spec §7.3: 読み書きの並行性のため。"""
@@ -44,7 +50,7 @@ class TestSchema:
         assert mode.lower() == "wal"
 
     def test_二度開いても壊れない(self, vault) -> None:
-        path = vault.managed_dir / "index.sqlite"
+        path = vault.managed_dir / INDEX_FILE
         with IndexDb(path):
             pass
         with IndexDb(path) as db:
@@ -394,7 +400,7 @@ class TestRebuild:
     """R9 / spec §7.1: 索引は捨ててよいキャッシュ。"""
 
     def test_消しても完全に復元できる(self, vault) -> None:
-        db_path = vault.managed_dir / "index.sqlite"
+        db_path = vault.managed_dir / INDEX_FILE
         with IndexDb(db_path) as db:
             vault.create("会議メモ", "# 会議メモ\n\n予算について #work/会議\n")
             vault.create("読書メモ", "# 読書メモ\n\n第3章まで #private\n")
@@ -419,7 +425,7 @@ class TestPerformance:
     def test_5000ノートの検索が200ミリ秒以内(self, vault) -> None:
         import time
 
-        db_path = vault.managed_dir / "index.sqlite"
+        db_path = vault.managed_dir / INDEX_FILE
         with IndexDb(db_path) as db:
             for index in range(5000):
                 path = vault.root / f"メモ{index:04d}.md"
@@ -1146,7 +1152,7 @@ CREATE VIRTUAL TABLE notes_fts USING fts5(
 
 def make_old_index(vault, *, version: int) -> Path:
     """古い形の索引をその場に作る。"""
-    path = vault.managed_dir / "index.sqlite"
+    path = vault.managed_dir / INDEX_FILE
     con = sqlite3.connect(path)
     con.executescript(OLD_SCHEMA_V3)
     con.execute(f"PRAGMA user_version = {version}")
@@ -1188,7 +1194,7 @@ class TestUpgradeFromOldShape:
 
     def test_主キーの違いも作り直す(self, vault) -> None:
         """列は合っていても**主キーが古い**と、同じ相手を別の続柄で指せない。"""
-        path = vault.managed_dir / "index.sqlite"
+        path = vault.managed_dir / INDEX_FILE
         con = sqlite3.connect(path)
         con.executescript(
             OLD_SCHEMA_V3.replace(
@@ -1252,10 +1258,15 @@ class TestForeignShape:
 
     **索引は捨ててよいキャッシュ（R9）。** 読めない索引は作り直せばよく、
     起動を止める理由にならない。真実は `.md` の側にある。
+
+    名前は ADR-0034 で分けたので、この経路で作り直し版の索引を開くことは
+    もう無い。**それでも検査は残す**——「知らない形」は名前の衝突以外でも
+    起こる（先の版が置いた索引に戻る、写しを持ち込む）。ここで見ているのは
+    相手が誰かではなく、**知らない形で落ちないこと**。
     """
 
     def _place(self, vault, *, version: int) -> Path:
-        path = vault.managed_dir / "index.sqlite"
+        path = vault.managed_dir / INDEX_FILE
         con = sqlite3.connect(path)
         con.executescript(FOREIGN_SCHEMA)
         con.execute(f"PRAGMA user_version = {version}")
@@ -1279,6 +1290,47 @@ class TestForeignShape:
         vault.create("会議メモ", "# 会議メモ\n\n本文\n")
         with IndexDb(self._place(vault, version=SCHEMA_VERSION)) as db:
             assert len(db.sync(vault).added) == 1
+
+
+class TestIndexFileName:
+    """索引の名前は**実装ごとに分ける**（ADR-0034。ユーザー要望 2026-09-05）。
+
+    同じ保管フォルダを作り直し版（Tauri/Rust）と共有していると、双方が
+    `.OboeGaki/index.sqlite` を奪い合う。どちらも「知らない形なら作り直す」
+    ので、**交互に起動するたび全ノートを読み直す**ことになる。
+
+    名前を分ければ互いに触らない。索引は捨ててよいキャッシュ（R9）なので、
+    分けても失うものは無い。
+    """
+
+    def test_名前の出所は1か所(self) -> None:
+        """**書き写さない。** 散らばると片方だけ直す形になる（TASKS.md の T 群）。"""
+        from hitofude.storage import index_db
+
+        assert index_db.INDEX_FILE.endswith(".sqlite")
+
+    def test_別のアプリの名前と衝突しない(self) -> None:
+        """作り直し版は `index.sqlite`（`src-tauri/src/index_db.rs`）を使う。"""
+        from hitofude.storage.index_db import INDEX_FILE
+
+        assert INDEX_FILE != "index.sqlite"
+
+    def test_隣の索引に触らない(self, vault) -> None:
+        """**別のアプリのものを壊さない。** 作り直しの対象にしない。"""
+        from hitofude.storage.index_db import INDEX_FILE
+
+        foreign = vault.managed_dir / "index.sqlite"
+        con = sqlite3.connect(foreign)
+        con.executescript(FOREIGN_SCHEMA)
+        con.execute(f"PRAGMA user_version = {SCHEMA_VERSION + 1}")
+        con.commit()
+        con.close()
+        before = foreign.read_bytes()
+
+        vault.create("会議メモ", "# 会議メモ\n\n本文\n")
+        with IndexDb(vault.managed_dir / INDEX_FILE) as db:
+            assert len(db.sync(vault).added) == 1
+        assert foreign.read_bytes() == before, "別のアプリの索引を書き換えている"
 
 
 class TestRebuildInPlace:

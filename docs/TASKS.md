@@ -150,7 +150,7 @@
 - [x] vault 指定 → 既存 `.md` が一覧に出る（`IndexDb.sync()`）
 - [~] 編集 → 800ms 後にファイルが更新される（`Debouncer` は完成。UI への配線は Phase 5）
 - [x] 外部エディタでの書き換えがアプリに反映される（`VaultWatcher`）
-- [x] `.hitofude/index.sqlite` を消して再起動 → 完全に復元される（R9、`rebuild()`）
+- [x] `.OboeGaki` の索引ファイルを消して再起動 → 完全に復元される（R9、`rebuild()`）
 
 **実測（5,000 ノートの vault、Apple Silicon）**
 

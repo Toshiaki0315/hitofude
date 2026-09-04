@@ -24,6 +24,22 @@ from hitofude.core.document import Note, note_key, searchable_text
 
 logger = logging.getLogger(__name__)
 
+INDEX_FILE = "index-hitofude.sqlite"
+"""索引の置き場。**名前はここが唯一の出所**（ADR-0034）。
+
+素の `index.sqlite` を使わないのは、**同じ保管フォルダを作り直し版
+（Tauri/Rust の実装）と共有する**ため。双方が同じ名前を使うと、どちらも
+「知らない形なら作り直す」ので**交互に起動するたび全ノートを読み直す**。
+名前を分ければ互いに触らない。
+
+`hitofude` は Python 側のパッケージ名で、ユーザーには見えない（ADR-0032）。
+**衝突しないことだけが要件**なので、実装を名指しする形にした。
+
+捨ててよいキャッシュ（R9）なので、名前を変えて置き去りになった古い
+`index.sqlite` があっても困らない——ただし**こちらからは消さない**。
+今はもう別のアプリのものかもしれない。
+"""
+
 # trigram は 3 文字単位で索引するため、2 文字以下のクエリは構造上ヒットしない
 MIN_TRIGRAM_QUERY = 3
 
@@ -973,7 +989,7 @@ def _to_hit(row: sqlite3.Row) -> SearchHit:
 def rebuild(db_path: Path, vault) -> SyncResult:
     """索引を作り直す（R9 の担保）。
 
-    `.OboeGaki/index.sqlite` を消しても `.md` から完全に復元できることを、
+    `.OboeGaki` の索引ファイルを消しても `.md` から完全に復元できることを、
     この関数の存在と回帰テストで保証する。
     """
     db_path.unlink(missing_ok=True)

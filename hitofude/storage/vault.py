@@ -6,7 +6,7 @@ HitofudeNotes/
 ├── attachments/         ← 画像等
 ├── templates/           ← 雛形（E-4）。ノートとしては読まない
 ├── .trash/              ← 削除したノート（既定 30 日で自動消去）
-└── .OboeGaki/          ← アプリの管理領域（index.sqlite）
+└── .OboeGaki/          ← アプリの管理領域（索引と履歴。ADR-0034）
 ```
 
 **フォルダ階層で分類しない。** 分類はタグで行う（§7.1）。ユーザーが手で

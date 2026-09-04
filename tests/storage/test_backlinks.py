@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from hitofude.core.document import Note
-from hitofude.storage.index_db import SCHEMA_VERSION, IndexDb
+from hitofude.storage.index_db import INDEX_FILE, SCHEMA_VERSION, IndexDb
 from hitofude.storage.vault import Vault
 
 
@@ -22,7 +22,7 @@ def vault(tmp_path: Path) -> Vault:
 
 @pytest.fixture
 def db(vault: Vault) -> IndexDb:
-    with IndexDb(vault.managed_dir / "index.sqlite") as found:
+    with IndexDb(vault.managed_dir / INDEX_FILE) as found:
         yield found
 
 

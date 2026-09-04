@@ -214,26 +214,27 @@ class TestTaskWiring:
     """
 
     def run_task(self, vault, *, full: bool) -> None:
+        from hitofude.storage.index_db import INDEX_FILE
         from hitofude.ui.index_sync import IndexSyncTask, SyncReporter
 
         # **受け口を持ったままにする。** 親を使い捨てにすると、走り終わりの
         # 合図を飛ばすところで「送り主が消えている」と言われる
         self.reporter = SyncReporter()
-        IndexSyncTask(vault.managed_dir / "index.sqlite", vault, self.reporter, full=full).run()
+        IndexSyncTask(vault.managed_dir / INDEX_FILE, vault, self.reporter, full=full).run()
 
     def spoil(self, vault) -> None:
         """ファイルは触らず、索引の中だけ狂わせる。"""
-        from hitofude.storage.index_db import IndexDb
+        from hitofude.storage.index_db import INDEX_FILE, IndexDb
 
-        with IndexDb(vault.managed_dir / "index.sqlite") as db:
+        with IndexDb(vault.managed_dir / INDEX_FILE) as db:
             db.sync(vault)
             db._connection.execute("UPDATE notes SET title = 'でたらめ'")
             db._connection.commit()
 
     def titles_of(self, vault) -> set[str]:
-        from hitofude.storage.index_db import IndexDb
+        from hitofude.storage.index_db import INDEX_FILE, IndexDb
 
-        with IndexDb(vault.managed_dir / "index.sqlite") as db:
+        with IndexDb(vault.managed_dir / INDEX_FILE) as db:
             return {row.title for row in db.notes()}
 
     @pytest.fixture
