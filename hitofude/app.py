@@ -4,6 +4,7 @@ import importlib
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 from typing import cast
 
@@ -708,6 +709,58 @@ class NullLock:
         """何も持っていないので何もしない（`main` の `finally` が呼ぶ）。"""
 
 
+UNREADABLE_LOCK_GRACE_SEC = 5.0
+"""できたばかりの空ロックを見逃す猶予（秒）。
+
+`QLockFile` は**作ってから中身を書く**ので、掴んだ直後の一瞬は生きた
+ロックでも 0 バイトに見える。その隙に片付けると、同時に起動した 2 つが
+両方とも掴めてロックの意味が無くなる。書き込みは即座なので、数秒あれば
+「書かれないまま残った」と「今まさに書いている」を分けられる。
+"""
+
+
+def _drop_unreadable_lock(path: Path) -> None:
+    """**中身の読めないロックを片付ける**（利用者報告 2026-09-05）。
+
+    実機で `instance.lock` が 0 バイトで取り残され、以後ずっと
+    「既に別のウィンドウで開いています」が出て起動できなくなった。
+
+    `QLockFile` は掴んだ直後に `pid / アプリ名 / ホスト名 / uuid ×2` を
+    書き込む。**作ってから書くまでの隙に落ちる**と中身が空のまま残り、
+    持ち主を突き止められなくなる。`kill -9` を撃つ手動チェック（§4）で
+    踏んだと見ている。
+
+    そこから戻れないのは `setStaleLockTime(0)` のため（実測）:
+
+    | ロックの中身 | stale=0 | stale=30 秒 |
+    | --- | --- | --- |
+    | 死んだ PID（形は正しい） | **回収される** | 回収される |
+    | 空・PID が数字でない | **永久に取れない** | 回収される |
+
+    **PID の死活による回収は効いている。** 効かないのは中身を読めない
+    ときだけなので、そこだけをここで片付ける。時間 stale を入れて済ませ
+    ないのは、**持ち主が生きているのに古いだけのロック**まで回収の対象に
+    なるため——実測では Qt が回収前に排他 flock を要求するので奪えなかった
+    が、その安全は flock が効く置き場所でしか成り立たない。
+
+    1 行目が 10 進の整数なら「読めた」と見なす。中身が読めるロックには
+    **手を出さない**——生死の判定は Qt に任せる。
+    """
+    try:
+        if time.time() - path.stat().st_mtime < UNREADABLE_LOCK_GRACE_SEC:
+            return
+        head = path.read_bytes().split(b"\n", 1)[0]
+    except OSError:
+        return  # 無い・読めない。触らないでおく
+    if head.strip().isdigit():
+        return  # 持ち主が書いてある。Qt の判定に任せる
+    logger.warning("中身の読めないロックを片付ける: %s", path)
+    try:
+        path.unlink()
+    except OSError as error:
+        logger.warning("ロックを片付けられない: %s", error)
+
+
 def acquire_vault_lock(managed_dir: Path) -> QLockFile | NullLock | None:
     """vault 単位の二重起動ロック（H-1 層 2 / spec §6.1）。
 
@@ -733,7 +786,9 @@ def acquire_vault_lock(managed_dir: Path) -> QLockFile | NullLock | None:
         logger.warning("ロックを置けない: %s", error)
         return NullLock()
 
-    lock = QLockFile(str(managed_dir / "instance.lock"))
+    lock_path = managed_dir / "instance.lock"
+    _drop_unreadable_lock(lock_path)
+    lock = QLockFile(str(lock_path))
     lock.setStaleLockTime(0)
     if lock.tryLock(0):
         return lock

@@ -1,6 +1,9 @@
 """QApplication のセットアップのテスト（タスク 0-B-2 / spec §5.3）。"""
 
+import os
 import sys
+import time
+from pathlib import Path
 
 import pytest
 from PySide6.QtWidgets import QApplication
@@ -9,6 +12,12 @@ from hitofude.app import APP_NAME, ORG_DOMAIN, apply_theme, create_application
 from hitofude.theme import DARK, LIGHT
 
 pytestmark = pytest.mark.gui
+
+
+def _age(path: Path, seconds: float = 60.0) -> None:
+    """ファイルの日付を過去にずらす。**待たずに「古い」を作る。**"""
+    old = time.time() - seconds
+    os.utime(path, (old, old))
 
 
 def test_create_applicationは既存インスタンスを再利用する(qapp: QApplication) -> None:
@@ -454,6 +463,82 @@ class TestVaultLock:
         assert first is not None and second is not None
         first.unlock()
         second.unlock()
+
+
+class TestUnreadableLock:
+    """中身が読めないロックは誰のものでもない（利用者報告 2026-09-05）。
+
+    実機で `instance.lock` が **0 バイトで取り残され**、以後ずっと
+    「既に別のウィンドウで開いています」が出て起動できなくなった
+    （実物: 0 バイト / 9 月 4 日 / 保持プロセスなし）。
+
+    `QLockFile` は掴んだ直後に `pid / アプリ名 / ホスト名 / uuid ×2` を
+    書き込む。**作ってから書くまでの隙に落ちる**と中身が空のまま残り、
+    持ち主を誰とも突き止められなくなる。手動チェックの §4 は `kill -9` を
+    繰り返し撃つので、そこで踏んだと見ている。
+
+    そこから先が直らないのは `setStaleLockTime(0)` のため（実測）:
+
+    | ロックの中身 | stale=0 | stale=30 秒 |
+    | --- | --- | --- |
+    | 死んだ PID（形は正しい） | **回収される** | 回収される |
+    | 空・PID が数字でない | **永久に取れない** | 回収される |
+
+    つまり **PID の死活による回収は正しく効いている**。効かないのは
+    中身を読めないときだけなので、そこだけ自分で片付ける。
+    """
+
+    def test_空のロックが残っていても取れる(self, qapp, tmp_path) -> None:
+        from hitofude.app import acquire_vault_lock
+
+        managed = tmp_path / ".OboeGaki"
+        managed.mkdir()
+        stale = managed / "instance.lock"
+        stale.write_bytes(b"")
+        _age(stale)
+
+        lock = acquire_vault_lock(managed)
+        assert lock is not None, "空のロックで永久に開けなくなっている"
+        lock.unlock()
+
+    def test_PIDが数字でないロックが残っていても取れる(self, qapp, tmp_path) -> None:
+        """途中まで書けて落ちた形。1 行目が読めない点は空と同じ。"""
+        from hitofude.app import acquire_vault_lock
+
+        managed = tmp_path / ".OboeGaki"
+        managed.mkdir()
+        stale = managed / "instance.lock"
+        stale.write_text("\x00\x00\nPython\n")
+        _age(stale)
+
+        lock = acquire_vault_lock(managed)
+        assert lock is not None
+        lock.unlock()
+
+    def test_生きたロックは片付けない(self, qapp, tmp_path) -> None:
+        """**取り違えないこと。** 形の整ったロックには手を出さない。"""
+        from hitofude.app import acquire_vault_lock
+
+        managed = tmp_path / ".OboeGaki"
+        first = acquire_vault_lock(managed)
+        _age(managed / "instance.lock")  # 古くても持ち主が生きていれば別
+        assert acquire_vault_lock(managed) is None
+        first.unlock()
+
+    def test_できたばかりの空のロックは片付けない(self, qapp, tmp_path) -> None:
+        """**掴んだ直後の隙を奪わない。**
+
+        `QLockFile` が作ってから書き込むまでの一瞬は、生きたロックでも
+        0 バイトに見える。ここで消すと**同時に起動した 2 つが両方とも
+        掴めて**しまい、ロックの意味がなくなる。
+        """
+        from hitofude.app import acquire_vault_lock
+
+        managed = tmp_path / ".OboeGaki"
+        managed.mkdir()
+        (managed / "instance.lock").write_bytes(b"")  # 今できたばかり
+
+        assert acquire_vault_lock(managed) is None
 
 
 class TestQtJapanese:
